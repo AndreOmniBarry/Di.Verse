@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <title>Di.Verse</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --brand: #1A1A2E;
+      --accent: #E94560;
+      --green: #0D7A5F;
+      --mid: #4A4A6A;
+      --surface: #22223A;
+      --surface2: #2A2A45;
+      --text: #CCCCDD;
+      --white: #FFFFFF;
+    }
+
+    body {
+      background: var(--brand);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 56px 1fr;
+      overflow: hidden;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+    header h1 { font-size: 1.2rem; color: var(--white); letter-spacing: 2px; }
+    header h1 span { color: var(--accent); }
+
+    .header-right { display: flex; align-items: center; gap: 12px; }
+
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #555; display: inline-block; transition: all 0.3s;
+    }
+    .status-dot.active { background: #2ECC71; box-shadow: 0 0 8px #2ECC71; }
+
+    .listening-label { font-size: 0.72rem; color: var(--mid); }
+    .listening-label.active { color: #2ECC71; }
+
+    select, .toggle-btn {
+      background: var(--surface2); border: 1px solid var(--mid);
+      color: var(--text); padding: 5px 10px; border-radius: 4px;
+      font-size: 0.78rem; cursor: pointer; outline: none;
+    }
+    select:hover, .toggle-btn:hover { border-color: var(--accent); color: var(--white); }
+
+    .btn {
+      padding: 7px 14px; border: none; border-radius: 4px;
+      font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-accent { background: var(--accent); color: white; }
+    .btn-accent:hover { background: #C73652; }
+    .btn-ghost { background: transparent; color: #666; border: 1px solid #444; }
+    .btn-ghost:hover { border-color: #E74C3C; color: #E74C3C; }
+    .btn-dim { background: var(--surface2); color: var(--text); border: 1px solid var(--mid); }
+    .btn-dim:hover { border-color: var(--accent); }
+
+    main { display: grid; grid-template-columns: 1fr 340px; overflow: hidden; }
+
+    .left {
+      display: grid; grid-template-rows: 1fr 160px;
+      border-right: 1px solid var(--surface2); overflow: hidden;
+    }
+
+    .transcription-panel { padding: 16px; overflow-y: auto; }
+
+    .label {
+      font-size: 0.62rem; letter-spacing: 2px; color: var(--mid);
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+
+    #transcriptionFeed { font-size: 0.88rem; line-height: 1.8; color: #8888AA; }
+    #transcriptionFeed .hit {
+      color: var(--accent); font-weight: bold;
+      background: rgba(233,69,96,0.1); padding: 1px 4px; border-radius: 3px;
+    }
+
+    .search-panel {
+      padding: 14px 16px; background: var(--surface);
+      border-top: 1px solid var(--surface2);
+    }
+    .search-row { display: flex; gap: 8px; margin-top: 8px; }
+
+    input[type="text"], input[type="number"] {
+      background: var(--brand); border: 1px solid var(--mid);
+      color: var(--white); padding: 8px 10px; border-radius: 4px;
+      font-size: 0.82rem; outline: none; transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--accent); }
+    input::placeholder { color: #445; }
+    .hint { font-size: 0.62rem; color: #333355; margin-top: 6px; }
+
+    .right { display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
+
+    .now-playing {
+      padding: 14px 16px; background: var(--surface);
+      border-bottom: 1px solid var(--surface2); min-height: 110px;
+    }
+
+    .verse-card {
+      margin-top: 8px; padding: 10px 12px; background: var(--brand);
+      border-radius: 6px; border-left: 3px solid var(--accent);
+    }
+    .verse-card .ref { font-size: 0.72rem; color: var(--accent); font-weight: bold; margin-bottom: 4px; }
+    .verse-card .ref .trans { color: #666; font-weight: normal; margin-left: 6px; }
+    .verse-card .txt { font-size: 0.83rem; line-height: 1.5; color: var(--white); }
+    .empty-state { color: var(--mid); font-size: 0.8rem; font-style: italic; margin-top: 8px; }
+
+    .queue-panel { padding: 12px 16px; overflow-y: auto; }
+
+    .queue-item {
+      background: var(--surface); border: 1px solid var(--surface2);
+      border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;
+      cursor: pointer; transition: border-color 0.2s;
+    }
+    .queue-item:hover { border-color: var(--accent); }
+    .queue-item.selected { border-color: var(--accent); background: rgba(233,69,96,0.07); }
+    .queue-item.implicit { border-left: 3px solid #F39C12; }
+    .queue-item .q-ref { font-size: 0.72rem; color: var(--accent); font-weight: bold; }
+    .queue-item .q-trans { font-size: 0.65rem; color: #666; margin-left: 6px; }
+    .queue-item .q-text { font-size: 0.8rem; color: var(--text); margin-top: 3px; line-height: 1.4; }
+    .queue-item .q-meta { font-size: 0.62rem; color: var(--mid); margin-top: 4px; }
+
+    .alert-box {
+      background: rgba(231,76,60,0.12); border: 1px solid #E74C3C;
+      border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;
+    }
+    .alert-box .a-title { font-size: 0.68rem; font-weight: bold; color: #E74C3C; letter-spacing: 1px; }
+    .alert-box .a-msg { font-size: 0.78rem; color: #FFAAAA; margin-top: 4px; line-height: 1.4; }
+    .alert-box .a-btn {
+      font-size: 0.68rem; padding: 3px 8px; margin-top: 6px;
+      background: transparent; border: 1px solid #E74C3C;
+      color: #E74C3C; border-radius: 3px; cursor: pointer;
+    }
+
+    .bottom {
+      padding: 12px 16px; background: var(--surface);
+      border-top: 1px solid var(--surface2);
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .push-row { display: flex; gap: 8px; }
+    #alertContainer { padding: 0 16px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Di<span>.</span>Verse <span style="color:var(--mid);font-size:0.7rem;font-weight:normal;">OPERATOR</span></h1>
+  <div class="header-right">
+    <div class="status-dot" id="dot"></div>
+    <span class="listening-label" id="listenLabel">Not listening</span>
+    <select id="translationSelect">
+      <optgroup label="── Primary ──">
+        <option value="KJV">KJV — King James</option>
+        <option value="NKJV">NKJV — New King James</option>
+        <option value="AMP">AMP — Amplified</option>
+        <option value="AMPC">AMPC — Amplified Classic</option>
+        <option value="TPT">TPT — The Passion</option>
+        <option value="MSG">MSG — The Message</option>
+        <option value="GNT">GNT — Good News</option>
+        <option value="TLB">TLB — The Living Bible</option>
+      </optgroup>
+      <optgroup label="── Popular ──">
+        <option value="NIV">NIV — New International</option>
+        <option value="ESV">ESV — English Standard</option>
+        <option value="NLT">NLT — New Living</option>
+        <option value="NASB">NASB — New American Standard</option>
+        <option value="CSB">CSB — Christian Standard</option>
+        <option value="CEV">CEV — Contemporary English</option>
+        <option value="NCV">NCV — New Century</option>
+        <option value="HCSB">HCSB — Holman Christian Standard</option>
+      </optgroup>
+      <optgroup label="── Study ──">
+        <option value="ASV">ASV — American Standard</option>
+        <option value="WEB">WEB — World English Bible</option>
+        <option value="YLT">YLT — Young's Literal</option>
+        <option value="DARBY">DARBY — Darby Translation</option>
+        <option value="RSV">RSV — Revised Standard</option>
+        <option value="NRSV">NRSV — New Revised Standard</option>
+      </optgroup>
+    </select>
+    <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
+    <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
+    <a href="/about" style="font-size:0.72rem;color:var(--mid);text-decoration:none;letter-spacing:1px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
+  </div>
+</header>
+
+<main>
+  <div class="left">
+    <div class="transcription-panel">
+      <div class="label">Live Transcription</div>
+      <div id="transcriptionFeed">
+        <span style="color:#333355;font-style:italic;">Transcription appears here when listening is active...</span>
+      </div>
+    </div>
+    <div class="search-panel">
+      <div class="label">Manual Search</div>
+      <div class="search-row">
+        <input type="text" id="bookInput" placeholder="Book — e.g. John" style="flex:2;">
+        <input type="number" id="chapterInput" placeholder="Ch" style="flex:0.7;min-width:52px;">
+        <input type="number" id="verseInput" placeholder="Vs" style="flex:0.7;min-width:52px;">
+        <button class="btn btn-dim" onclick="manualSearch()">Find</button>
+      </div>
+      <div class="hint">Shortcuts: Space = Push · Esc = Clear · M = Toggle mode</div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="now-playing">
+      <div class="label">On Screen Now</div>
+      <div id="nowPlaying">
+        <div class="empty-state">Nothing displayed — logo showing</div>
+      </div>
+    </div>
+    <div class="queue-panel">
+      <div class="label" style="margin-bottom:10px;">Detection Queue</div>
+      <div id="queueContainer">
+        <div style="color:#333355;font-size:0.8rem;font-style:italic;">Detected verses appear here...</div>
+      </div>
+    </div>
+    <div id="alertContainer"></div>
+    <div class="bottom">
+      <div class="push-row">
+        <button class="btn btn-accent" style="flex:1;padding:10px 0;font-size:0.88rem;" onclick="pushSelected()">
+          PUSH TO SCREEN
+        </button>
+        <button class="btn btn-dim" id="listenBtn" onclick="toggleListening()">Start</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // ── State ──
+  let displayMode = 'lower-third';
+  let activeTranslation = 'KJV';
+  let isListening = false;
+  let currentVerse = null;
+  let queue = [];
+  let selectedIndex = 0;
+  let audioStream = null;
+  let isCapturing = false;
+  let activeMimeType = 'audio/webm';
+  let transcriptionContext = [];
+
+  // ── WebSocket ──
+  const ws = new WebSocket(`ws://${location.host}?type=operator`);
+  ws.onopen = () => console.log('[Di.Verse] Operator connected');
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message);
+    if (msg.action === 'TRANSLATION_CHANGE') {
+      activeTranslation = msg.translation;
+      document.getElementById('translationSelect').value = msg.translation;
+      appendTranscription('[ Translation switched to ' + msg.translation + ' ]');
+    }
+  };
+
+  // ── Translation ──
+  document.getElementById('translationSelect').addEventListener('change', (e) => {
+    activeTranslation = e.target.value;
+  });
+
+  // ── Mode toggle ──
+  function toggleMode() {
+    displayMode = displayMode === 'lower-third' ? 'full-screen' : 'lower-third';
+    document.getElementById('modeBtn').textContent =
+      displayMode === 'lower-third' ? '◧ Lower-Third' : '⬜ Full-Screen';
+  }
+
+  // ── Manual search ──
+  async function manualSearch() {
+    const book = document.getElementById('bookInput').value.trim();
+    const chapter = parseInt(document.getElementById('chapterInput').value);
+    const verse = parseInt(document.getElementById('verseInput').value);
+    if (!book || !chapter || !verse) {
+      showAlert('Please enter a book, chapter, and verse number.');
+      return;
+    }
+    try {
+      const res = await fetch(
+        '/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + '&translation=' + activeTranslation
+      );
+      const data = await res.json();
+      if (!res.ok) { showAlert(data.error); return; }
+      addToQueue({ ...data, confidence: 1.0, type: 'manual' });
+    } catch (err) {
+      showAlert('Could not reach server.');
+    }
+  }
+
+  // ── Queue ──
+  function addToQueue(item) {
+    queue.unshift(item);
+    selectedIndex = 0;
+    renderQueue();
+  }
+
+  function renderQueue() {
+    const el = document.getElementById('queueContainer');
+    if (queue.length === 0) {
+      el.innerHTML = '<div style="color:#333355;font-size:0.8rem;font-style:italic;">Detected verses appear here...</div>';
+      return;
+    }
+    el.innerHTML = queue.slice(0, 6).map((item, i) => `
+      <div class="queue-item ${i === selectedIndex ? 'selected' : ''} ${item.type === 'implicit' ? 'implicit' : ''}"
+           onclick="selectItem(${i})">
+        <div class="q-ref">${item.reference} <span class="q-trans">${item.translation}</span></div>
+        <div class="q-text">${item.text.slice(0, 180)}${item.text.length > 180 ? '...' : ''}</div>
+        <div class="q-meta">${
+          item.type === 'manual' ? 'Manual entry' :
+          item.type === 'implicit' ? 'Implicit match — confirm before pushing' :
+          'Auto-detected · ' + Math.round((item.confidence || 0) * 100) + '% confidence'
+        }</div>
+      </div>
+    `).join('');
+  }
+
+  function selectItem(i) { selectedIndex = i; renderQueue(); }
+
+  // ── Push ──
+  async function pushVerse(item) {
+    await fetch('/api/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'SHOW_VERSE',
+        verse: { reference: item.reference, translation: item.translation, text: item.text, displayMode }
+      })
+    });
+    currentVerse = item;
+    renderNowPlaying();
+  }
+
+  async function pushSelected() {
+    if (queue.length === 0) return;
+    const item = queue[selectedIndex] || queue[0];
+    await pushVerse(item);
+    queue.splice(selectedIndex, 1);
+    selectedIndex = 0;
+    renderQueue();
+  }
+
+  function renderNowPlaying() {
+    const el = document.getElementById('nowPlaying');
+    if (!currentVerse) {
+      el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>';
+      return;
+    }
+    el.innerHTML = `
+      <div class="verse-card">
+        <div class="ref">${currentVerse.reference} <span class="trans">${currentVerse.translation}</span></div>
+        <div class="txt">${currentVerse.text}</div>
+      </div>`;
+  }
+
+  // ── Clear ──
+  async function clearScreen() {
+    await fetch('/api/clear', { method: 'POST' });
+    currentVerse = null;
+    renderNowPlaying();
+  }
+
+  // ── Alerts ──
+  function showAlert(message) {
+    const container = document.getElementById('alertContainer');
+    const id = Date.now();
+    const el = document.createElement('div');
+    el.className = 'alert-box';
+    el.id = 'alert-' + id;
+    el.innerHTML = `
+      <div class="a-title">INVALID REFERENCE</div>
+      <div class="a-msg">${message}</div>
+      <button class="a-btn" onclick="document.getElementById('alert-${id}').remove()">Dismiss</button>`;
+    container.prepend(el);
+    setTimeout(() => { if (el.parentNode) el.remove(); }, 15000);
+  }
+
+  // ── Audio ──
+  async function toggleListening() {
+    if (isListening) { stopListening(); } else { await startListening(); }
+  }
+
+  async function startListening() {
+    try {
+      audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+
+      const formats = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg','audio/mp4'];
+      for (const fmt of formats) {
+        if (MediaRecorder.isTypeSupported(fmt)) { activeMimeType = fmt; break; }
+      }
+
+      isListening = true;
+      isCapturing = true;
+      updateListeningUI(true);
+      appendTranscription('[ Listening started... ]');
+      runCaptureLoop();
+
+    } catch (err) {
+      if (err.name === 'NotAllowedError') {
+        showAlert('Microphone access denied. Allow microphone in Chrome and try again.');
+      } else {
+        showAlert('Could not start microphone: ' + err.message);
+      }
+    }
+  }
+
+  function stopListening() {
+    isListening = false;
+    isCapturing = false;
+    if (audioStream) { audioStream.getTracks().forEach(t => t.stop()); audioStream = null; }
+    updateListeningUI(false);
+    appendTranscription('[ Listening stopped ]');
+  }
+
+  function runCaptureLoop() {
+    if (!isCapturing || !audioStream) return;
+
+    const chunks = [];
+    let recorder;
+
+    try {
+      recorder = new MediaRecorder(audioStream, { mimeType: activeMimeType });
+    } catch (e) {
+      setTimeout(() => runCaptureLoop(), 1000);
+      return;
+    }
+
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    };
+
+    recorder.onstop = () => {
+      if (chunks.length > 0) {
+        const blob = new Blob(chunks, { type: activeMimeType });
+        if (blob.size > 1000) {
+          processAudioChunk(blob, activeMimeType); // fire and forget — does not block next loop
+        }
+      }
+      if (isCapturing && audioStream) {
+        runCaptureLoop(); // immediately start next 5-second recording
+      }
+    };
+
+    recorder.onerror = () => {
+      if (isCapturing && audioStream) setTimeout(() => runCaptureLoop(), 500);
+    };
+
+    recorder.start();
+    setTimeout(() => {
+      if (recorder.state === 'recording') recorder.stop();
+    }, 5000);
+  }
+
+  function updateListeningUI(active) {
+    document.getElementById('dot').className = 'status-dot' + (active ? ' active' : '');
+    document.getElementById('listenLabel').className = 'listening-label' + (active ? ' active' : '');
+    document.getElementById('listenLabel').textContent = active ? 'Listening...' : 'Not listening';
+    document.getElementById('listenBtn').textContent = active ? 'Stop' : 'Start';
+  }
+
+  async function processAudioChunk(blob, mimeType) {
+    try {
+      const base64 = await blobToBase64(blob);
+      const transcribeRes = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio: base64, mimeType })
+      });
+      const { text } = await transcribeRes.json();
+      if (!text || text.trim().length < 3) return;
+
+      appendTranscription(text);
+      transcriptionContext.push(text);
+      if (transcriptionContext.length > 3) transcriptionContext.shift();
+
+      const detectRes = await fetch('/api/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          context: transcriptionContext.slice(0, -1).join(' '),
+          activeTranslation
+        })
+      });
+      const detection = await detectRes.json();
+      await handleDetection(detection);
+
+    } catch (err) {
+      console.error('[Audio Processing Error]', err.message);
+    }
+  }
+
+  async function handleDetection(detection) {
+    if (!detection || detection.type === 'none') return;
+
+    if (detection.type === 'explicit' && detection.verseData) {
+      const v = detection.verseData;
+      appendTranscription(v.reference, true);
+      addToQueue({
+        reference: v.reference,
+        translation: v.translation,
+        text: v.text,
+        confidence: detection.confidence || 0.9,
+        type: 'explicit'
+      });
+    }
+
+    if (detection.type === 'implicit' && detection.candidates?.length > 0) {
+      for (const c of detection.candidates.slice(0, 3)) {
+        try {
+          const res = await fetch(
+            '/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation
+          );
+          if (res.ok) {
+            const verseData = await res.json();
+            addToQueue({
+              reference: verseData.reference,
+              translation: verseData.translation,
+              text: verseData.text,
+              confidence: c.confidence || 0.6,
+              type: 'implicit'
+            });
+          }
+        } catch (e) { console.error('[Implicit fetch error]', e); }
+      }
+    }
+
+    if (detection.type === 'translation_change' && detection.new_translation) {
+      activeTranslation = detection.new_translation;
+      document.getElementById('translationSelect').value = detection.new_translation;
+      appendTranscription('[ Translation switched to ' + detection.new_translation + ' ]');
+    }
+
+    if (detection.type === 'validation_error') {
+      showAlert(detection.message);
+    }
+  }
+
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function appendTranscription(text, isHit = false) {
+    const feed = document.getElementById('transcriptionFeed');
+    if (feed.querySelector('span[style]')) feed.innerHTML = '';
+    const span = document.createElement('span');
+    if (isHit) span.className = 'hit';
+    span.textContent = text + ' ';
+    feed.appendChild(span);
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+    if (e.code === 'Space') { e.preventDefault(); pushSelected(); }
+    if (e.code === 'Escape') clearScreen();
+    if (e.code === 'KeyM') toggleMode();
+  });
+
+  document.getElementById('verseInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') manualSearch();
+  });
+</script>
+</body>
+</html>

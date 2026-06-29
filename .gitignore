@@ -1,0 +1,5 @@
+.env
+node_modules/
+db/bible.db
+db/songs.db
+*.db

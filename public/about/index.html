@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <title>Di.Verse — About</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --brand: #1A1A2E;
+      --accent: #E94560;
+      --mid: #4A4A6A;
+      --surface: #22223A;
+      --surface2: #2A2A45;
+      --text: #CCCCDD;
+      --white: #FFFFFF;
+      --green: #0D7A5F;
+    }
+
+    body {
+      background: var(--brand);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--surface2);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 560px;
+      overflow: hidden;
+    }
+
+    /* Header band */
+    .card-header {
+      background: var(--brand);
+      border-bottom: 2px solid var(--accent);
+      padding: 36px 40px 32px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .favicon-preview {
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+    }
+
+    .header-text h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--white);
+      letter-spacing: 1px;
+    }
+    .header-text h1 span { color: var(--accent); }
+    .header-text .tagline {
+      font-size: 0.78rem;
+      color: var(--accent);
+      letter-spacing: 3px;
+      margin-top: 4px;
+      text-transform: uppercase;
+    }
+
+    /* Body rows */
+    .card-body { padding: 0 40px; }
+
+    .row {
+      padding: 20px 0;
+      border-bottom: 1px solid var(--surface2);
+    }
+    .row:last-child { border-bottom: none; }
+
+    .row-label {
+      font-size: 0.62rem;
+      letter-spacing: 2px;
+      color: var(--mid);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .row-value {
+      font-size: 0.95rem;
+      color: var(--white);
+      font-weight: 500;
+    }
+
+    .row-sub {
+      font-size: 0.82rem;
+      color: var(--text);
+      margin-top: 3px;
+      line-height: 1.5;
+    }
+
+    .accent-text { color: var(--accent); }
+
+    /* Developer avatar */
+    .dev-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(233, 69, 96, 0.15);
+      border: 1px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    /* Tech stack pills */
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .pill {
+      background: var(--brand);
+      border: 1px solid var(--surface2);
+      color: var(--text);
+      font-size: 0.72rem;
+      padding: 4px 12px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+    }
+    .pill.accent {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Version badge */
+    .version-badge {
+      display: inline-block;
+      background: rgba(13, 122, 95, 0.15);
+      border: 1px solid var(--green);
+      color: var(--green);
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: 1px;
+      margin-left: 10px;
+    }
+
+    /* Footer */
+    .card-footer {
+      background: var(--brand);
+      border-top: 1px solid var(--surface2);
+      padding: 16px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-footer p {
+      font-size: 0.7rem;
+      color: var(--mid);
+    }
+    .card-footer a {
+      font-size: 0.7rem;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .card-footer a:hover { text-decoration: underline; }
+
+    /* Back link */
+    .back-link {
+      margin-bottom: 28px;
+      align-self: flex-start;
+      max-width: 560px;
+      width: 100%;
+    }
+    .back-link a {
+      font-size: 0.78rem;
+      color: var(--mid);
+      text-decoration: none;
+      letter-spacing: 1px;
+    }
+    .back-link a:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <div class="back-link">
+    <a href="/operator">← Back to Operator</a>
+  </div>
+
+  <div class="card">
+
+    <!-- Header -->
+    <div class="card-header">
+      <svg class="favicon-preview" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect width="64" height="64" rx="12" fill="#1A1A2E"/>
+        <circle cx="32" cy="32" r="18" fill="none" stroke="#E94560" stroke-width="2"/>
+        <circle cx="32" cy="32" r="12" fill="none" stroke="#E94560" stroke-width="0.8" opacity="0.5"/>
+        <circle cx="32" cy="32" r="5" fill="#E94560"/>
+        <line x1="32" y1="27" x2="32" y2="14" stroke="#E94560" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="32" y1="37" x2="32" y2="50" stroke="#E94560" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="27" y1="32" x2="14" y2="32" stroke="#E94560" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="37" y1="32" x2="50" y2="32" stroke="#E94560" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>
+      </svg>
+      <div class="header-text">
+        <h1>Di<span>.</span>Verse</h1>
+        <div class="tagline">The Word, on cue.</div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="card-body">
+
+      <div class="row">
+        <div class="row-label">Product</div>
+        <div class="row-value">
+          Di.Verse — Church Media Intelligence
+          <span class="version-badge">v1.0</span>
+        </div>
+        <div class="row-sub">
+          AI-powered scripture and lyric display for live church services.
+          Automatic scripture detection, real-time translation, preacher mobile
+          monitor, and lower-third broadcast overlay.
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">Developer</div>
+        <div class="dev-row">
+          <div class="avatar">AC</div>
+          <div>
+            <div class="row-value">Andre Courage Aganmwonyi-Barry</div>
+            <div class="row-sub accent-text">Founder &amp; Lead Developer</div>
+            <div class="row-sub">courageaganwonyi@gmail.com</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">Company</div>
+        <div class="row-value">OmniBarry Inc.</div>
+        <div class="row-sub">
+          Building premium, excellence-first technology products
+          for the church and beyond.
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">Technology Stack</div>
+        <div class="pills">
+          <span class="pill accent">Node.js v20</span>
+          <span class="pill accent">Claude AI (Haiku)</span>
+          <span class="pill accent">Whisper (OpenAI)</span>
+          <span class="pill">Express</span>
+          <span class="pill">WebSocket</span>
+          <span class="pill">SQLite</span>
+          <span class="pill">Chrome</span>
+          <span class="pill">HTML / CSS / JS</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">Compatibility</div>
+        <div class="pills">
+          <span class="pill">macOS 11+ Big Sur</span>
+          <span class="pill">Windows 10+</span>
+          <span class="pill">Single laptop</span>
+          <span class="pill">Multi-display</span>
+          <span class="pill">Any mixer</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-label">Pilot</div>
+        <div class="row-value">July 13, 2026</div>
+        <div class="row-sub">
+          Live service pilot. Running alongside Bible Show as fallback.
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="card-footer">
+      <p>© 2026 OmniBarry Inc. All rights reserved.</p>
+      <a href="/operator">Operator →</a>
+    </div>
+
+  </div>
+
+</body>
+</html>

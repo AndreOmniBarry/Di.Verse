@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Di.Verse — Admin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --brand: #1A1A2E;
+      --accent: #E94560;
+      --green: #0D7A5F;
+      --mid: #4A4A6A;
+      --surface: #22223A;
+      --surface2: #2A2A45;
+      --text: #CCCCDD;
+      --white: #FFFFFF;
+    }
+
+    body {
+      background: var(--brand);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 {
+      font-size: 1.1rem;
+      color: var(--white);
+      letter-spacing: 2px;
+    }
+    header h1 span { color: var(--accent); }
+    .header-sub {
+      font-size: 0.72rem;
+      color: var(--mid);
+      letter-spacing: 1px;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 0;
+      min-height: calc(100vh - 57px);
+    }
+
+    /* LEFT — song list */
+    .song-list-panel {
+      border-right: 1px solid var(--surface2);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-top {
+      padding: 16px;
+      border-bottom: 1px solid var(--surface2);
+      background: var(--surface);
+    }
+
+    .label {
+      font-size: 0.62rem;
+      letter-spacing: 2px;
+      color: var(--mid);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    input[type="text"], input[type="number"], select, textarea {
+      background: var(--brand);
+      border: 1px solid var(--mid);
+      color: var(--white);
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.2s;
+      font-family: Arial, sans-serif;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    input::placeholder, textarea::placeholder { color: #445; }
+
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-accent { background: var(--accent); color: white; }
+    .btn-accent:hover { background: #C73652; }
+    .btn-green { background: var(--green); color: white; }
+    .btn-green:hover { background: #0A6050; }
+    .btn-dim {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--mid);
+    }
+    .btn-dim:hover { border-color: var(--accent); color: var(--white); }
+    .btn-danger {
+      background: transparent;
+      color: #E74C3C;
+      border: 1px solid #E74C3C;
+    }
+    .btn-danger:hover { background: rgba(231,76,60,0.1); }
+
+    .song-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .song-item {
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--surface2);
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .song-item:hover { border-color: var(--accent); }
+    .song-item.active { border-color: var(--accent); background: rgba(233,69,96,0.07); }
+
+    .song-item .s-title {
+      font-size: 0.85rem;
+      color: var(--white);
+      font-weight: bold;
+    }
+    .song-item .s-meta {
+      font-size: 0.68rem;
+      color: var(--mid);
+      margin-top: 2px;
+    }
+    .song-item .s-lang {
+      font-size: 0.62rem;
+      padding: 2px 6px;
+      border-radius: 10px;
+      background: var(--surface2);
+      color: var(--mid);
+    }
+
+    /* RIGHT — editor */
+    .editor-panel {
+      padding: 24px 28px;
+      overflow-y: auto;
+    }
+
+    .editor-panel h2 {
+      font-size: 1rem;
+      color: var(--white);
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--surface2);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .form-row.col { flex-direction: column; }
+
+    .form-label {
+      font-size: 0.68rem;
+      color: var(--mid);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .form-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Slides */
+    .slides-section {
+      margin-top: 24px;
+    }
+
+    .slide-card {
+      background: var(--surface);
+      border: 1px solid var(--surface2);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .slide-card .slide-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .slide-card .slide-num {
+      font-size: 0.68rem;
+      color: var(--accent);
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    .slide-card textarea {
+      min-height: 80px;
+      resize: vertical;
+      margin-top: 4px;
+    }
+
+    .add-slide-btn {
+      width: 100%;
+      padding: 10px;
+      border: 1px dashed var(--mid);
+      background: transparent;
+      color: var(--mid);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+      margin-top: 4px;
+    }
+    .add-slide-btn:hover { border-color: var(--green); color: var(--green); }
+
+    .empty-editor {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 60vh;
+      color: var(--mid);
+      text-align: center;
+      gap: 12px;
+    }
+    .empty-editor .icon { font-size: 3rem; opacity: 0.3; }
+    .empty-editor p { font-size: 0.85rem; }
+
+    .action-bar {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--surface2);
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--green);
+      color: white;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: bold;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: 100;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Di<span>.</span>Verse <span style="color:var(--mid);font-size:0.7rem;font-weight:normal;">SONG ADMIN</span></h1>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <span class="header-sub" id="songCount">Loading...</span>
+    <button class="btn btn-accent" onclick="showNewSongForm()">+ Add Song</button>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: Song list -->
+  <div class="song-list-panel">
+    <div class="panel-top">
+      <div class="label">Search Songs</div>
+      <input type="text" id="searchInput" placeholder="Title, keyword, language..." oninput="searchSongs()">
+    </div>
+    <div class="song-list" id="songList">
+      <div style="padding:20px;color:var(--mid);font-size:0.82rem;">Loading songs...</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Editor -->
+  <div class="editor-panel" id="editorPanel">
+    <div class="empty-editor">
+      <div class="icon">🎵</div>
+      <p>Select a song to edit<br>or click <strong>+ Add Song</strong> to create one</p>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let songs = [];
+  let activeSongId = null;
+  let slides = [];
+  let isNewSong = false;
+
+  // ── Load songs ──
+  async function loadSongs(query = '') {
+    const res = await fetch(`/api/songs/search?q=${encodeURIComponent(query)}`);
+    songs = await res.json();
+    renderSongList();
+    document.getElementById('songCount').textContent = `${songs.length} song${songs.length !== 1 ? 's' : ''}`;
+  }
+
+  function renderSongList() {
+    const el = document.getElementById('songList');
+    if (songs.length === 0) {
+      el.innerHTML = '<div style="padding:20px;color:var(--mid);font-size:0.82rem;font-style:italic;">No songs found.</div>';
+      return;
+    }
+    el.innerHTML = songs.map(s => `
+      <div class="song-item ${s.id === activeSongId ? 'active' : ''}" onclick="loadSong(${s.id})">
+        <div>
+          <div class="s-title">${s.title}</div>
+          <div class="s-meta">${s.artist || 'Unknown artist'}</div>
+        </div>
+        <span class="s-lang">${s.language || 'English'}</span>
+      </div>
+    `).join('');
+  }
+
+  function searchSongs() {
+    const q = document.getElementById('searchInput').value;
+    loadSongs(q);
+  }
+
+  // ── Load single song for editing ──
+  async function loadSong(id) {
+    activeSongId = id;
+    isNewSong = false;
+    const song = songs.find(s => s.id === id);
+    const res = await fetch(`/api/songs/${id}/slides`);
+    slides = await res.json();
+    renderSongList();
+    renderEditor(song);
+  }
+
+  // ── New song form ──
+  function showNewSongForm() {
+    activeSongId = null;
+    isNewSong = true;
+    slides = [];
+    renderSongList();
+    renderEditor(null);
+  }
+
+  // ── Render editor ──
+  function renderEditor(song) {
+    const panel = document.getElementById('editorPanel');
+    const isNew = !song;
+
+    panel.innerHTML = `
+      <h2>${isNew ? 'New Song' : 'Edit Song'}</h2>
+
+      <div class="form-row">
+        <div class="form-group">
+          <div class="form-label">Song Title *</div>
+          <input type="text" id="fTitle" placeholder="e.g. Amazing Grace" value="${song?.title || ''}">
+        </div>
+        <div class="form-group">
+          <div class="form-label">Artist / Author</div>
+          <input type="text" id="fArtist" placeholder="e.g. John Newton" value="${song?.artist || ''}">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <div class="form-label">Language</div>
+          <select id="fLanguage">
+            <option value="English" ${song?.language === 'English' ? 'selected' : ''}>English</option>
+            <option value="Yoruba" ${song?.language === 'Yoruba' ? 'selected' : ''}>Yoruba</option>
+            <option value="Pidgin" ${song?.language === 'Pidgin' ? 'selected' : ''}>Pidgin</option>
+            <option value="Other" ${song?.language === 'Other' ? 'selected' : ''}>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <div class="form-label">Tags (comma separated)</div>
+          <input type="text" id="fTags" placeholder="e.g. worship, praise, offering" value="${song?.tags || ''}">
+        </div>
+      </div>
+
+      <div class="slides-section">
+        <div class="label" style="margin-bottom:12px;">Lyrics Slides</div>
+        <div id="slidesContainer">
+          ${renderSlides()}
+        </div>
+        <button class="add-slide-btn" onclick="addSlide()">+ Add Slide</button>
+      </div>
+
+      <div class="action-bar">
+        <button class="btn btn-accent" onclick="saveSong()" style="flex:1;">
+          ${isNew ? '✓ Create Song' : '✓ Save Changes'}
+        </button>
+        ${!isNew ? `<button class="btn btn-danger" onclick="deleteSong(${song.id})">Delete</button>` : ''}
+      </div>
+    `;
+  }
+
+  function renderSlides() {
+    if (slides.length === 0) {
+      return '<div style="color:var(--mid);font-size:0.8rem;font-style:italic;margin-bottom:10px;">No slides yet — click Add Slide below.</div>';
+    }
+    return slides.map((slide, i) => `
+      <div class="slide-card" id="slide-${i}">
+        <div class="slide-header">
+          <span class="slide-num">SLIDE ${i + 1}</span>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" placeholder="Section (e.g. Chorus)"
+              value="${slide.section || ''}"
+              id="section-${i}"
+              style="width:140px;padding:4px 8px;font-size:0.75rem;">
+            <button class="btn btn-danger" style="padding:4px 8px;font-size:0.72rem;"
+              onclick="removeSlide(${i})">✕</button>
+          </div>
+        </div>
+        <textarea id="content-${i}" placeholder="Slide lyrics here...">${slide.content || ''}</textarea>
+      </div>
+    `).join('');
+  }
+
+  function addSlide() {
+    slides.push({ section: '', content: '', slide_num: slides.length + 1 });
+    document.getElementById('slidesContainer').innerHTML = renderSlides();
+  }
+
+  function removeSlide(i) {
+    slides.splice(i, 1);
+    document.getElementById('slidesContainer').innerHTML = renderSlides();
+  }
+
+  // ── Save song ──
+  async function saveSong() {
+    const title = document.getElementById('fTitle').value.trim();
+    if (!title) { showToast('Please enter a song title', true); return; }
+
+    const title_ = title;
+    const artist = document.getElementById('fArtist').value.trim();
+    const language = document.getElementById('fLanguage').value;
+    const tags = document.getElementById('fTags').value.trim();
+
+    // Collect slides from DOM
+    const collectedSlides = slides.map((_, i) => ({
+      slide_num: i + 1,
+      section: document.getElementById(`section-${i}`)?.value?.trim() || '',
+      content: document.getElementById(`content-${i}`)?.value?.trim() || ''
+    })).filter(s => s.content);
+
+    try {
+      let songId = activeSongId;
+
+      if (isNewSong) {
+        const res = await fetch('/api/songs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title_, artist, language, tags })
+        });
+        const data = await res.json();
+        songId = data.id;
+      }
+
+      // Add slides
+      for (const slide of collectedSlides) {
+        await fetch(`/api/songs/${songId}/slides`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(slide)
+        });
+      }
+
+      showToast(isNewSong ? 'Song created!' : 'Changes saved!');
+      await loadSongs(document.getElementById('searchInput').value);
+      loadSong(songId);
+    } catch (err) {
+      showToast('Error saving song', true);
+    }
+  }
+
+  // ── Delete song ──
+  async function deleteSong(id) {
+    if (!confirm('Delete this song and all its slides?')) return;
+    await fetch(`/api/songs/${id}`, { method: 'DELETE' });
+    activeSongId = null;
+    slides = [];
+    showToast('Song deleted');
+    await loadSongs();
+    document.getElementById('editorPanel').innerHTML = `
+      <div class="empty-editor">
+        <div class="icon">🎵</div>
+        <p>Select a song to edit<br>or click <strong>+ Add Song</strong> to create one</p>
+      </div>
+    `;
+  }
+
+  // ── Toast ──
+  function showToast(msg, isError = false) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.background = isError ? '#E74C3C' : 'var(--green)';
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 3000);
+  }
+
+  // ── Init ──
+  loadSongs();
+</script>
+</body>
+</html>
