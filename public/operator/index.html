@@ -502,7 +502,7 @@
       consecutiveFailures++;
       if (isCapturing && audioStream) setTimeout(function() { runCaptureLoop(); }, 300);
     };
-
+    
     try {
       recorder.start(500);
     } catch (e) {
