@@ -47,9 +47,11 @@
       background: #555; display: inline-block; transition: all 0.3s;
     }
     .status-dot.active { background: #2ECC71; box-shadow: 0 0 8px #2ECC71; }
+    .status-dot.warn { background: #F39C12; box-shadow: 0 0 8px #F39C12; }
 
     .listening-label { font-size: 0.72rem; color: var(--mid); }
     .listening-label.active { color: #2ECC71; }
+    .listening-label.warn { color: #F39C12; }
 
     select, .toggle-btn {
       background: var(--surface2); border: 1px solid var(--mid);
@@ -88,6 +90,7 @@
       color: var(--accent); font-weight: bold;
       background: rgba(233,69,96,0.1); padding: 1px 4px; border-radius: 3px;
     }
+    #transcriptionFeed .sys { color: #555577; font-style: italic; }
 
     .search-panel {
       padding: 14px 16px; background: var(--surface);
@@ -139,8 +142,11 @@
       background: rgba(231,76,60,0.12); border: 1px solid #E74C3C;
       border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;
     }
+    .alert-box.warn { background: rgba(243,156,18,0.12); border-color: #F39C12; }
     .alert-box .a-title { font-size: 0.68rem; font-weight: bold; color: #E74C3C; letter-spacing: 1px; }
+    .alert-box.warn .a-title { color: #F39C12; }
     .alert-box .a-msg { font-size: 0.78rem; color: #FFAAAA; margin-top: 4px; line-height: 1.4; }
+    .alert-box.warn .a-msg { color: #FFD9A0; }
     .alert-box .a-btn {
       font-size: 0.68rem; padding: 3px 8px; margin-top: 6px;
       background: transparent; border: 1px solid #E74C3C;
@@ -153,7 +159,7 @@
       display: flex; flex-direction: column; gap: 8px;
     }
     .push-row { display: flex; gap: 8px; }
-    #alertContainer { padding: 0 16px; }
+    #alertContainer { padding: 0 16px; max-height: 160px; overflow-y: auto; }
   </style>
 </head>
 <body>
@@ -204,7 +210,7 @@
     <div class="transcription-panel">
       <div class="label">Live Transcription</div>
       <div id="transcriptionFeed">
-        <span style="color:#333355;font-style:italic;">Transcription appears here when listening is active...</span>
+        <span class="sys">Transcription appears here when listening is active...</span>
       </div>
     </div>
     <div class="search-panel">
@@ -245,7 +251,7 @@
 </main>
 
 <script>
-  // ── State ──
+  // Global State
   let displayMode = 'lower-third';
   let activeTranslation = 'KJV';
   let isListening = false;
@@ -256,56 +262,55 @@
   let isCapturing = false;
   let activeMimeType = 'audio/webm';
   let transcriptionContext = [];
+  let lastChunkTime = Date.now();
+  let watchdogTimer = null;
+  let consecutiveFailures = 0;
 
-  // ── WebSocket ──
-  const ws = new WebSocket(`ws://${location.host}?type=operator`);
-  ws.onopen = () => console.log('[Di.Verse] Operator connected');
-  ws.onmessage = (e) => {
+  const ws = new WebSocket('ws://' + location.host + '?type=operator');
+  ws.onopen = function() { console.log('[Di.Verse] Operator connected'); };
+  ws.onmessage = function(e) {
     const msg = JSON.parse(e.data);
-    if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message);
+    if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message, true);
     if (msg.action === 'TRANSLATION_CHANGE') {
       activeTranslation = msg.translation;
       document.getElementById('translationSelect').value = msg.translation;
-      appendTranscription('[ Translation switched to ' + msg.translation + ' ]');
+      appendTranscription('[ Translation: ' + msg.translation + ' ]', false, true);
     }
   };
 
-  // ── Translation ──
-  document.getElementById('translationSelect').addEventListener('change', (e) => {
+  document.getElementById('translationSelect').addEventListener('change', function(e) {
     activeTranslation = e.target.value;
   });
 
-  // ── Mode toggle ──
   function toggleMode() {
     displayMode = displayMode === 'lower-third' ? 'full-screen' : 'lower-third';
     document.getElementById('modeBtn').textContent =
       displayMode === 'lower-third' ? '◧ Lower-Third' : '⬜ Full-Screen';
   }
 
-  // ── Manual search ──
   async function manualSearch() {
     const book = document.getElementById('bookInput').value.trim();
     const chapter = parseInt(document.getElementById('chapterInput').value);
     const verse = parseInt(document.getElementById('verseInput').value);
     if (!book || !chapter || !verse) {
-      showAlert('Please enter a book, chapter, and verse number.');
+      showAlert('Please enter a book, chapter, and verse number.', true);
       return;
     }
     try {
-      const res = await fetch(
-        '/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + '&translation=' + activeTranslation
-      );
+      const res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + '&translation=' + activeTranslation);
       const data = await res.json();
-      if (!res.ok) { showAlert(data.error); return; }
-      addToQueue({ ...data, confidence: 1.0, type: 'manual' });
+      if (!res.ok) { showAlert(data.error, true); return; }
+      addToQueue(Object.assign({}, data, { confidence: 1.0, type: 'manual' }));
     } catch (err) {
-      showAlert('Could not reach server.');
+      showAlert('Could not reach server.', true);
     }
   }
 
-  // ── Queue ──
   function addToQueue(item) {
+    const isDuplicate = queue.length > 0 && queue[0].reference === item.reference && queue[0].translation === item.translation;
+    if (isDuplicate) return;
     queue.unshift(item);
+    queue = queue.slice(0, 8);
     selectedIndex = 0;
     renderQueue();
   }
@@ -316,30 +321,26 @@
       el.innerHTML = '<div style="color:#333355;font-size:0.8rem;font-style:italic;">Detected verses appear here...</div>';
       return;
     }
-    el.innerHTML = queue.slice(0, 6).map((item, i) => `
-      <div class="queue-item ${i === selectedIndex ? 'selected' : ''} ${item.type === 'implicit' ? 'implicit' : ''}"
-           onclick="selectItem(${i})">
-        <div class="q-ref">${item.reference} <span class="q-trans">${item.translation}</span></div>
-        <div class="q-text">${item.text.slice(0, 180)}${item.text.length > 180 ? '...' : ''}</div>
-        <div class="q-meta">${
-          item.type === 'manual' ? 'Manual entry' :
-          item.type === 'implicit' ? 'Implicit match — confirm before pushing' :
-          'Auto-detected · ' + Math.round((item.confidence || 0) * 100) + '% confidence'
-        }</div>
-      </div>
-    `).join('');
+    el.innerHTML = queue.slice(0, 6).map(function(item, i) {
+      const meta = item.type === 'manual' ? 'Manual entry' :
+        item.type === 'implicit' ? 'Implicit match — confirm before pushing' :
+        'Auto-pushed · ' + Math.round((item.confidence || 0) * 100) + '% confidence';
+      return '<div class="queue-item ' + (i === selectedIndex ? 'selected' : '') + ' ' + (item.type === 'implicit' ? 'implicit' : '') + '" onclick="selectItem(' + i + ')">' +
+        '<div class="q-ref">' + item.reference + ' <span class="q-trans">' + item.translation + '</span></div>' +
+        '<div class="q-text">' + item.text.slice(0, 180) + (item.text.length > 180 ? '...' : '') + '</div>' +
+        '<div class="q-meta">' + meta + '</div></div>';
+    }).join('');
   }
 
   function selectItem(i) { selectedIndex = i; renderQueue(); }
 
-  // ── Push ──
   async function pushVerse(item) {
     await fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'SHOW_VERSE',
-        verse: { reference: item.reference, translation: item.translation, text: item.text, displayMode }
+        verse: { reference: item.reference, translation: item.translation, text: item.text, displayMode: displayMode }
       })
     });
     currentVerse = item;
@@ -350,9 +351,6 @@
     if (queue.length === 0) return;
     const item = queue[selectedIndex] || queue[0];
     await pushVerse(item);
-    queue.splice(selectedIndex, 1);
-    selectedIndex = 0;
-    renderQueue();
   }
 
   function renderNowPlaying() {
@@ -361,36 +359,42 @@
       el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>';
       return;
     }
-    el.innerHTML = `
-      <div class="verse-card">
-        <div class="ref">${currentVerse.reference} <span class="trans">${currentVerse.translation}</span></div>
-        <div class="txt">${currentVerse.text}</div>
-      </div>`;
+    el.innerHTML = '<div class="verse-card"><div class="ref">' + currentVerse.reference +
+      ' <span class="trans">' + currentVerse.translation + '</span></div>' +
+      '<div class="txt">' + currentVerse.text + '</div></div>';
   }
 
-  // ── Clear ──
   async function clearScreen() {
     await fetch('/api/clear', { method: 'POST' });
     currentVerse = null;
     renderNowPlaying();
   }
 
-  // ── Alerts ──
-  function showAlert(message) {
+  function showAlert(message, isWarning) {
     const container = document.getElementById('alertContainer');
-    const id = Date.now();
+    const id = Date.now() + Math.random();
     const el = document.createElement('div');
-    el.className = 'alert-box';
+    el.className = 'alert-box' + (isWarning === false ? ' warn' : '');
     el.id = 'alert-' + id;
-    el.innerHTML = `
-      <div class="a-title">INVALID REFERENCE</div>
-      <div class="a-msg">${message}</div>
-      <button class="a-btn" onclick="document.getElementById('alert-${id}').remove()">Dismiss</button>`;
+    const title = document.createElement('div');
+    title.className = 'a-title';
+    title.textContent = isWarning === false ? 'NOTICE' : 'INVALID REFERENCE';
+    const msg = document.createElement('div');
+    msg.className = 'a-msg';
+    msg.textContent = message;
+    const dismissBtn = document.createElement('button');
+    dismissBtn.className = 'a-btn';
+    dismissBtn.textContent = 'Dismiss';
+    dismissBtn.onclick = function() { el.remove(); };
+    el.appendChild(title);
+    el.appendChild(msg);
+    el.appendChild(dismissBtn);
     container.prepend(el);
-    setTimeout(() => { if (el.parentNode) el.remove(); }, 15000);
+    setTimeout(function() { if (el.parentNode) el.remove(); }, 15000);
   }
 
-  // ── Audio ──
+  // AUDIO PIPELINE
+
   async function toggleListening() {
     if (isListening) { stopListening(); } else { await startListening(); }
   }
@@ -401,22 +405,55 @@
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
 
-      const formats = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg','audio/mp4'];
-      for (const fmt of formats) {
-        if (MediaRecorder.isTypeSupported(fmt)) { activeMimeType = fmt; break; }
+      const formats = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg', 'audio/mp4'];
+      for (let i = 0; i < formats.length; i++) {
+        if (MediaRecorder.isTypeSupported(formats[i])) { activeMimeType = formats[i]; break; }
       }
 
       isListening = true;
       isCapturing = true;
-      updateListeningUI(true);
-      appendTranscription('[ Listening started... ]');
+      lastChunkTime = Date.now();
+      consecutiveFailures = 0;
+      updateListeningUI('active');
+      appendTranscription('[ Listening started ]', false, true);
       runCaptureLoop();
+
+      watchdogTimer = setInterval(function() {
+        if (!isListening) return;
+        const silentFor = Date.now() - lastChunkTime;
+        if (silentFor > 9000) {
+          console.warn('[Watchdog] Capture loop stalled — force restarting');
+          appendTranscription('[ Auto-recovering... ]', false, true);
+          updateListeningUI('warn');
+          isCapturing = false;
+          setTimeout(function() {
+            if (isListening) {
+              isCapturing = true;
+              lastChunkTime = Date.now();
+              runCaptureLoop();
+              updateListeningUI('active');
+            }
+          }, 200);
+        }
+      }, 4000);
+
+      const track = audioStream.getAudioTracks()[0];
+      if (track) {
+        track.onended = function() {
+          console.warn('[Audio] Track ended unexpectedly — full mic restart');
+          appendTranscription('[ Reconnecting microphone... ]', false, true);
+          if (isListening) {
+            stopListening();
+            setTimeout(function() { startListening(); }, 600);
+          }
+        };
+      }
 
     } catch (err) {
       if (err.name === 'NotAllowedError') {
-        showAlert('Microphone access denied. Allow microphone in Chrome and try again.');
+        showAlert('Microphone access denied. Allow microphone in Chrome and try again.', true);
       } else {
-        showAlert('Could not start microphone: ' + err.message);
+        showAlert('Could not start microphone: ' + err.message, true);
       }
     }
   }
@@ -424,9 +461,10 @@
   function stopListening() {
     isListening = false;
     isCapturing = false;
-    if (audioStream) { audioStream.getTracks().forEach(t => t.stop()); audioStream = null; }
-    updateListeningUI(false);
-    appendTranscription('[ Listening stopped ]');
+    if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+    if (audioStream) { audioStream.getTracks().forEach(function(t) { t.stop(); }); audioStream = null; }
+    updateListeningUI('off');
+    appendTranscription('[ Listening stopped ]', false, true);
   }
 
   function runCaptureLoop() {
@@ -438,52 +476,70 @@
     try {
       recorder = new MediaRecorder(audioStream, { mimeType: activeMimeType });
     } catch (e) {
-      setTimeout(() => runCaptureLoop(), 1000);
+      consecutiveFailures++;
+      setTimeout(function() { if (isCapturing) runCaptureLoop(); }, 500);
       return;
     }
 
-    recorder.ondataavailable = (e) => {
+    recorder.ondataavailable = function(e) {
       if (e.data && e.data.size > 0) chunks.push(e.data);
     };
 
-    recorder.onstop = () => {
+    recorder.onstop = function() {
       if (chunks.length > 0) {
         const blob = new Blob(chunks, { type: activeMimeType });
-        if (blob.size > 1000) {
-          processAudioChunk(blob, activeMimeType); // fire and forget — does not block next loop
+        if (blob.size > 4000) {
+          consecutiveFailures = 0;
+          processAudioChunk(blob, activeMimeType);
         }
       }
       if (isCapturing && audioStream) {
-        runCaptureLoop(); // immediately start next 5-second recording
+        runCaptureLoop();
       }
     };
 
-    recorder.onerror = () => {
-      if (isCapturing && audioStream) setTimeout(() => runCaptureLoop(), 500);
+    recorder.onerror = function() {
+      consecutiveFailures++;
+      if (isCapturing && audioStream) setTimeout(function() { runCaptureLoop(); }, 300);
     };
 
-    recorder.start();
-    setTimeout(() => {
+    try {
+      recorder.start(500);
+    } catch (e) {
+      setTimeout(function() { if (isCapturing) runCaptureLoop(); }, 500);
+      return;
+    }
+
+    setTimeout(function() {
       if (recorder.state === 'recording') recorder.stop();
-    }, 5000);
+    }, 3000);
   }
 
-  function updateListeningUI(active) {
-    document.getElementById('dot').className = 'status-dot' + (active ? ' active' : '');
-    document.getElementById('listenLabel').className = 'listening-label' + (active ? ' active' : '');
-    document.getElementById('listenLabel').textContent = active ? 'Listening...' : 'Not listening';
-    document.getElementById('listenBtn').textContent = active ? 'Stop' : 'Start';
+  function updateListeningUI(state) {
+    const dot = document.getElementById('dot');
+    const label = document.getElementById('listenLabel');
+    const btn = document.getElementById('listenBtn');
+    dot.className = 'status-dot' + (state === 'active' ? ' active' : state === 'warn' ? ' warn' : '');
+    label.className = 'listening-label' + (state === 'active' ? ' active' : state === 'warn' ? ' warn' : '');
+    label.textContent = state === 'active' ? 'Listening...' : state === 'warn' ? 'Reconnecting...' : 'Not listening';
+    btn.textContent = state === 'off' ? 'Start' : 'Stop';
   }
 
   async function processAudioChunk(blob, mimeType) {
+    lastChunkTime = Date.now();
     try {
       const base64 = await blobToBase64(blob);
       const transcribeRes = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audio: base64, mimeType })
+        body: JSON.stringify({ audio: base64, mimeType: mimeType })
       });
-      const { text } = await transcribeRes.json();
+
+      if (!transcribeRes.ok) throw new Error('Transcribe request failed: ' + transcribeRes.status);
+
+      const result = await transcribeRes.json();
+      const text = result.text;
+      lastChunkTime = Date.now();
       if (!text || text.trim().length < 3) return;
 
       appendTranscription(text);
@@ -494,11 +550,14 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text,
+          text: text,
           context: transcriptionContext.slice(0, -1).join(' '),
-          activeTranslation
+          activeTranslation: activeTranslation
         })
       });
+
+      if (!detectRes.ok) throw new Error('Detect request failed: ' + detectRes.status);
+
       const detection = await detectRes.json();
       await handleDetection(detection);
 
@@ -513,28 +572,32 @@
     if (detection.type === 'explicit' && detection.verseData) {
       const v = detection.verseData;
       appendTranscription(v.reference, true);
-      addToQueue({
+
+      const item = {
         reference: v.reference,
         translation: v.translation,
         text: v.text,
         confidence: detection.confidence || 0.9,
         type: 'explicit'
-      });
+      };
+
+      await pushVerse(item);
+      addToQueue(item);
     }
 
-    if (detection.type === 'implicit' && detection.candidates?.length > 0) {
-      for (const c of detection.candidates.slice(0, 3)) {
+    if (detection.type === 'implicit' && detection.candidates && detection.candidates.length > 0) {
+      const candidates = detection.candidates.slice(0, 2);
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
         try {
-          const res = await fetch(
-            '/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation
-          );
+          const res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
           if (res.ok) {
             const verseData = await res.json();
             addToQueue({
               reference: verseData.reference,
               translation: verseData.translation,
               text: verseData.text,
-              confidence: c.confidence || 0.6,
+              confidence: c.confidence || 0.65,
               type: 'implicit'
             });
           }
@@ -545,41 +608,45 @@
     if (detection.type === 'translation_change' && detection.new_translation) {
       activeTranslation = detection.new_translation;
       document.getElementById('translationSelect').value = detection.new_translation;
-      appendTranscription('[ Translation switched to ' + detection.new_translation + ' ]');
+      appendTranscription('[ Translation: ' + detection.new_translation + ' ]', false, true);
     }
 
     if (detection.type === 'validation_error') {
-      showAlert(detection.message);
+      showAlert(detection.message, true);
     }
   }
 
   function blobToBase64(blob) {
-    return new Promise((resolve, reject) => {
+    return new Promise(function(resolve, reject) {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onloadend = function() { resolve(reader.result.split(',')[1]); };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
   }
 
-  function appendTranscription(text, isHit = false) {
+  function appendTranscription(text, isHit, isSystem) {
     const feed = document.getElementById('transcriptionFeed');
-    if (feed.querySelector('span[style]')) feed.innerHTML = '';
+    if (feed.querySelector('.sys') && feed.children.length === 1 && !isSystem) feed.innerHTML = '';
     const span = document.createElement('span');
     if (isHit) span.className = 'hit';
+    if (isSystem) span.className = 'sys';
     span.textContent = text + ' ';
     feed.appendChild(span);
     feed.scrollTop = feed.scrollHeight;
+    while (feed.children.length > 400) {
+      feed.removeChild(feed.firstChild);
+    }
   }
 
-  document.addEventListener('keydown', (e) => {
-    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  document.addEventListener('keydown', function(e) {
+    if (['INPUT', 'SELECT', 'TEXTAREA'].indexOf(e.target.tagName) !== -1) return;
     if (e.code === 'Space') { e.preventDefault(); pushSelected(); }
     if (e.code === 'Escape') clearScreen();
     if (e.code === 'KeyM') toggleMode();
   });
 
-  document.getElementById('verseInput').addEventListener('keydown', (e) => {
+  document.getElementById('verseInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') manualSearch();
   });
 </script>

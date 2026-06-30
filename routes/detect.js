@@ -16,7 +16,6 @@ router.post('/detect', async (req, res) => {
       const book = normaliseBook(rawBook) || rawBook;
       const usedTranslation = translation || activeTranslation;
 
-      // Validate
       const validation = validateReference(book, parseInt(chapter), parseInt(verse));
 
       if (!validation.valid) {
@@ -25,16 +24,11 @@ router.post('/detect', async (req, res) => {
           action: 'VALIDATION_ALERT',
           message: validation.message,
           code: validation.code,
-          reference: `${book} ${chapter}:${verse}`
+          reference: book + ' ' + chapter + ':' + verse
         });
-        return res.json({
-          type: 'validation_error',
-          message: validation.message,
-          reference: detection.reference
-        });
+        return res.json({ type: 'validation_error', message: validation.message });
       }
 
-      // Fetch verse text
       const verseData = await getVerse(
         validation.normalised || book,
         parseInt(chapter),
@@ -45,13 +39,9 @@ router.post('/detect', async (req, res) => {
       if (verseData) detection.verseData = verseData;
     }
 
-    // Translation change detected
     if (detection.type === 'translation_change' && detection.new_translation) {
       const { alertOperator } = req.app.locals;
-      alertOperator({
-        action: 'TRANSLATION_CHANGE',
-        translation: detection.new_translation
-      });
+      alertOperator({ action: 'TRANSLATION_CHANGE', translation: detection.new_translation });
     }
 
     res.json(detection);
