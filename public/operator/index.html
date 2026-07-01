@@ -7,129 +7,60 @@
   <title>Di.Verse</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     :root {
-      --brand: #1A1A2E;
-      --accent: #E94560;
-      --green: #0D7A5F;
-      --mid: #4A4A6A;
-      --surface: #22223A;
-      --surface2: #2A2A45;
-      --text: #CCCCDD;
-      --white: #FFFFFF;
+      --brand: #1A1A2E; --accent: #E94560; --mid: #4A4A6A;
+      --surface: #22223A; --surface2: #2A2A45; --text: #CCCCDD; --white: #FFFFFF;
     }
-
-    body {
-      background: var(--brand);
-      color: var(--text);
-      font-family: Arial, sans-serif;
-      height: 100vh;
-      display: grid;
-      grid-template-rows: 56px 1fr;
-      overflow: hidden;
-    }
-
-    header {
-      background: var(--surface);
-      border-bottom: 2px solid var(--accent);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 20px;
-    }
+    body { background: var(--brand); color: var(--text); font-family: Arial, sans-serif; height: 100vh; display: grid; grid-template-rows: 56px 1fr; overflow: hidden; }
+    header { background: var(--surface); border-bottom: 2px solid var(--accent); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
     header h1 { font-size: 1.2rem; color: var(--white); letter-spacing: 2px; }
     header h1 span { color: var(--accent); }
-
-    .header-right { display: flex; align-items: center; gap: 12px; }
-
-    .status-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: #555; display: inline-block; transition: all 0.3s;
-    }
+    .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; display: inline-block; transition: all 0.3s; }
     .status-dot.active { background: #2ECC71; box-shadow: 0 0 8px #2ECC71; }
-    .status-dot.warn { background: #F39C12; box-shadow: 0 0 8px #F39C12; }
-
+    .status-dot.warn { background: #F39C12; box-shadow: 0 0 8px #F39C12; animation: pulse 1s infinite; }
+    .status-dot.error { background: #E74C3C; box-shadow: 0 0 8px #E74C3C; animation: pulse 0.6s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
     .listening-label { font-size: 0.72rem; color: var(--mid); }
     .listening-label.active { color: #2ECC71; }
     .listening-label.warn { color: #F39C12; }
-
-    select, .toggle-btn {
-      background: var(--surface2); border: 1px solid var(--mid);
-      color: var(--text); padding: 5px 10px; border-radius: 4px;
-      font-size: 0.78rem; cursor: pointer; outline: none;
-    }
+    .listening-label.error { color: #E74C3C; }
+    select, .toggle-btn { background: var(--surface2); border: 1px solid var(--mid); color: var(--text); padding: 5px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; outline: none; }
     select:hover, .toggle-btn:hover { border-color: var(--accent); color: var(--white); }
-
-    .btn {
-      padding: 7px 14px; border: none; border-radius: 4px;
-      font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: all 0.2s;
-    }
+    .btn { padding: 6px 12px; border: none; border-radius: 4px; font-size: 0.78rem; font-weight: bold; cursor: pointer; transition: all 0.2s; }
     .btn-accent { background: var(--accent); color: white; }
     .btn-accent:hover { background: #C73652; }
     .btn-ghost { background: transparent; color: #666; border: 1px solid #444; }
     .btn-ghost:hover { border-color: #E74C3C; color: #E74C3C; }
     .btn-dim { background: var(--surface2); color: var(--text); border: 1px solid var(--mid); }
     .btn-dim:hover { border-color: var(--accent); }
-
+    .font-btn { background: var(--surface2); border: 1px solid var(--mid); color: var(--white); width: 28px; height: 28px; border-radius: 4px; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+    .font-btn:hover { border-color: var(--accent); background: var(--accent); }
+    .ws-badge { font-size: 0.58rem; color: var(--mid); background: var(--surface2); padding: 2px 6px; border-radius: 3px; }
+    .ws-badge.bad { color: #E74C3C; border: 1px solid #E74C3C; }
     main { display: grid; grid-template-columns: 1fr 340px; overflow: hidden; }
-
-    .left {
-      display: grid; grid-template-rows: 1fr 160px;
-      border-right: 1px solid var(--surface2); overflow: hidden;
-    }
-
+    .left { display: grid; grid-template-rows: 1fr 160px; border-right: 1px solid var(--surface2); overflow: hidden; }
     .transcription-panel { padding: 16px; overflow-y: auto; }
-
-    .label {
-      font-size: 0.62rem; letter-spacing: 2px; color: var(--mid);
-      text-transform: uppercase; margin-bottom: 10px;
-    }
-
+    .label { font-size: 0.62rem; letter-spacing: 2px; color: var(--mid); text-transform: uppercase; margin-bottom: 10px; }
     #transcriptionFeed { font-size: 0.88rem; line-height: 1.8; color: #8888AA; }
-    #transcriptionFeed .hit {
-      color: var(--accent); font-weight: bold;
-      background: rgba(233,69,96,0.1); padding: 1px 4px; border-radius: 3px;
-    }
+    #transcriptionFeed .hit { color: var(--accent); font-weight: bold; background: rgba(233,69,96,0.1); padding: 1px 4px; border-radius: 3px; }
     #transcriptionFeed .sys { color: #555577; font-style: italic; }
-
-    .search-panel {
-      padding: 14px 16px; background: var(--surface);
-      border-top: 1px solid var(--surface2);
-    }
+    #transcriptionFeed .err { color: #E74C3C; }
+    .search-panel { padding: 14px 16px; background: var(--surface); border-top: 1px solid var(--surface2); }
     .search-row { display: flex; gap: 8px; margin-top: 8px; }
-
-    input[type="text"], input[type="number"] {
-      background: var(--brand); border: 1px solid var(--mid);
-      color: var(--white); padding: 8px 10px; border-radius: 4px;
-      font-size: 0.82rem; outline: none; transition: border-color 0.2s;
-    }
+    input[type="text"], input[type="number"] { background: var(--brand); border: 1px solid var(--mid); color: var(--white); padding: 8px 10px; border-radius: 4px; font-size: 0.82rem; outline: none; transition: border-color 0.2s; }
     input:focus { border-color: var(--accent); }
     input::placeholder { color: #445; }
     .hint { font-size: 0.62rem; color: #333355; margin-top: 6px; }
-
     .right { display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
-
-    .now-playing {
-      padding: 14px 16px; background: var(--surface);
-      border-bottom: 1px solid var(--surface2); min-height: 110px;
-    }
-
-    .verse-card {
-      margin-top: 8px; padding: 10px 12px; background: var(--brand);
-      border-radius: 6px; border-left: 3px solid var(--accent);
-    }
+    .now-playing { padding: 14px 16px; background: var(--surface); border-bottom: 1px solid var(--surface2); min-height: 110px; }
+    .verse-card { margin-top: 8px; padding: 10px 12px; background: var(--brand); border-radius: 6px; border-left: 3px solid var(--accent); }
     .verse-card .ref { font-size: 0.72rem; color: var(--accent); font-weight: bold; margin-bottom: 4px; }
     .verse-card .ref .trans { color: #666; font-weight: normal; margin-left: 6px; }
     .verse-card .txt { font-size: 0.83rem; line-height: 1.5; color: var(--white); }
     .empty-state { color: var(--mid); font-size: 0.8rem; font-style: italic; margin-top: 8px; }
-
     .queue-panel { padding: 12px 16px; overflow-y: auto; }
-
-    .queue-item {
-      background: var(--surface); border: 1px solid var(--surface2);
-      border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;
-      cursor: pointer; transition: border-color 0.2s;
-    }
+    .queue-item { background: var(--surface); border: 1px solid var(--surface2); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; }
     .queue-item:hover { border-color: var(--accent); }
     .queue-item.selected { border-color: var(--accent); background: rgba(233,69,96,0.07); }
     .queue-item.implicit { border-left: 3px solid #F39C12; }
@@ -137,29 +68,19 @@
     .queue-item .q-trans { font-size: 0.65rem; color: #666; margin-left: 6px; }
     .queue-item .q-text { font-size: 0.8rem; color: var(--text); margin-top: 3px; line-height: 1.4; }
     .queue-item .q-meta { font-size: 0.62rem; color: var(--mid); margin-top: 4px; }
-
-    .alert-box {
-      background: rgba(231,76,60,0.12); border: 1px solid #E74C3C;
-      border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;
-    }
-    .alert-box.warn { background: rgba(243,156,18,0.12); border-color: #F39C12; }
+    .alert-box { background: rgba(231,76,60,0.12); border: 1px solid #E74C3C; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; }
     .alert-box .a-title { font-size: 0.68rem; font-weight: bold; color: #E74C3C; letter-spacing: 1px; }
-    .alert-box.warn .a-title { color: #F39C12; }
     .alert-box .a-msg { font-size: 0.78rem; color: #FFAAAA; margin-top: 4px; line-height: 1.4; }
-    .alert-box.warn .a-msg { color: #FFD9A0; }
-    .alert-box .a-btn {
-      font-size: 0.68rem; padding: 3px 8px; margin-top: 6px;
-      background: transparent; border: 1px solid #E74C3C;
-      color: #E74C3C; border-radius: 3px; cursor: pointer;
-    }
-
-    .bottom {
-      padding: 12px 16px; background: var(--surface);
-      border-top: 1px solid var(--surface2);
-      display: flex; flex-direction: column; gap: 8px;
-    }
+    .alert-box .a-btn { font-size: 0.68rem; padding: 3px 8px; margin-top: 6px; background: transparent; border: 1px solid #E74C3C; color: #E74C3C; border-radius: 3px; cursor: pointer; }
+    .bottom { padding: 12px 16px; background: var(--surface); border-top: 1px solid var(--surface2); display: flex; flex-direction: column; gap: 8px; }
     .push-row { display: flex; gap: 8px; }
-    #alertContainer { padding: 0 16px; max-height: 160px; overflow-y: auto; }
+    #alertContainer { padding: 0 16px; max-height: 120px; overflow-y: auto; }
+    .vad-bar { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-top: 2px; }
+    .vad-fill { height: 100%; background: #2ECC71; width: 0%; transition: width 0.1s; border-radius: 2px; }
+    .api-status { font-size: 0.6rem; padding: 2px 6px; border-radius: 3px; }
+    .api-status.ok { background: rgba(46,204,113,0.15); color: #2ECC71; }
+    .api-status.fail { background: rgba(231,76,60,0.15); color: #E74C3C; animation: pulse 1s infinite; }
+    .api-status.offline { background: rgba(243,156,18,0.15); color: #F39C12; }
   </style>
 </head>
 <body>
@@ -167,51 +88,57 @@
 <header>
   <h1>Di<span>.</span>Verse <span style="color:var(--mid);font-size:0.7rem;font-weight:normal;">OPERATOR</span></h1>
   <div class="header-right">
+    <span class="ws-badge" id="wsStatus">WS</span>
+    <span class="api-status ok" id="apiStatus">API: ok</span>
     <div class="status-dot" id="dot"></div>
     <span class="listening-label" id="listenLabel">Not listening</span>
     <select id="translationSelect">
       <optgroup label="── Primary ──">
-        <option value="KJV">KJV — King James</option>
-        <option value="NKJV">NKJV — New King James</option>
-        <option value="AMP">AMP — Amplified</option>
-        <option value="AMPC">AMPC — Amplified Classic</option>
-        <option value="TPT">TPT — The Passion</option>
-        <option value="MSG">MSG — The Message</option>
-        <option value="GNT">GNT — Good News</option>
-        <option value="TLB">TLB — The Living Bible</option>
+        <option value="KJV">KJV</option><option value="NKJV">NKJV</option>
+        <option value="AMP">AMP</option><option value="AMPC">AMPC</option>
+        <option value="TPT">TPT</option><option value="MSG">MSG</option>
+        <option value="GNT">GNT</option><option value="TLB">TLB</option>
       </optgroup>
       <optgroup label="── Popular ──">
-        <option value="NIV">NIV — New International</option>
-        <option value="ESV">ESV — English Standard</option>
-        <option value="NLT">NLT — New Living</option>
-        <option value="NASB">NASB — New American Standard</option>
-        <option value="CSB">CSB — Christian Standard</option>
-        <option value="CEV">CEV — Contemporary English</option>
-        <option value="NCV">NCV — New Century</option>
-        <option value="HCSB">HCSB — Holman Christian Standard</option>
+        <option value="NIV">NIV</option><option value="ESV">ESV</option>
+        <option value="NLT">NLT</option><option value="NASB">NASB</option>
+        <option value="CSB">CSB</option><option value="CEV">CEV</option>
+        <option value="NCV">NCV</option><option value="HCSB">HCSB</option>
       </optgroup>
       <optgroup label="── Study ──">
-        <option value="ASV">ASV — American Standard</option>
-        <option value="WEB">WEB — World English Bible</option>
-        <option value="YLT">YLT — Young's Literal</option>
-        <option value="DARBY">DARBY — Darby Translation</option>
-        <option value="RSV">RSV — Revised Standard</option>
-        <option value="NRSV">NRSV — New Revised Standard</option>
+        <option value="ASV">ASV</option><option value="WEB">WEB</option>
+        <option value="YLT">YLT</option><option value="DARBY">DARBY</option>
+        <option value="RSV">RSV</option><option value="NRSV">NRSV</option>
       </optgroup>
     </select>
+    <select id="themeSelect" onchange="applyTheme(this.value)">
+      <option value="dark-navy">Dark Navy</option>
+      <option value="pure-black">Pure Black</option>
+      <option value="church-white">Church White</option>
+      <option value="warm-gold">Warm Gold</option>
+      <option value="deep-burgundy">Deep Burgundy</option>
+      <option value="forest-green">Forest Green</option>
+      <option value="cinematic">Cinematic</option>
+    </select>
     <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
+    <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
+    <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
     <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
-    <a href="/about" style="font-size:0.72rem;color:var(--mid);text-decoration:none;letter-spacing:1px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
+    <a href="/about" style="font-size:0.7rem;color:var(--mid);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
   </div>
 </header>
 
 <main>
   <div class="left">
     <div class="transcription-panel">
-      <div class="label">Live Transcription</div>
-      <div id="transcriptionFeed">
-        <span class="sys">Transcription appears here when listening is active...</span>
+      <div class="label">
+        Live Transcription
+        <span style="float:right;">
+          <span id="vadLabel" style="font-size:0.6rem;color:#555577;">VAD: ready</span>
+        </span>
       </div>
+      <div class="vad-bar"><div class="vad-fill" id="vadFill"></div></div>
+      <div id="transcriptionFeed" style="margin-top:10px;"><span class="sys">Transcription appears here when listening is active...</span></div>
     </div>
     <div class="search-panel">
       <div class="label">Manual Search</div>
@@ -221,29 +148,23 @@
         <input type="number" id="verseInput" placeholder="Vs" style="flex:0.7;min-width:52px;">
         <button class="btn btn-dim" onclick="manualSearch()">Find</button>
       </div>
-      <div class="hint">Shortcuts: Space = Push · Esc = Clear · M = Toggle mode</div>
+      <div class="hint">← → = prev/next queue · Space = push · Esc = clear · M = mode · +/- = font</div>
     </div>
   </div>
 
   <div class="right">
     <div class="now-playing">
       <div class="label">On Screen Now</div>
-      <div id="nowPlaying">
-        <div class="empty-state">Nothing displayed — logo showing</div>
-      </div>
+      <div id="nowPlaying"><div class="empty-state">Nothing displayed — logo showing</div></div>
     </div>
     <div class="queue-panel">
-      <div class="label" style="margin-bottom:10px;">Detection Queue</div>
-      <div id="queueContainer">
-        <div style="color:#333355;font-size:0.8rem;font-style:italic;">Detected verses appear here...</div>
-      </div>
+      <div class="label" style="margin-bottom:10px;">Queue <span id="queueCount" style="color:var(--mid);font-weight:normal;"></span></div>
+      <div id="queueContainer"><div style="color:#333355;font-size:0.8rem;font-style:italic;">Detected verses appear here...</div></div>
     </div>
     <div id="alertContainer"></div>
     <div class="bottom">
       <div class="push-row">
-        <button class="btn btn-accent" style="flex:1;padding:10px 0;font-size:0.88rem;" onclick="pushSelected()">
-          PUSH TO SCREEN
-        </button>
+        <button class="btn btn-accent" style="flex:1;padding:10px 0;font-size:0.88rem;" onclick="pushSelected()">PUSH TO SCREEN</button>
         <button class="btn btn-dim" id="listenBtn" onclick="toggleListening()">Start</button>
       </div>
     </div>
@@ -251,404 +172,500 @@
 </main>
 
 <script>
-  // Global State
-  let displayMode = 'lower-third';
-  let activeTranslation = 'KJV';
-  let isListening = false;
-  let currentVerse = null;
-  let queue = [];
-  let selectedIndex = 0;
-  let audioStream = null;
-  let isCapturing = false;
-  let activeMimeType = 'audio/webm';
-  let transcriptionContext = [];
-  let lastChunkTime = Date.now();
-  let watchdogTimer = null;
-  let consecutiveFailures = 0;
+// ===== State =====
+var displayMode = 'lower-third';
+var activeTranslation = 'KJV';
+var isListening = false;
+var currentVerse = null;
+var queue = [];
+var selectedIndex = 0;
+var audioStream = null;
+var isCapturing = false;
+var activeMimeType = 'audio/webm';
+var transcriptionContext = [];
+var sessionId = 0;
+var watchdogTimer = null;
+var lastHeartbeat = Date.now();
+var currentFontSize = 0; // relative offset in px sent to projection
+var apiFailCount = 0;
+var isOffline = false;
 
-  const ws = new WebSocket('ws://' + location.host + '?type=operator');
-  ws.onopen = function() { console.log('[Di.Verse] Operator connected'); };
+// ===== Themes =====
+var THEMES = {
+  'dark-navy':    { bg:'rgba(8,8,25,0.92)',    ref:'#F5C518', text:'#FFFFFF', border:'#E94560', accent:'#E94560' },
+  'pure-black':   { bg:'rgba(0,0,0,0.95)',      ref:'#E94560', text:'#FFFFFF', border:'#E94560', accent:'#E94560' },
+  'church-white': { bg:'rgba(255,255,255,0.92)',ref:'#1A1A2E', text:'#1A1A2E', border:'#E94560', accent:'#E94560' },
+  'warm-gold':    { bg:'rgba(20,12,0,0.92)',    ref:'#F5C518', text:'#FFF8E7', border:'#F5C518', accent:'#F5C518' },
+  'deep-burgundy':{ bg:'rgba(40,0,15,0.93)',   ref:'#FF6B9D', text:'#FFFFFF', border:'#8B0033', accent:'#FF6B9D' },
+  'forest-green': { bg:'rgba(0,20,10,0.93)',   ref:'#4ADE80', text:'#F0FFF4', border:'#16A34A', accent:'#4ADE80' },
+  'cinematic':    { bg:'rgba(5,5,15,0.96)',     ref:'#E94560', text:'#E8E8F0', border:'#333355', accent:'#E94560' },
+};
+var currentTheme = 'dark-navy';
+
+function applyTheme(name) {
+  currentTheme = name;
+  broadcast({ action: 'APPLY_THEME', theme: THEMES[name] });
+}
+
+// ===== WebSocket =====
+var ws = null;
+var wsReconnectTimer = null;
+
+function connectWS() {
+  ws = new WebSocket('ws://' + location.host + '?type=operator');
+  ws.onopen = function() {
+    document.getElementById('wsStatus').textContent = 'WS: ok';
+    document.getElementById('wsStatus').className = 'ws-badge';
+    clearTimeout(wsReconnectTimer);
+  };
   ws.onmessage = function(e) {
-    const msg = JSON.parse(e.data);
-    if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message, true);
+    var msg = JSON.parse(e.data);
+    if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message);
     if (msg.action === 'TRANSLATION_CHANGE') {
       activeTranslation = msg.translation;
       document.getElementById('translationSelect').value = msg.translation;
       appendTranscription('[ Translation: ' + msg.translation + ' ]', false, true);
     }
   };
+  ws.onclose = function() {
+    document.getElementById('wsStatus').textContent = 'WS: down';
+    document.getElementById('wsStatus').className = 'ws-badge bad';
+    wsReconnectTimer = setTimeout(connectWS, 1500);
+  };
+  ws.onerror = function() { ws.close(); };
+}
+connectWS();
 
-  document.getElementById('translationSelect').addEventListener('change', function(e) {
-    activeTranslation = e.target.value;
+function broadcast(payload) {
+  return fetch('/api/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
   });
+}
 
-  function toggleMode() {
-    displayMode = displayMode === 'lower-third' ? 'full-screen' : 'lower-third';
-    document.getElementById('modeBtn').textContent =
-      displayMode === 'lower-third' ? '◧ Lower-Third' : '⬜ Full-Screen';
+document.getElementById('translationSelect').addEventListener('change', function(e) {
+  activeTranslation = e.target.value;
+});
+
+function toggleMode() {
+  displayMode = displayMode === 'lower-third' ? 'full-screen' : 'lower-third';
+  document.getElementById('modeBtn').textContent = displayMode === 'lower-third' ? '◧ Lower-Third' : '⬜ Full-Screen';
+}
+
+function adjustFont(delta) {
+  currentFontSize = Math.max(-8, Math.min(16, currentFontSize + delta));
+  broadcast({ action: 'FONT_SIZE', delta: currentFontSize });
+}
+
+// ===== Manual Search =====
+async function manualSearch() {
+  var book = document.getElementById('bookInput').value.trim();
+  var chapter = parseInt(document.getElementById('chapterInput').value);
+  var verse = parseInt(document.getElementById('verseInput').value);
+  if (!book || !chapter || !verse) { showAlert('Please enter a book, chapter, and verse.'); return; }
+  try {
+    var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + '&translation=' + activeTranslation);
+    var data = await res.json();
+    if (!res.ok) { showAlert(data.error); return; }
+    addToQueue(Object.assign({}, data, { confidence: 1.0, type: 'manual' }));
+  } catch (err) { showAlert('Could not reach server.'); }
+}
+
+// ===== Queue =====
+function addToQueue(item) {
+  var isDuplicate = queue.length > 0 && queue[0].reference === item.reference && queue[0].translation === item.translation;
+  if (isDuplicate) return;
+  queue.unshift(item);
+  queue = queue.slice(0, 10);
+  selectedIndex = 0;
+  renderQueue();
+}
+
+function renderQueue() {
+  var el = document.getElementById('queueContainer');
+  var count = document.getElementById('queueCount');
+  count.textContent = queue.length > 0 ? '(' + queue.length + ')' : '';
+  if (queue.length === 0) {
+    el.innerHTML = '<div style="color:#333355;font-size:0.8rem;font-style:italic;">Detected verses appear here...</div>';
+    return;
   }
+  el.innerHTML = queue.slice(0, 8).map(function(item, i) {
+    var meta = item.type === 'manual' ? 'Manual' :
+      item.type === 'implicit' ? 'Implicit — confirm before pushing' :
+      (item.source === 'parser' ? 'Parser' : 'Claude') + ' · ' + Math.round((item.confidence||0)*100) + '%';
+    return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + '" onclick="selectItem(' + i + ')">' +
+      '<div class="q-ref">' + item.reference + ' <span class="q-trans">' + item.translation + '</span></div>' +
+      '<div class="q-text">' + item.text.slice(0,180) + (item.text.length>180?'...':'') + '</div>' +
+      '<div class="q-meta">' + meta + '</div></div>';
+  }).join('');
+}
 
-  async function manualSearch() {
-    const book = document.getElementById('bookInput').value.trim();
-    const chapter = parseInt(document.getElementById('chapterInput').value);
-    const verse = parseInt(document.getElementById('verseInput').value);
-    if (!book || !chapter || !verse) {
-      showAlert('Please enter a book, chapter, and verse number.', true);
-      return;
-    }
-    try {
-      const res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + '&translation=' + activeTranslation);
-      const data = await res.json();
-      if (!res.ok) { showAlert(data.error, true); return; }
-      addToQueue(Object.assign({}, data, { confidence: 1.0, type: 'manual' }));
-    } catch (err) {
-      showAlert('Could not reach server.', true);
-    }
-  }
+function selectItem(i) { selectedIndex = i; renderQueue(); }
 
-  function addToQueue(item) {
-    const isDuplicate = queue.length > 0 && queue[0].reference === item.reference && queue[0].translation === item.translation;
-    if (isDuplicate) return;
-    queue.unshift(item);
-    queue = queue.slice(0, 8);
-    selectedIndex = 0;
-    renderQueue();
-  }
+function queueNext() {
+  if (queue.length === 0) return;
+  selectedIndex = Math.min(selectedIndex + 1, queue.length - 1);
+  renderQueue();
+}
 
-  function renderQueue() {
-    const el = document.getElementById('queueContainer');
-    if (queue.length === 0) {
-      el.innerHTML = '<div style="color:#333355;font-size:0.8rem;font-style:italic;">Detected verses appear here...</div>';
-      return;
-    }
-    el.innerHTML = queue.slice(0, 6).map(function(item, i) {
-      const meta = item.type === 'manual' ? 'Manual entry' :
-        item.type === 'implicit' ? 'Implicit match — confirm before pushing' :
-        'Auto-pushed · ' + Math.round((item.confidence || 0) * 100) + '% confidence';
-      return '<div class="queue-item ' + (i === selectedIndex ? 'selected' : '') + ' ' + (item.type === 'implicit' ? 'implicit' : '') + '" onclick="selectItem(' + i + ')">' +
-        '<div class="q-ref">' + item.reference + ' <span class="q-trans">' + item.translation + '</span></div>' +
-        '<div class="q-text">' + item.text.slice(0, 180) + (item.text.length > 180 ? '...' : '') + '</div>' +
-        '<div class="q-meta">' + meta + '</div></div>';
-    }).join('');
-  }
+function queuePrev() {
+  if (queue.length === 0) return;
+  selectedIndex = Math.max(selectedIndex - 1, 0);
+  renderQueue();
+}
 
-  function selectItem(i) { selectedIndex = i; renderQueue(); }
-
-  async function pushVerse(item) {
-    await fetch('/api/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'SHOW_VERSE',
-        verse: { reference: item.reference, translation: item.translation, text: item.text, displayMode: displayMode }
-      })
+// ===== Push =====
+async function pushVerse(item) {
+  try {
+    var res = await broadcast({
+      action: 'SHOW_VERSE',
+      verse: { reference: item.reference, translation: item.translation, text: item.text, displayMode: displayMode },
+      theme: THEMES[currentTheme],
+      fontSize: currentFontSize
     });
+    if (!res.ok) throw new Error('Push HTTP ' + res.status);
     currentVerse = item;
     renderNowPlaying();
+    setApiStatus('ok');
+  } catch (err) {
+    appendTranscription('[ Push failed: ' + err.message + ' ]', false, false, true);
+    showAlert('Push failed: ' + err.message);
   }
+}
 
-  async function pushSelected() {
-    if (queue.length === 0) return;
-    const item = queue[selectedIndex] || queue[0];
-    await pushVerse(item);
+async function pushSelected() {
+  if (queue.length === 0) return;
+  var item = queue[selectedIndex] || queue[0];
+  await pushVerse(item);
+}
+
+function renderNowPlaying() {
+  var el = document.getElementById('nowPlaying');
+  if (!currentVerse) { el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>'; return; }
+  el.innerHTML = '<div class="verse-card"><div class="ref">' + currentVerse.reference +
+    ' <span class="trans">' + currentVerse.translation + '</span></div>' +
+    '<div class="txt">' + currentVerse.text + '</div></div>';
+}
+
+async function clearScreen() {
+  try { await broadcast({ action: 'CLEAR' }); } catch(e) {}
+  currentVerse = null;
+  renderNowPlaying();
+}
+
+// ===== Alerts =====
+function showAlert(message) {
+  var container = document.getElementById('alertContainer');
+  var el = document.createElement('div');
+  el.className = 'alert-box';
+  var title = document.createElement('div'); title.className = 'a-title'; title.textContent = 'ALERT';
+  var msg = document.createElement('div'); msg.className = 'a-msg'; msg.textContent = message;
+  var btn = document.createElement('button'); btn.className = 'a-btn'; btn.textContent = 'Dismiss';
+  btn.onclick = function() { el.remove(); };
+  el.appendChild(title); el.appendChild(msg); el.appendChild(btn);
+  container.prepend(el);
+  setTimeout(function() { if (el.parentNode) el.remove(); }, 12000);
+}
+
+// ===== API Status =====
+function setApiStatus(state) {
+  var el = document.getElementById('apiStatus');
+  if (state === 'ok') { apiFailCount = 0; el.className = 'api-status ok'; el.textContent = 'API: ok'; }
+  else if (state === 'fail') {
+    apiFailCount++;
+    el.className = 'api-status fail';
+    el.textContent = 'API: error (' + apiFailCount + ')';
+    if (apiFailCount >= 3) { el.textContent = 'API: unreachable — check internet'; }
+  } else if (state === 'offline') {
+    el.className = 'api-status offline';
+    el.textContent = 'OFFLINE — manual only';
   }
+}
 
-  function renderNowPlaying() {
-    const el = document.getElementById('nowPlaying');
-    if (!currentVerse) {
-      el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>';
-      return;
-    }
-    el.innerHTML = '<div class="verse-card"><div class="ref">' + currentVerse.reference +
-      ' <span class="trans">' + currentVerse.translation + '</span></div>' +
-      '<div class="txt">' + currentVerse.text + '</div></div>';
-  }
+// ===== AUDIO PIPELINE with VAD =====
 
-  async function clearScreen() {
-    await fetch('/api/clear', { method: 'POST' });
-    currentVerse = null;
-    renderNowPlaying();
-  }
+async function toggleListening() {
+  if (isListening) { stopListening(); } else { await startListening(); }
+}
 
-  function showAlert(message, isWarning) {
-    const container = document.getElementById('alertContainer');
-    const id = Date.now() + Math.random();
-    const el = document.createElement('div');
-    el.className = 'alert-box' + (isWarning === false ? ' warn' : '');
-    el.id = 'alert-' + id;
-    const title = document.createElement('div');
-    title.className = 'a-title';
-    title.textContent = isWarning === false ? 'NOTICE' : 'INVALID REFERENCE';
-    const msg = document.createElement('div');
-    msg.className = 'a-msg';
-    msg.textContent = message;
-    const dismissBtn = document.createElement('button');
-    dismissBtn.className = 'a-btn';
-    dismissBtn.textContent = 'Dismiss';
-    dismissBtn.onclick = function() { el.remove(); };
-    el.appendChild(title);
-    el.appendChild(msg);
-    el.appendChild(dismissBtn);
-    container.prepend(el);
-    setTimeout(function() { if (el.parentNode) el.remove(); }, 15000);
-  }
+async function startListening() {
+  stopListening(); // always hard-stop previous session first
 
-  // AUDIO PIPELINE
-
-  async function toggleListening() {
-    if (isListening) { stopListening(); } else { await startListening(); }
-  }
-
-  async function startListening() {
-    try {
-      audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      });
-
-      const formats = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg', 'audio/mp4'];
-      for (let i = 0; i < formats.length; i++) {
-        if (MediaRecorder.isTypeSupported(formats[i])) { activeMimeType = formats[i]; break; }
-      }
-
-      isListening = true;
-      isCapturing = true;
-      lastChunkTime = Date.now();
-      consecutiveFailures = 0;
-      updateListeningUI('active');
-      appendTranscription('[ Listening started ]', false, true);
-      runCaptureLoop();
-
-      watchdogTimer = setInterval(function() {
-        if (!isListening) return;
-        const silentFor = Date.now() - lastChunkTime;
-        if (silentFor > 9000) {
-          console.warn('[Watchdog] Capture loop stalled — force restarting');
-          appendTranscription('[ Auto-recovering... ]', false, true);
-          updateListeningUI('warn');
-          isCapturing = false;
-          setTimeout(function() {
-            if (isListening) {
-              isCapturing = true;
-              lastChunkTime = Date.now();
-              runCaptureLoop();
-              updateListeningUI('active');
-            }
-          }, 200);
-        }
-      }, 4000);
-
-      const track = audioStream.getAudioTracks()[0];
-      if (track) {
-        track.onended = function() {
-          console.warn('[Audio] Track ended unexpectedly — full mic restart');
-          appendTranscription('[ Reconnecting microphone... ]', false, true);
-          if (isListening) {
-            stopListening();
-            setTimeout(function() { startListening(); }, 600);
-          }
-        };
-      }
-
-    } catch (err) {
-      if (err.name === 'NotAllowedError') {
-        showAlert('Microphone access denied. Allow microphone in Chrome and try again.', true);
-      } else {
-        showAlert('Could not start microphone: ' + err.message, true);
-      }
-    }
-  }
-
-  function stopListening() {
-    isListening = false;
-    isCapturing = false;
-    if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
-    if (audioStream) { audioStream.getTracks().forEach(function(t) { t.stop(); }); audioStream = null; }
-    updateListeningUI('off');
-    appendTranscription('[ Listening stopped ]', false, true);
-  }
-
-  function runCaptureLoop() {
-    if (!isCapturing || !audioStream) return;
-
-    const chunks = [];
-    let recorder;
-
-    try {
-      recorder = new MediaRecorder(audioStream, { mimeType: activeMimeType });
-    } catch (e) {
-      consecutiveFailures++;
-      setTimeout(function() { if (isCapturing) runCaptureLoop(); }, 500);
-      return;
-    }
-
-    recorder.ondataavailable = function(e) {
-      if (e.data && e.data.size > 0) chunks.push(e.data);
-    };
-
-    recorder.onstop = function() {
-      if (chunks.length > 0) {
-        const blob = new Blob(chunks, { type: activeMimeType });
-        if (blob.size > 4000) {
-          consecutiveFailures = 0;
-          processAudioChunk(blob, activeMimeType);
-        }
-      }
-      if (isCapturing && audioStream) {
-        runCaptureLoop();
-      }
-    };
-
-    recorder.onerror = function() {
-      consecutiveFailures++;
-      if (isCapturing && audioStream) setTimeout(function() { runCaptureLoop(); }, 300);
-    };
-    
-    try {
-      recorder.start(500);
-    } catch (e) {
-      setTimeout(function() { if (isCapturing) runCaptureLoop(); }, 500);
-      return;
-    }
-
-    setTimeout(function() {
-      if (recorder.state === 'recording') recorder.stop();
-    }, 3000);
-  }
-
-  function updateListeningUI(state) {
-    const dot = document.getElementById('dot');
-    const label = document.getElementById('listenLabel');
-    const btn = document.getElementById('listenBtn');
-    dot.className = 'status-dot' + (state === 'active' ? ' active' : state === 'warn' ? ' warn' : '');
-    label.className = 'listening-label' + (state === 'active' ? ' active' : state === 'warn' ? ' warn' : '');
-    label.textContent = state === 'active' ? 'Listening...' : state === 'warn' ? 'Reconnecting...' : 'Not listening';
-    btn.textContent = state === 'off' ? 'Start' : 'Stop';
-  }
-
-  async function processAudioChunk(blob, mimeType) {
-    lastChunkTime = Date.now();
-    try {
-      const base64 = await blobToBase64(blob);
-      const transcribeRes = await fetch('/api/transcribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audio: base64, mimeType: mimeType })
-      });
-
-      if (!transcribeRes.ok) throw new Error('Transcribe request failed: ' + transcribeRes.status);
-
-      const result = await transcribeRes.json();
-      const text = result.text;
-      lastChunkTime = Date.now();
-      if (!text || text.trim().length < 3) return;
-
-      appendTranscription(text);
-      transcriptionContext.push(text);
-      if (transcriptionContext.length > 3) transcriptionContext.shift();
-
-      const detectRes = await fetch('/api/detect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text,
-          context: transcriptionContext.slice(0, -1).join(' '),
-          activeTranslation: activeTranslation
-        })
-      });
-
-      if (!detectRes.ok) throw new Error('Detect request failed: ' + detectRes.status);
-
-      const detection = await detectRes.json();
-      await handleDetection(detection);
-
-    } catch (err) {
-      console.error('[Audio Processing Error]', err.message);
-    }
-  }
-
-  async function handleDetection(detection) {
-    if (!detection || detection.type === 'none') return;
-
-    if (detection.type === 'explicit' && detection.verseData) {
-      const v = detection.verseData;
-      appendTranscription(v.reference, true);
-
-      const item = {
-        reference: v.reference,
-        translation: v.translation,
-        text: v.text,
-        confidence: detection.confidence || 0.9,
-        type: 'explicit'
-      };
-
-      await pushVerse(item);
-      addToQueue(item);
-    }
-
-    if (detection.type === 'implicit' && detection.candidates && detection.candidates.length > 0) {
-      const candidates = detection.candidates.slice(0, 2);
-      for (let i = 0; i < candidates.length; i++) {
-        const c = candidates[i];
-        try {
-          const res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
-          if (res.ok) {
-            const verseData = await res.json();
-            addToQueue({
-              reference: verseData.reference,
-              translation: verseData.translation,
-              text: verseData.text,
-              confidence: c.confidence || 0.65,
-              type: 'implicit'
-            });
-          }
-        } catch (e) { console.error('[Implicit fetch error]', e); }
-      }
-    }
-
-    if (detection.type === 'translation_change' && detection.new_translation) {
-      activeTranslation = detection.new_translation;
-      document.getElementById('translationSelect').value = detection.new_translation;
-      appendTranscription('[ Translation: ' + detection.new_translation + ' ]', false, true);
-    }
-
-    if (detection.type === 'validation_error') {
-      showAlert(detection.message, true);
-    }
-  }
-
-  function blobToBase64(blob) {
-    return new Promise(function(resolve, reject) {
-      const reader = new FileReader();
-      reader.onloadend = function() { resolve(reader.result.split(',')[1]); };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
+
+    // Use WAV via AudioWorklet for guaranteed Whisper compatibility
+// Fall back to supported MediaRecorder format — server converts
+activeMimeType = 'audio/wav';
+if (!MediaRecorder.isTypeSupported('audio/wav')) {
+  var formats = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg','audio/mp4'];
+  for (var i = 0; i < formats.length; i++) {
+    if (MediaRecorder.isTypeSupported(formats[i])) { activeMimeType = formats[i]; break; }
+  }
+}
+console.log('[Audio] Format:', activeMimeType);
+
+    // ── VAD setup using Web Audio API ──
+    var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var source = audioCtx.createMediaStreamSource(audioStream);
+    var analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(analyser);
+    var vadData = new Uint8Array(analyser.frequencyBinCount);
+
+    var mySession = ++sessionId;
+    isListening = true;
+    isCapturing = true;
+    lastHeartbeat = Date.now();
+    updateListeningUI('active');
+    appendTranscription('[ Listening started — VAD active ]', false, true);
+
+    runCaptureLoop(mySession, analyser, vadData, audioCtx);
+
+    // Watchdog — keyed to mySession, fires every 2s
+    watchdogTimer = setInterval(function() {
+      if (sessionId !== mySession || !isListening) { clearInterval(watchdogTimer); return; }
+      var silentFor = Date.now() - lastHeartbeat;
+      if (silentFor > 8000) {
+        appendTranscription('[ Stalled — auto-restarting... ]', false, true);
+        updateListeningUI('error');
+        hardRestart();
+      } else if (silentFor > 4000) {
+        updateListeningUI('warn');
+      } else {
+        updateListeningUI('active');
+      }
+    }, 2000);
+
+    var track = audioStream.getAudioTracks()[0];
+    if (track) {
+      track.onended = function() {
+        if (sessionId !== mySession) return;
+        appendTranscription('[ Mic track lost — reconnecting... ]', false, true);
+        hardRestart();
+      };
+    }
+
+  } catch (err) {
+    updateListeningUI('off');
+    showAlert(err.name === 'NotAllowedError' ? 'Microphone access denied.' : 'Mic error: ' + err.message);
+  }
+}
+
+function hardRestart() {
+  var was = isListening;
+  stopListening();
+  if (was) setTimeout(function() { startListening(); }, 500);
+}
+
+function stopListening() {
+  isListening = false;
+  isCapturing = false;
+  sessionId++;
+  if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+  if (audioStream) {
+    try { audioStream.getTracks().forEach(function(t) { t.onended = null; t.stop(); }); } catch(e) {}
+    audioStream = null;
+  }
+  updateListeningUI('off');
+  document.getElementById('vadFill').style.width = '0%';
+  document.getElementById('vadLabel').textContent = 'VAD: ready';
+}
+
+function getVADEnergy(analyser, data) {
+  analyser.getByteFrequencyData(data);
+  var sum = 0;
+  for (var i = 0; i < data.length; i++) sum += data[i];
+  return sum / data.length;
+}
+
+var VAD_THRESHOLD = 3; // Lowered for MacBook Air internal mic // below this = silence, skip Whisper
+var speechBuffer = [];  // accumulate chunks until we have enough speech
+
+function runCaptureLoop(mySession, analyser, vadData, audioCtx) {
+  if (sessionId !== mySession || !isCapturing || !audioStream) return;
+
+  var chunks = [];
+  var recorder;
+
+  try {
+    recorder = new MediaRecorder(audioStream, { mimeType: activeMimeType });
+  } catch(e) {
+    setTimeout(function() { if (sessionId===mySession) runCaptureLoop(mySession, analyser, vadData, audioCtx); }, 500);
+    return;
   }
 
-  function appendTranscription(text, isHit, isSystem) {
-    const feed = document.getElementById('transcriptionFeed');
-    if (feed.querySelector('.sys') && feed.children.length === 1 && !isSystem) feed.innerHTML = '';
-    const span = document.createElement('span');
-    if (isHit) span.className = 'hit';
-    if (isSystem) span.className = 'sys';
-    span.textContent = text + ' ';
-    feed.appendChild(span);
-    feed.scrollTop = feed.scrollHeight;
-    while (feed.children.length > 400) {
-      feed.removeChild(feed.firstChild);
+  recorder.ondataavailable = function(e) {
+    if (e.data && e.data.size > 0) chunks.push(e.data);
+  };
+
+  recorder.onstop = function() {
+    lastHeartbeat = Date.now();
+
+    // VAD check — measure energy level of this chunk
+    var energy = getVADEnergy(analyser, vadData);
+    var pct = Math.min(100, Math.round(energy / 20 * 100));
+    document.getElementById('vadFill').style.width = pct + '%';
+    document.getElementById('vadLabel').textContent = 'VAD: ' + Math.round(energy) + ' ' + (energy > VAD_THRESHOLD ? 'SPEECH' : 'silence');
+
+    if (energy > VAD_THRESHOLD && chunks.length > 0) {
+      var blob = new Blob(chunks, { type: activeMimeType });
+      if (blob.size > 4000) {
+        processAudioChunk(blob, activeMimeType, mySession);
+      }
+    }
+
+    if (sessionId === mySession && isCapturing && audioStream) {
+      runCaptureLoop(mySession, analyser, vadData, audioCtx);
+    }
+  };
+
+  recorder.onerror = function() {
+    if (sessionId===mySession && isCapturing) setTimeout(function() { runCaptureLoop(mySession,analyser,vadData,audioCtx); }, 300);
+  };
+
+  try { recorder.start(500); } catch(e) {
+    setTimeout(function() { if (sessionId===mySession) runCaptureLoop(mySession,analyser,vadData,audioCtx); }, 500);
+    return;
+  }
+
+  setTimeout(function() {
+    if (recorder.state === 'recording') {
+      try { recorder.stop(); } catch(e) {}
+    }
+  }, 3000);
+}
+
+function updateListeningUI(state) {
+  document.getElementById('dot').className = 'status-dot' + (state==='active'?' active':state==='warn'?' warn':state==='error'?' error':'');
+  document.getElementById('listenLabel').className = 'listening-label' + (state==='active'?' active':state==='warn'?' warn':state==='error'?' error':'');
+  document.getElementById('listenLabel').textContent = state==='active'?'Listening...':state==='warn'?'Slow...':state==='error'?'Recovering...':'Not listening';
+  document.getElementById('listenBtn').textContent = state==='off'?'Start':'Stop';
+}
+
+async function processAudioChunk(blob, mimeType, mySession) {
+  try {
+    var base64 = await blobToBase64(blob);
+    var transcribeRes = await fetch('/api/transcribe', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ audio: base64, mimeType: mimeType })
+    });
+
+    if (sessionId !== mySession) return;
+
+    if (!transcribeRes.ok) {
+      setApiStatus('fail');
+      throw new Error('Transcribe HTTP ' + transcribeRes.status);
+    }
+
+    var result = await transcribeRes.json();
+    var text = result.text;
+    lastHeartbeat = Date.now();
+    setApiStatus('ok');
+    if (!text || text.trim().length < 3) return;
+
+    appendTranscription(text);
+    transcriptionContext.push(text);
+    if (transcriptionContext.length > 3) transcriptionContext.shift();
+
+    var detectRes = await fetch('/api/detect', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text:text, context:transcriptionContext.slice(0,-1).join(' '), activeTranslation:activeTranslation })
+    });
+
+    if (sessionId !== mySession) return;
+    if (!detectRes.ok) { setApiStatus('fail'); return; }
+
+    var detection = await detectRes.json();
+    await handleDetection(detection);
+    setApiStatus('ok');
+
+  } catch(err) {
+    console.error('[Audio Error]', err.message);
+    if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+      setApiStatus('offline');
+    } else {
+      setApiStatus('fail');
+    }
+    appendTranscription('[ ' + err.message + ' ]', false, false, true);
+  }
+}
+
+async function handleDetection(detection) {
+  if (!detection || detection.type === 'none') return;
+
+  if (detection.type === 'explicit' && detection.verseData) {
+    var v = detection.verseData;
+    appendTranscription(v.reference, true);
+    var item = { reference:v.reference, translation:v.translation, text:v.text, confidence:detection.confidence||0.9, type:'explicit', source:detection.source };
+    await pushVerse(item);
+    addToQueue(item);
+  }
+
+  if (detection.type === 'implicit' && detection.candidates && detection.candidates.length > 0) {
+    for (var i = 0; i < Math.min(2, detection.candidates.length); i++) {
+      var c = detection.candidates[i];
+      try {
+        var res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
+        if (res.ok) {
+          var vd = await res.json();
+          addToQueue({ reference:vd.reference, translation:vd.translation, text:vd.text, confidence:c.confidence||0.65, type:'implicit' });
+        }
+      } catch(e) {}
     }
   }
 
-  document.addEventListener('keydown', function(e) {
-    if (['INPUT', 'SELECT', 'TEXTAREA'].indexOf(e.target.tagName) !== -1) return;
-    if (e.code === 'Space') { e.preventDefault(); pushSelected(); }
-    if (e.code === 'Escape') clearScreen();
-    if (e.code === 'KeyM') toggleMode();
-  });
+  if (detection.type === 'translation_change' && detection.new_translation) {
+    activeTranslation = detection.new_translation;
+    document.getElementById('translationSelect').value = detection.new_translation;
+    appendTranscription('[ Translation: ' + detection.new_translation + ' ]', false, true);
+  }
 
-  document.getElementById('verseInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') manualSearch();
+  if (detection.type === 'validation_error') showAlert(detection.message);
+}
+
+function blobToBase64(blob) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onloadend = function() { resolve(reader.result.split(',')[1]); };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
   });
+}
+
+function appendTranscription(text, isHit, isSystem, isError) {
+  var feed = document.getElementById('transcriptionFeed');
+  if (feed.querySelector('.sys') && feed.children.length === 1 && !isSystem) feed.innerHTML = '';
+  var span = document.createElement('span');
+  if (isHit) span.className = 'hit';
+  if (isSystem) span.className = 'sys';
+  if (isError) span.className = 'err';
+  span.textContent = text + ' ';
+  feed.appendChild(span);
+  feed.scrollTop = feed.scrollHeight;
+  while (feed.children.length > 400) feed.removeChild(feed.firstChild);
+}
+
+// ===== Keyboard =====
+document.addEventListener('keydown', function(e) {
+  var tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (e.code === 'Space')       { e.preventDefault(); pushSelected(); }
+  if (e.code === 'Escape')      { clearScreen(); }
+  if (e.code === 'KeyM')        { toggleMode(); }
+  if (e.code === 'ArrowRight')  { e.preventDefault(); queueNext(); }
+  if (e.code === 'ArrowLeft')   { e.preventDefault(); queuePrev(); }
+  if (e.key === '+' || e.key === '=') { adjustFont(2); }
+  if (e.key === '-')            { adjustFont(-2); }
+});
+
+document.getElementById('verseInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') manualSearch();
+});
 </script>
 </body>
 </html>
