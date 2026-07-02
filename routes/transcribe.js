@@ -10,86 +10,74 @@ const os = require('os');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 router.post('/transcribe', async (req, res) => {
-  const { audio, mimeType = 'audio/webm' } = req.body;
+  const { audio, sampleRate = 48000 } = req.body;
   if (!audio) return res.status(400).json({ error: 'No audio data' });
 
   let tmpPath = null;
   try {
-    const inBuffer = Buffer.from(audio, 'base64');
-    if (inBuffer.length < 1000) return res.json({ text: '' });
+    const pcmBuffer = Buffer.from(audio, 'base64');
+    console.log('[Transcribe] Received PCM bytes:', pcmBuffer.length, 'sampleRate:', sampleRate);
 
-   // Save raw bytes with original extension — let Whisper handle the container
-    let ext = 'webm';
-    if (mimeType.includes('ogg')) ext = 'ogg';
-    if (mimeType.includes('mp4')) ext = 'mp4';
-    tmpPath = path.join(os.tmpdir(), 'dv_' + Date.now() + '.' + ext);
-    fs.writeFileSync(tmpPath, inBuffer);
+    if (pcmBuffer.length < 1000) {
+      console.log('[Transcribe] Chunk too small, skipping');
+      return res.json({ text: '' });
+    }
+
+    const wavBuffer = pcmToWAV(pcmBuffer, sampleRate);
+    tmpPath = path.join(os.tmpdir(), 'dv_' + Date.now() + '.wav');
+    fs.writeFileSync(tmpPath, wavBuffer);
+    console.log('[Transcribe] WAV written:', wavBuffer.length, 'bytes');
 
     const fileBuffer = fs.readFileSync(tmpPath);
-    // Force ogg type — Whisper accepts ogg/opus which is what Chrome actually encodes
-    const file = await toFile(fileBuffer, 'audio.ogg', { type: 'audio/ogg' });
+    const file = await toFile(fileBuffer, 'audio.wav', { type: 'audio/wav' });
 
     const response = await openai.audio.transcriptions.create({
       file,
       model: 'whisper-1',
-      response_format: 'verbose_json',
+      response_format: 'text',
       temperature: 0,
       prompt: 'Bible verse, chapter, scripture, sermon, church service.',
     });
 
-   // No segment filtering — use raw text output directly
-    text = response.text || '';
-
+    const text = (response || '').toString().trim();
     const cleaned = filterHallucinations(text);
-    console.log('[Whisper] ' + (cleaned ? cleaned.slice(0, 80) : '(silence)'));
+    console.log('[Whisper]', cleaned ? '"' + cleaned.slice(0, 80) + '"' : '(silence)');
     res.json({ text: cleaned });
 
   } catch (err) {
     console.error('[Whisper Error]', err.status || '', err.message);
     res.status(500).json({ error: err.message, text: '' });
   } finally {
-    if (tmpPath && fs.existsSync(tmpPath)) {
-      try { fs.unlinkSync(tmpPath); } catch(e) {}
-    }
+    if (tmpPath) try { fs.unlinkSync(tmpPath); } catch(e) {}
   }
 });
 
-function isPCM(buffer) {
-  // WAV files start with "RIFF"
-  return buffer.slice(0, 4).toString('ascii') !== 'RIFF';
-}
-
-function wrapInWAV(pcmData) {
-  const sampleRate = 16000;
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const dataSize = pcmData.length;
+function pcmToWAV(pcmData, sampleRate, channels = 1, bitsPerSample = 16) {
   const header = Buffer.alloc(44);
-
+  const byteRate = sampleRate * channels * bitsPerSample / 8;
+  const blockAlign = channels * bitsPerSample / 8;
+  const dataSize = pcmData.length;
   header.write('RIFF', 0);
   header.writeUInt32LE(36 + dataSize, 4);
   header.write('WAVE', 8);
   header.write('fmt ', 12);
   header.writeUInt32LE(16, 16);
   header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(numChannels, 22);
+  header.writeUInt16LE(channels, 22);
   header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(sampleRate * numChannels * bitsPerSample / 8, 28);
-  header.writeUInt16LE(numChannels * bitsPerSample / 8, 32);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
   header.writeUInt16LE(bitsPerSample, 34);
   header.write('data', 36);
   header.writeUInt32LE(dataSize, 40);
-
   return Buffer.concat([header, pcmData]);
 }
 
 function filterHallucinations(text) {
   if (!text) return '';
-  const junk = [
-    /thank you for watching/gi, /please subscribe/gi,
-    /подписывайтесь/gi, /thanks for watching/gi,
-    /(nah[,.\s]*){3,}/gi,
-  ];
+  text = text.replace(/(,?\s*verse\s+\d+){3,}.*/gi, '');
+  text = text.replace(/(,?\s*chapter\s+\d+,?\s*verse\s+\d+){2,}.*/gi, '');
+  const junk = [/thank you for watching/gi, /please subscribe/gi, /подписывайтесь/gi, /thanks for watching/gi, /(nah[,.\s]*){3,}/gi];
   let c = text;
   for (const p of junk) c = c.replace(p, '');
   c = c.replace(/(\b\d+[,.\s]*){6,}/g, '');
