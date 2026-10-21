@@ -64,6 +64,7 @@
     .queue-item:hover { border-color: var(--accent); }
     .queue-item.selected { border-color: var(--accent); background: rgba(233,69,96,0.07); }
     .queue-item.implicit { border-left: 3px solid #F39C12; }
+    .queue-item.unverified { border-left: 3px solid #E74C3C; }
     .queue-item .q-ref { font-size: 0.72rem; color: var(--accent); font-weight: bold; }
     .queue-item .q-trans { font-size: 0.65rem; color: #666; margin-left: 6px; }
     .queue-item .q-text { font-size: 0.8rem; color: var(--text); margin-top: 3px; line-height: 1.4; }
@@ -250,7 +251,7 @@ async function loadTranslations() {
     var list = await (await fetch('/api/translations')).json();
     var sel = document.getElementById('translationSelect');
     sel.innerHTML = '';
-    var groups = { local: 'Stored on this computer', apibible: 'Licensed (API.Bible)' };
+    var groups = { local: 'Stored on this computer', apibible: 'Licensed (API.Bible)', ai: 'AI beta — cross-checked' };
     Object.keys(groups).forEach(function(provider) {
       var og = document.createElement('optgroup');
       og.label = groups[provider];
@@ -401,7 +402,8 @@ function renderQueue() {
       (item.source === 'parser' ? 'Parser' : 'Claude') + ' · ' + Math.round((item.confidence||0)*100) + '%';
     if (item.fallback) meta += ' · ' + item.requestedTranslation + ' unavailable (' + (item.fallbackReason || 'no text') + '), showing KJV';
     if (item.copyright) meta += ' · ' + item.copyright;
-    return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + '" onclick="selectItem(' + i + ')">' +
+    if (item.note) meta += ' · ' + item.note;
+    return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + (item.verification==='unverified'?' unverified':'') + '" onclick="selectItem(' + i + ')">' +
       '<div class="q-ref">' + escapeHTML(item.reference) + ' <span class="q-trans">' + escapeHTML(item.translation) + '</span></div>' +
       '<div class="q-text">' + escapeHTML(item.text.slice(0,180)) + (item.text.length>180?'...':'') + '</div>' +
       '<div class="q-meta">' + escapeHTML(meta) + '</div></div>';
@@ -473,9 +475,11 @@ async function handleDetection(detection) {
   if (detection.type === 'explicit' && detection.verseData) {
     var v = detection.verseData;
     appendTranscription(v.reference, true);
-    var item = { reference: v.reference, translation: v.translation, text: v.text, confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source || v.source, fallback: v.fallback, requestedTranslation: v.requestedTranslation, fallbackReason: v.fallbackReason, copyright: v.copyright };
+    var item = Object.assign({}, v, { confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source || v.source, textSource: v.source });
     addToQueue(item);
-    if (autoPush && (item.confidence || 0) >= 0.9) await pushVerse(item);
+    // Unconfirmed AI wording waits for the operator to read it first
+    if (item.verification === 'unverified') appendTranscription('[ ' + v.reference + ' ' + v.translation + ': AI wording unconfirmed — check before pushing ]', false, false, true);
+    else if (autoPush && (item.confidence || 0) >= 0.9) await pushVerse(item);
   }
 
   if (detection.type === 'implicit' && detection.candidates && detection.candidates.length > 0) {

@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const apiBible = require('./apiBible');
+const aiVerse = require('./aiVerse');
 
 const DB_PATH = path.join(__dirname, '../db/bible.db');
 let db;
@@ -78,10 +79,13 @@ async function listTranslations() {
   }
   const remote = new Set(await apiBible.availableCodes());
   const st = apiBible.status();
+  const ai = aiVerse.isAvailable();
   for (const [code, name] of Object.entries(LICENSED_NAMES)) {
-    const available = remote.has(code);
-    out.push({ code, name, provider: 'apibible', available,
-      reason: available ? null : !st.configured ? 'Needs an API.Bible key (APIBIBLE_KEY)' : (st.error || 'Not included in your API.Bible plan') });
+    // Licensed text when the API.Bible plan has it, otherwise the AI beta path
+    if (remote.has(code)) out.push({ code, name, provider: 'apibible', available: true, reason: null });
+    else if (ai) out.push({ code, name, provider: 'ai', available: true, reason: 'AI beta — wording cross-checked, not licensed text' });
+    else out.push({ code, name, provider: 'apibible', available: false,
+      reason: !st.configured ? 'Needs GEMINI_API_KEY / GROQ_API_KEY (beta) or an API.Bible key' : (st.error || 'Not included in your API.Bible plan') });
   }
   for (const code of remote) {
     if (!LOCAL_TRANSLATIONS[code] && !LICENSED_NAMES[code]) out.push({ code, name: code, provider: 'apibible', available: true, reason: null });
@@ -103,8 +107,28 @@ function localVerse(book, chapter, verse, translation) {
     book: row.book,
     chapter: row.chapter,
     verse: row.verse,
-    source: row.source || 'local'
+    source: row.source || 'local',
+    ...(AI_NOTES[row.source] ? { verification: row.source.replace('ai_', ''), note: AI_NOTES[row.source] } : {})
   };
+}
+
+const AI_NOTES = {
+  ai_verified: 'AI beta · matched by 2+ providers (saved)',
+  ai_grounded: 'AI beta · web-searched (saved)',
+};
+
+// Confirmed AI answers are saved so the verse is instant and works offline
+// next time. Unverified answers are never saved.
+function saveAiVerse(v) {
+  if (v.verification !== 'verified' && v.verification !== 'grounded') return;
+  try {
+    const db = getDb();
+    db.prepare(`DELETE FROM verses WHERE translation = ? AND book = ? AND chapter = ? AND verse = ?`).run(v.translation, v.book, v.chapter, v.verse);
+    db.prepare(`INSERT INTO verses (translation, book, book_num, chapter, verse, text, source) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(v.translation, v.book, getBookNum(v.book), v.chapter, v.verse, v.text, 'ai_' + v.verification);
+  } catch (err) {
+    console.error('[Bible] Could not save AI verse:', err.message);
+  }
 }
 
 // ── Get verse — real text only: local DB, then API.Bible, then KJV with the reason ──
@@ -123,6 +147,13 @@ async function getVerse(book, chapter, verse, translation = 'KJV') {
     const remote = await apiBible.getVerse(getBookNum(book), book, chapter, verse, translation);
     if (!remote.error) return remote;
     reason = remote.error;
+
+    if (aiVerse.isAvailable()) {
+      const kjvRow = localVerse(book, chapter, verse, 'KJV');
+      const ai = await aiVerse.getVerse(book, chapter, verse, translation, kjvRow && kjvRow.text);
+      if (!ai.error) { saveAiVerse(ai); return ai; }
+      reason = ai.error;
+    }
   }
 
   if (translation === 'KJV') return null;

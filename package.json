@@ -7,7 +7,8 @@
     "start": "node server.js",
     "seed": "node db/seeds/seedBible.js",
     "test": "node --test test/*.test.js",
-    "check:apibible": "node scripts/check-apibible.js"
+    "check:apibible": "node scripts/check-apibible.js",
+    "prefetch": "node scripts/prefetch.js"
   },
   "keywords": [],
   "author": "",
