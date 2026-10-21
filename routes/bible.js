@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getVerse } = require('../services/bibleDb');
+const { getVerse, listTranslations } = require('../services/bibleDb');
 const { validateReference, normaliseBook } = require('../services/validation');
 
 router.get('/verse', async (req, res) => {
@@ -30,6 +30,10 @@ router.get('/verse', async (req, res) => {
   }
 
   res.json(result);
+});
+
+router.get('/translations', async (req, res) => {
+  res.json(await listTranslations());
 });
 
 module.exports = router;

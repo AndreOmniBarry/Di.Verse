@@ -110,6 +110,10 @@ const TRANSLATION_MAP = {
   'hcsb':'HCSB','holman':'HCSB',
   'asv':'ASV','american standard':'ASV',
   'web':'WEB','world english':'WEB',
+  'ylt':'YLT',"young's literal":'YLT','youngs literal':'YLT','young literal':'YLT',
+  'bbe':'BBE','basic english':'BBE','bible in basic english':'BBE',
+  'american standard version':'ASV',
+  'nrsv':'NRSV','new revised standard':'NRSV','rsv':'RSV','revised standard':'RSV',
 };
 
 const NUMBER_WORDS = {

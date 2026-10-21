@@ -74,27 +74,6 @@ JSON SCHEMA — always return exactly this structure:
   "raw_quote": string
 }`;
 
-// ── System prompt for verse fetching ──
-const VERSE_SYSTEM = `You are a Bible verse provider for Di.Verse, a church display system.
-When given a scripture reference and translation, return the exact verse text.
-
-RULES:
-- Return ONLY valid JSON. No prose. No markdown. No explanation.
-- Return the verse text as accurately as possible from your training knowledge.
-- If you are not confident in the exact wording, return your best accurate rendering and
-  set confidence to "approximate".
-- Never fabricate a verse that does not exist in the Bible.
-- Support ALL Bible translations including KJV, NKJV, AMP, AMPC, TPT, MSG, GNT, TLB, NIV, ESV,
-  NLT, NASB, CSB, CEV, NCV, HCSB, ASV, WEB, YLT, DARBY, RSV, NRSV and any other translation requested.
-
-JSON SCHEMA:
-{
-  "text": string,
-  "reference": string,
-  "translation": string,
-  "confidence": "exact" | "approximate"
-}`;
-
 // ── Detect scripture from transcription ──
 async function detectScripture(transcriptionChunk, recentContext = '', activeTranslation = 'KJV') {
   // Pre-filter: skip Claude call entirely on obviously garbled input — saves time and avoids false positives
@@ -150,38 +129,4 @@ function isGarbledText(text) {
   return false;
 }
 
-// ── Fetch verse text in any translation ──
-async function fetchVerse(book, chapter, verse, translation = 'KJV') {
-  try {
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 512,
-      system: VERSE_SYSTEM,
-      messages: [{
-        role: 'user',
-        content: `Provide the exact text of ${book} ${chapter}:${verse} in the ${translation} translation.
-Return JSON only.`
-      }]
-    });
-
-    const data = extractJSON(response.content[0].text);
-    if (!data.text) throw new Error('Model returned no verse text');
-
-    return {
-      reference: `${book} ${chapter}:${verse}`,
-      translation,
-      text: data.text,
-      book,
-      chapter,
-      verse,
-      source: 'claude',
-      confidence: data.confidence || 'approximate'
-    };
-
-  } catch (err) {
-    console.error('[Claude Verse Fetch Error]', err.message);
-    return null;
-  }
-}
-
-module.exports = { detectScripture, fetchVerse };
+module.exports = { detectScripture };

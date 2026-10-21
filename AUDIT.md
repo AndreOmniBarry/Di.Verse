@@ -82,9 +82,7 @@ Cost guide: `whisper-1` is billed per minute of audio. Silence is no longer sent
 
 ## 4. Blockers left before a *commercial* test
 
-1. **Non-KJV translations (decision needed).** NKJV, NIV, ESV, AMP, TPT, MSG, NLT and others are copyrighted. Today Claude recalls them from memory, which risks (a) wording that isn't exact, shown to a congregation as scripture, and (b) licensing problems for a paid product. Options:
-   - **For the 3-day test (recommended):** ship KJV plus public-domain translations loaded into SQLite like KJV (ASV, WEB, YLT and Darby have public-domain texts available). Grey out the others in the dropdown or label them "beta, AI-recalled".
-   - **Before charging money:** licensed access through a Bible text API (for example API.Bible) or a direct publisher licence for the translations churches ask for.
+1. **Translations: done (see §7).** No AI-generated scripture anywhere. Four translations are stored locally, and licensed ones come through API.Bible once you add a key and plan. TPT needs its own arrangement.
 2. **Real-room accuracy.** The speech threshold (`SPEECH_RMS` in the worklet) is tuned for a laptop mic. Test with the church's mixer feed and adjust if the meter never shows SPEECH or never shows silence.
 3. **Verse ranges** ("John 3:16 to 18") aren't supported. Only the first verse shows.
 4. **Run on the target machine:** `npm ci` on the Mac (`better-sqlite3` is a native module), then `npm run seed` once (needs internet), then `npm start`.
@@ -97,10 +95,10 @@ Cost guide: `whisper-1` is billed per minute of audio. Silence is no longer sent
 - [ ] Fix OpenAI and Anthropic credit/keys (§3); `node test-whisper.js` passes
 - [ ] `npm ci && npm run seed && npm test` on the Mac
 - [ ] Read a 10-minute recorded sermon through speakers into the mic. Note every missed or wrong reference and tune `SPEECH_RMS`, `PAUSE_SECONDS`.
-- [ ] Decide the translation policy (§4.1)
+- [ ] Get an API.Bible key; run `npm run check:apibible` and note which translations it unlocks (§7)
 
 **Day 2: translations and content**
-- [ ] Load the chosen public-domain translations into `bible.db` (same seed pattern as KJV); restrict the dropdown to what's actually available
+- [ ] Pick the API.Bible plan that covers the translations the test church uses (NKJV/AMP/NIV…); email BroadStreet if TPT is a must
 - [ ] Load the test church's worship set into Admin
 - [ ] Projector run on the real second screen: lower-third and full-screen, every theme, font +/-
 
@@ -120,3 +118,29 @@ Cost guide: `whisper-1` is billed per minute of audio. Silence is no longer sent
 - `routes/transcribe.js`: PCM → WAV → OpenAI transcription
 - `public/worklets/pcm-processor.js`: mic capture, 16 kHz, pause-based chunking
 - `test/`: `npm test`
+
+---
+
+## 7. Translations: how they work now
+
+**Principle:** only real, published text reaches the screen. The old code asked Claude to recall NKJV/AMP/TPT from memory and cached the result. That code is gone, and any cached AI verses are deleted automatically on startup and on seed.
+
+| Source | Translations | Cost / legal status | Setup |
+|---|---|---|---|
+| Stored in `bible.db` | **KJV, ASV, YLT, BBE** (all 31,102 verses; ASV/BBE leave out 16 verses such as Acts 8:37 that aren't in their source text) | Public domain, free, works offline | `npm run seed` |
+| API.Bible (American Bible Society) | NKJV, AMP, NIV, ESV, NLT, MSG, CSB, NASB, GNT, CEV and more, whatever your plan unlocks | Licensed. The free Starter plan is **non-commercial only**. Selling Di.Verse needs a paid plan (Pro was listed from $29/month). Some translations need a separate publisher licence. | `APIBIBLE_KEY` in `.env`, then `npm run check:apibible` |
+| The Passion Translation (TPT) | — | Copyright BroadStreet Publishing. Not confirmed on API.Bible. Bible Gateway dropped it in 2022. Their published guideline allows projection in worship with "TPT" after each quote, but **software use needs written permission** via their permissions form. | Request a licence; once you have a data source, add it as a provider |
+
+**Why not pull TPT/NKJV from public websites?** Free-to-read is not public domain. Sites like Bible Gateway and YouVersion show these texts under licences that cover their own sites only. Copying them into a product you sell to churches is copyright infringement and breaks those sites' terms. The likely outcome is a takedown or legal letter just as you start selling, so I didn't build that path.
+
+**How a verse is resolved** (`services/bibleDb.js → getVerse`):
+1. Stored translation → instant, offline.
+2. Licensed translation → API.Bible. Results are kept in memory only, never written to disk, because licensed text shouldn't be stored.
+3. Not possible → KJV is shown, and the operator queue says exactly why (no key, not in plan, verse not in that translation, no internet).
+
+The operator dropdown is built from `GET /api/translations`. Available translations can be picked. Unavailable ones are greyed out with the reason on hover. A spoken request for an unavailable translation ("in the NKJV") raises an alert instead of silently switching.
+
+**Verify on Day 1 with your key** (the sandbox I built this in can't reach API.Bible, so this part has only been tested against a mocked API):
+- `npm run check:apibible` lists your Bibles, then fetches John 3:16 through Di.Verse.
+- If a translation shows up under a different abbreviation, pin it with `APIBIBLE_IDS`.
+- Read API.Bible's terms for your plan on (a) copyright display and (b) "FUMS" usage reporting. The verse response's `fumsId` is already passed through to the operator, ready to wire into the reporting script those terms specify.
