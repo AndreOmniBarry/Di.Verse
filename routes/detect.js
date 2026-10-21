@@ -15,9 +15,8 @@ router.post('/detect', async (req, res) => {
 
     if (parsed) {
       // Translation-only change
+      // The operator handles this from the response; a WebSocket copy as well alerted twice
       if (parsed.translationOnly) {
-        const { alertOperator } = req.app.locals;
-        alertOperator({ action: 'TRANSLATION_CHANGE', translation: parsed.translation });
         return res.json({ type: 'translation_change', new_translation: parsed.translation, confidence: parsed.confidence });
       }
 
@@ -67,11 +66,6 @@ router.post('/detect', async (req, res) => {
 
       const verseData = await getVerse(validation.normalised || book, parseInt(chapter), parseInt(verse), usedTranslation);
       if (verseData) detection.verseData = verseData;
-    }
-
-    if (detection.type === 'translation_change' && detection.new_translation) {
-      const { alertOperator } = req.app.locals;
-      alertOperator({ action: 'TRANSLATION_CHANGE', translation: detection.new_translation });
     }
 
     return res.json(detection);

@@ -97,24 +97,8 @@
     <span class="api-status ok" id="apiStatus">API: ok</span>
     <div class="status-dot" id="dot"></div>
     <span class="listening-label" id="listenLabel">Not listening</span>
-    <select id="translationSelect">
-      <optgroup label="── Primary ──">
-        <option value="KJV">KJV</option><option value="NKJV">NKJV</option>
-        <option value="AMP">AMP</option><option value="AMPC">AMPC</option>
-        <option value="TPT">TPT</option><option value="MSG">MSG</option>
-        <option value="GNT">GNT</option><option value="TLB">TLB</option>
-      </optgroup>
-      <optgroup label="── Popular ──">
-        <option value="NIV">NIV</option><option value="ESV">ESV</option>
-        <option value="NLT">NLT</option><option value="NASB">NASB</option>
-        <option value="CSB">CSB</option><option value="CEV">CEV</option>
-        <option value="NCV">NCV</option><option value="HCSB">HCSB</option>
-      </optgroup>
-      <optgroup label="── Study ──">
-        <option value="ASV">ASV</option><option value="WEB">WEB</option>
-        <option value="YLT">YLT</option><option value="DARBY">DARBY</option>
-        <option value="RSV">RSV</option><option value="NRSV">NRSV</option>
-      </optgroup>
+    <select id="translationSelect" title="Translations you have. Greyed ones need a licence — hover for why.">
+      <option value="KJV">KJV</option>
     </select>
     <select id="themeSelect" onchange="applyTheme(this.value)">
       <option value="dark-navy">Dark Navy</option>
@@ -238,11 +222,7 @@ function connectWS() {
   ws.onmessage = function(e) {
     var msg = JSON.parse(e.data);
     if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message);
-    if (msg.action === 'TRANSLATION_CHANGE') {
-      activeTranslation = msg.translation;
-      document.getElementById('translationSelect').value = msg.translation;
-      appendTranscription('[ Translation: ' + msg.translation + ' ]', false, true);
-    }
+    if (msg.action === 'TRANSLATION_CHANGE') setTranslation(msg.translation, true);
   };
   ws.onclose = function() {
     document.getElementById('wsStatus').textContent = 'WS: down';
@@ -261,9 +241,53 @@ function broadcast(payload) {
   });
 }
 
+// ===== Translations =====
+// Built from /api/translations so the list only offers what really works
+var translations = {};
+
+async function loadTranslations() {
+  try {
+    var list = await (await fetch('/api/translations')).json();
+    var sel = document.getElementById('translationSelect');
+    sel.innerHTML = '';
+    var groups = { local: 'Stored on this computer', apibible: 'Licensed (API.Bible)' };
+    Object.keys(groups).forEach(function(provider) {
+      var og = document.createElement('optgroup');
+      og.label = groups[provider];
+      list.filter(function(t) { return t.provider === provider; })
+        .sort(function(a, b) { return (b.available - a.available) || a.code.localeCompare(b.code); })
+        .forEach(function(t) {
+          translations[t.code] = t;
+          var o = document.createElement('option');
+          o.value = t.code;
+          o.textContent = t.code + (t.available ? '' : ' (unavailable)');
+          o.title = t.name + (t.reason ? ' — ' + t.reason : '');
+          o.disabled = !t.available;
+          og.appendChild(o);
+        });
+      if (og.children.length) sel.appendChild(og);
+    });
+    sel.value = translations[activeTranslation] && translations[activeTranslation].available ? activeTranslation : 'KJV';
+    activeTranslation = sel.value;
+  } catch (e) { showAlert('Could not load translation list.'); }
+}
+
+// Spoken requests ("in the Amplified") land here too
+function setTranslation(code, fromSpeech) {
+  var t = translations[code];
+  if (t && !t.available) {
+    showAlert(code + ' requested but unavailable: ' + t.reason + '. Staying on ' + activeTranslation + '.');
+    return;
+  }
+  activeTranslation = code;
+  document.getElementById('translationSelect').value = code;
+  if (fromSpeech) appendTranscription('[ Translation: ' + code + ' ]', false, true);
+}
+
 document.getElementById('translationSelect').addEventListener('change', function(e) {
-  activeTranslation = e.target.value;
+  setTranslation(e.target.value, false);
 });
+loadTranslations();
 
 function toggleMode() {
   displayMode = displayMode === 'lower-third' ? 'full-screen' : 'lower-third';
@@ -285,7 +309,7 @@ async function manualSearch() {
     var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + '&translation=' + activeTranslation);
     var data = await res.json();
     if (!res.ok) { showAlert(data.error); return; }
-    if (data.fallback) showAlert(data.requestedTranslation + ' text unavailable — showing KJV instead.');
+    if (data.fallback) showAlert(data.requestedTranslation + ' unavailable: ' + data.fallbackReason + ' — showing KJV instead.');
     addToQueue(Object.assign({}, data, { confidence: 1.0, type: 'manual' }));
   } catch (err) { showAlert('Could not reach server.'); }
 }
@@ -375,8 +399,8 @@ function renderQueue() {
     var meta = item.type === 'manual' ? 'Manual' :
       item.type === 'implicit' ? 'Implicit — confirm before pushing' :
       (item.source === 'parser' ? 'Parser' : 'Claude') + ' · ' + Math.round((item.confidence||0)*100) + '%';
-    if (item.source === 'claude' || item.source === 'claude_cache') meta += ' · AI-recalled text — check wording';
-    if (item.fallback) meta += ' · ' + item.requestedTranslation + ' unavailable, showing KJV';
+    if (item.fallback) meta += ' · ' + item.requestedTranslation + ' unavailable (' + (item.fallbackReason || 'no text') + '), showing KJV';
+    if (item.copyright) meta += ' · ' + item.copyright;
     return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + '" onclick="selectItem(' + i + ')">' +
       '<div class="q-ref">' + escapeHTML(item.reference) + ' <span class="q-trans">' + escapeHTML(item.translation) + '</span></div>' +
       '<div class="q-text">' + escapeHTML(item.text.slice(0,180)) + (item.text.length>180?'...':'') + '</div>' +
@@ -449,7 +473,7 @@ async function handleDetection(detection) {
   if (detection.type === 'explicit' && detection.verseData) {
     var v = detection.verseData;
     appendTranscription(v.reference, true);
-    var item = { reference: v.reference, translation: v.translation, text: v.text, confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source || v.source, fallback: v.fallback, requestedTranslation: v.requestedTranslation };
+    var item = { reference: v.reference, translation: v.translation, text: v.text, confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source || v.source, fallback: v.fallback, requestedTranslation: v.requestedTranslation, fallbackReason: v.fallbackReason, copyright: v.copyright };
     addToQueue(item);
     if (autoPush && (item.confidence || 0) >= 0.9) await pushVerse(item);
   }
@@ -461,17 +485,13 @@ async function handleDetection(detection) {
         var res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
         if (res.ok) {
           var vd = await res.json();
-          addToQueue({ reference: vd.reference, translation: vd.translation, text: vd.text, confidence: c.confidence || 0.65, type: 'implicit', source: vd.source });
+          addToQueue(Object.assign({}, vd, { confidence: c.confidence || 0.65, type: 'implicit' }));
         }
       } catch(e) {}
     }
   }
 
-  if (detection.type === 'translation_change' && detection.new_translation) {
-    activeTranslation = detection.new_translation;
-    document.getElementById('translationSelect').value = detection.new_translation;
-    appendTranscription('[ Translation: ' + detection.new_translation + ' ]', false, true);
-  }
+  if (detection.type === 'translation_change' && detection.new_translation) setTranslation(detection.new_translation, true);
 
   if (detection.type === 'validation_error') showAlert(detection.message);
 }
