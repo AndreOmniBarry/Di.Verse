@@ -3,6 +3,25 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Pull the JSON object out of a reply even if the model wrapped it in prose
+function extractJSON(raw) {
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end <= start) throw new Error('No JSON in model reply: ' + raw.slice(0, 120));
+  return JSON.parse(raw.slice(start, end + 1));
+}
+
+// Operator-facing reason for a failed Claude call (the old code logged it and
+// returned "none", so a dead key looked exactly like "no verse spoken")
+function describeError(err) {
+  if (err instanceof Anthropic.AuthenticationError) return 'Anthropic API key is invalid or revoked — update ANTHROPIC_API_KEY in .env';
+  if (err instanceof Anthropic.PermissionDeniedError) return 'Anthropic API key lacks permission for this model';
+  if (err instanceof Anthropic.RateLimitError) return 'Anthropic rate limit or spend limit reached — check console.anthropic.com billing';
+  if (err instanceof Anthropic.APIConnectionError) return 'Cannot reach Anthropic — check internet connection';
+  if (err instanceof Anthropic.APIError) return 'Anthropic error ' + err.status + ': ' + err.message;
+  return err.message;
+}
+
 // ── System prompt for scripture detection ──
 const DETECTION_SYSTEM = `You are Di.Verse, a scripture detection engine inside a live church service.
 Analyse sermon transcription text and detect ONLY these things:
@@ -98,9 +117,7 @@ Analyse and return JSON only.`
       }]
     });
 
-    const raw = response.content[0].text.trim();
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+    const parsed = extractJSON(response.content[0].text);
 
     // Safety net: discard explicit detections with suspiciously low confidence
     if (parsed.type === 'explicit' && (parsed.confidence || 0) < 0.7) {
@@ -111,7 +128,7 @@ Analyse and return JSON only.`
 
   } catch (err) {
     console.error('[Claude Detection Error]', err.message);
-    return { type: 'none' };
+    return { type: 'none', error: describeError(err) };
   }
 }
 
@@ -147,9 +164,8 @@ Return JSON only.`
       }]
     });
 
-    const raw = response.content[0].text.trim();
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const data = JSON.parse(clean);
+    const data = extractJSON(response.content[0].text);
+    if (!data.text) throw new Error('Model returned no verse text');
 
     return {
       reference: `${book} ${chapter}:${verse}`,

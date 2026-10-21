@@ -1,4 +1,5 @@
 const { getDb } = require('./bibleDb');
+const { resolveBook } = require('./parser');
 
 // Normalise book name — handles lowercase, shorthand, common variations
 function normaliseBook(input) {
@@ -27,40 +28,17 @@ function normaliseBook(input) {
     '3jo':'3 John','jud':'Jude','rev':'Revelation',
   };
 
-  const lower = input.toLowerCase().trim();
+  if (!input) return null;
+  const lower = String(input).toLowerCase().trim();
 
   // Try direct shorthand match
   if (map[lower]) return map[lower];
 
-  // Try first 3 chars
-  if (map[lower.slice(0,3)]) return map[lower.slice(0,3)];
-
-  // Try title case match against full book names
-  const titleCase = lower.charAt(0).toUpperCase() + lower.slice(1);
-  const fullNames = [
-    'Genesis','Exodus','Leviticus','Numbers','Deuteronomy','Joshua',
-    'Judges','Ruth','1 Samuel','2 Samuel','1 Kings','2 Kings',
-    '1 Chronicles','2 Chronicles','Ezra','Nehemiah','Esther','Job',
-    'Psalms','Proverbs','Ecclesiastes','Song of Solomon','Isaiah',
-    'Jeremiah','Lamentations','Ezekiel','Daniel','Hosea','Joel',
-    'Amos','Obadiah','Jonah','Micah','Nahum','Habakkuk','Zephaniah',
-    'Haggai','Zechariah','Malachi','Matthew','Mark','Luke','John',
-    'Acts','Romans','1 Corinthians','2 Corinthians','Galatians',
-    'Ephesians','Philippians','Colossians','1 Thessalonians',
-    '2 Thessalonians','1 Timothy','2 Timothy','Titus','Philemon',
-    'Hebrews','James','1 Peter','2 Peter','1 John','2 John',
-    '3 John','Jude','Revelation'
-  ];
-
-  // Case-insensitive full match
-  const match = fullNames.find(n => n.toLowerCase() === lower);
-  if (match) return match;
-
-  // Starts-with match for partial input
-  const startMatch = fullNames.find(n => n.toLowerCase().startsWith(lower));
-  if (startMatch) return startMatch;
-
-  return null; // Not found
+  // Full names, spoken forms ("first corinthians", "psalm") and unique
+  // prefixes. No first-3-letters guess: "Judges" is not "Jude" and
+  // "Philemon" is not "Philippians".
+  const book = resolveBook(lower);
+  return book ? book.name : null;
 }
 
 function validateReference(rawBook, chapter, verse) {

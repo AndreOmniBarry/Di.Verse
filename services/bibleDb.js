@@ -75,7 +75,8 @@ async function getVerse(book, chapter, verse, translation = 'KJV') {
   // 3. Final fallback — return KJV if available
   if (translation !== 'KJV') {
     console.log(`[Bible] Claude fetch failed — falling back to KJV`);
-    return getVerse(book, chapter, verse, 'KJV');
+    const kjv = await getVerse(book, chapter, verse, 'KJV');
+    return kjv && Object.assign(kjv, { requestedTranslation: translation, fallback: true });
   }
 
   return null;

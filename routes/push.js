@@ -5,7 +5,8 @@ router.post('/push', (req, res) => {
   const { action, verse, lyrics } = req.body;
   const { broadcast } = req.app.locals;
   if (!action) return res.status(400).json({ error: 'action is required' });
-  broadcast({ action, verse, lyrics });
+  // Forward the whole payload — theme, fontSize and delta ride alongside verse/lyrics
+  broadcast(req.body);
   console.log(`[PUSH] ${action}`, verse?.reference || lyrics?.songTitle || '');
   res.json({ ok: true });
 });

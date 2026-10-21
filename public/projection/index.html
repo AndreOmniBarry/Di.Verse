@@ -128,7 +128,7 @@
   }
 
   function connect() {
-    var ws = new WebSocket('ws://' + location.host + '?type=projection');
+    var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '?type=projection');
     ws.onopen = function() {
       clearTimeout(reconnectTimer);
       document.getElementById('reconnect').style.display = 'none';

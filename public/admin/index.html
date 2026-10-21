@@ -477,14 +477,13 @@
         songId = data.id;
       }
 
-      // Add slides
-      for (const slide of collectedSlides) {
-        await fetch(`/api/songs/${songId}/slides`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(slide)
-        });
-      }
+      // Replace details + slides in one call (re-posting each slide duplicated them on every save)
+      const res = await fetch(`/api/songs/${songId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title_, artist, language, tags, slides: collectedSlides })
+      });
+      if (!res.ok) throw new Error('save failed');
 
       showToast(isNewSong ? 'Song created!' : 'Changes saved!');
       await loadSongs(document.getElementById('searchInput').value);
