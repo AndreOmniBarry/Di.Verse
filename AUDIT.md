@@ -129,7 +129,25 @@ Cost guide: `whisper-1` is billed per minute of audio. Silence is no longer sent
 |---|---|---|---|
 | Stored in `bible.db` | **KJV, ASV, YLT, BBE** (all 31,102 verses; ASV/BBE leave out 16 verses such as Acts 8:37 that aren't in their source text) | Public domain, free, works offline | `npm run seed` |
 | API.Bible (American Bible Society) | NKJV, AMP, NIV, ESV, NLT, MSG, CSB, NASB, GNT, CEV and more, whatever your plan unlocks | Licensed. The free Starter plan is **non-commercial only**. Selling Di.Verse needs a paid plan (Pro was listed from $29/month). Some translations need a separate publisher licence. | `APIBIBLE_KEY` in `.env`, then `npm run check:apibible` |
+| **AI beta (proof-of-concept)** | Any translation not covered above: TPT, NKJV, AMP, MSG… | For beta/demo only. Swap for licensed text before charging customers. | `GEMINI_API_KEY` and/or `GROQ_API_KEY` (both free tiers), plus your existing `ANTHROPIC_API_KEY` |
 | The Passion Translation (TPT) | — | Copyright BroadStreet Publishing. Not confirmed on API.Bible. Bible Gateway dropped it in 2022. Their published guideline allows projection in worship with "TPT" after each quote, but **software use needs written permission** via their permissions form. | Request a licence; once you have a data source, add it as a provider |
+
+**AI beta path** (`services/aiVerse.js`): when no licensed text exists, Di.Verse asks every configured provider at once and compares the answers word by word:
+- **Gemini** runs with Google Search grounding, so it looks the verse up instead of recalling it. Grounding is only counted when the response shows a search actually ran. Free-tier grounding limits vary by model, so check Google's pricing page.
+- **Groq** uses `groq/compound` when your key has it (built-in web search), otherwise a large general model.
+- **Claude** recalls it, as a third opinion.
+
+| Result | Meaning | What happens |
+|---|---|---|
+| **verified** | Two or more providers returned the same wording | Can auto-push; saved to `bible.db`, so it's instant and works offline next time |
+| **grounded** | One provider, web-searched, and nobody disagreed | Can auto-push; saved |
+| **unverified** | Single recall, *or providers disagreed* | Red-edged in the queue with "check wording"; **never auto-pushed, never saved** |
+
+Resilience: providers run in parallel, each with a 15-second timeout. A provider that returns 401/403/429 is skipped for a minute and the others carry on. Model names are discovered from each API (newest Gemini flash, Groq compound) unless pinned in `.env`. Answers that aren't a single verse (much longer or shorter than the KJV verse) are thrown away. If everything fails, KJV is shown with the reason.
+
+**Before each service:** `npm run prefetch -- TPT "John 3:16; Romans 8:28-30"` loads the sermon's verses in advance and lists any you should check by eye.
+
+**Tested:** 8 unit tests with Gemini, Groq and Claude simulated, plus a browser run against a server with simulated providers: verified John 3:16 TPT was auto-pushed and saved, and a verse the providers disagreed on stayed in the queue unpushed. **Not tested:** the real Gemini and Groq services, which this sandbox can't reach. Run `npm run prefetch -- TPT "John 3:16"` with your keys as the first check.
 
 **Why not pull TPT/NKJV from public websites?** Free-to-read is not public domain. Sites like Bible Gateway and YouVersion show these texts under licences that cover their own sites only. Copying them into a product you sell to churches is copyright infringement and breaks those sites' terms. The likely outcome is a takedown or legal letter just as you start selling, so I didn't build that path.
 

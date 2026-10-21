@@ -8,6 +8,7 @@ const path = require('path');
 require('dotenv').config({ quiet: true });
 delete process.env.APIBIBLE_KEY;
 delete process.env.APIBIBLE_IDS;
+for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_MODEL', 'GROQ_MODEL']) delete process.env[k];
 
 const seeded = fs.existsSync(path.join(__dirname, '../db/bible.db'));
 const apiBible = require('../services/apiBible');
