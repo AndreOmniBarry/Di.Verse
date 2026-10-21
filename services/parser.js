@@ -131,6 +131,49 @@ function wordToNum(str) {
   return null;
 }
 
+// Cardinal number words only — ordinals (first/second/third) stay as words so
+// book names like "First Corinthians" still resolve.
+const CARDINALS = Object.fromEntries(
+  Object.entries(NUMBER_WORDS).filter(([w]) => !['first', 'second', 'third'].includes(w))
+);
+
+// Rewrites spelled-out numbers as digits: "one hundred and five" -> "105",
+// "twenty three" -> "23". Speech-to-text often spells numbers out, and the
+// reference patterns below only read the first word of a phrase otherwise.
+function normaliseNumbers(text) {
+  const tokens = text.split(/(\s+)/);
+  const out = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const word = tokens[i].toLowerCase().replace(/-/g, ' ');
+    const isNumWord = w => CARDINALS[w] !== undefined || w === 'hundred';
+    if (!isNumWord(word) && !(word === 'a' && (tokens[i + 2] || '').toLowerCase() === 'hundred')) {
+      out.push(tokens[i]); i++; continue;
+    }
+    let total = 0, current = 0, j = i, lastNumIdx = i;
+    while (j < tokens.length) {
+      const w = tokens[j].toLowerCase();
+      if (/^\s+$/.test(tokens[j])) { j++; continue; }
+      if (w === 'a' && j === i) { current = 1; lastNumIdx = j; j++; continue; }
+      if (w === 'hundred') { current = (current || 1) * 100; lastNumIdx = j; j++; continue; }
+      // "and" only joins numbers after "hundred" ("one hundred and five")
+      if (w === 'and' && current >= 100 && CARDINALS[(tokens[j + 2] || '').toLowerCase()] !== undefined) { j++; continue; }
+      if (CARDINALS[w] !== undefined) {
+        const n = CARDINALS[w];
+        // "twenty three" combines; "three sixteen" is two separate numbers
+        if (current % 100 !== 0 && !(current % 10 === 0 && current % 100 >= 20 && n < 10)) break;
+        if (current % 100 >= 20 && n >= 10) break;
+        current += n; lastNumIdx = j; j++; continue;
+      }
+      break;
+    }
+    total += current;
+    out.push(String(total));
+    i = lastNumIdx + 1;
+  }
+  return out.join('');
+}
+
 function resolveBook(raw) {
   if (!raw) return null;
   let lower = raw.toLowerCase().trim()
@@ -143,11 +186,23 @@ function resolveBook(raw) {
   if (BOOK_MAP[lower] !== undefined) {
     return { num: BOOK_MAP[lower], name: BOOK_NAMES[BOOK_MAP[lower]] };
   }
-  // Prefix match — minimum 3 chars to avoid false positives
-  for (const [key, num] of Object.entries(BOOK_MAP)) {
-    if (key.length >= 3 && lower.startsWith(key)) {
-      return { num, name: BOOK_NAMES[num] };
-    }
+  // Partial book name, e.g. "revel", "1 corinthian" — the spoken word must be a
+  // prefix of exactly one full book name. Never the reverse: "reverend" must
+  // not resolve to Revelation just because it starts with "rev".
+  if (lower.length >= 3) {
+    const hits = Object.entries(BOOK_NAMES).filter(([, name]) => name.toLowerCase().startsWith(lower));
+    if (hits.length === 1) return { num: Number(hits[0][0]), name: hits[0][1] };
+  }
+  return null;
+}
+
+// The reference patterns capture every word before the numbers ("the gospel of
+// John"), so try the trailing 1-4 words, longest first, to find the book name.
+function resolveBookTail(raw) {
+  const words = raw.trim().split(/\s+/);
+  for (let n = Math.min(4, words.length); n >= 1; n--) {
+    const book = resolveBook(words.slice(-n).join(' '));
+    if (book) return book;
   }
   return null;
 }
@@ -168,8 +223,7 @@ const FILLER = /\b(can we have|give me|let us go to|let's go to|open to|open up 
 function parse(text, fallbackTranslation = 'KJV') {
   if (!text || text.trim().length < 3) return null;
 
-  const clean = text
-    .replace(/[,;!?]/g, ' ')
+  const clean = normaliseNumbers(text.replace(/[,;!?]/g, ' '))
     .replace(/\./g, ' ')
     .replace(FILLER, ' ')
     .replace(/\s+/g, ' ')
@@ -181,7 +235,7 @@ function parse(text, fallbackTranslation = 'KJV') {
   const p1 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(\d+)\s*[:.]\s*(\d+)/gi;
   let m;
   while ((m = p1.exec(clean)) !== null) {
-    const book = resolveBook(m[1].trim());
+    const book = resolveBookTail(m[1]);
     if (!book) continue;
     const chapter = parseInt(m[2]);
     const verse = parseInt(m[3]);
@@ -192,7 +246,7 @@ function parse(text, fallbackTranslation = 'KJV') {
   // Pattern 2: Book chapter verse N  e.g. "John chapter 3 verse 16"
   const p2 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(?:chapter\s+)?(\w+)\s+verse\s+(\w+)/gi;
   while ((m = p2.exec(clean)) !== null) {
-    const book = resolveBook(m[1].trim());
+    const book = resolveBookTail(m[1]);
     if (!book) continue;
     const chapter = wordToNum(m[2]);
     const verse = wordToNum(m[3]);
@@ -203,7 +257,7 @@ function parse(text, fallbackTranslation = 'KJV') {
   // Pattern 3: Book N and N  e.g. "John 3 and 16"
   const p3 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(\d+)\s+and\s+(\d+)\b/gi;
   while ((m = p3.exec(clean)) !== null) {
-    const book = resolveBook(m[1].trim());
+    const book = resolveBookTail(m[1]);
     if (!book) continue;
     const chapter = parseInt(m[2]);
     const verse = parseInt(m[3]);
@@ -214,7 +268,7 @@ function parse(text, fallbackTranslation = 'KJV') {
   // Pattern 4: Book N N  e.g. "John 3 16" (space separated, sanity-checked)
   const p4 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(\d{1,3})\s+(\d{1,3})\b/gi;
   while ((m = p4.exec(clean)) !== null) {
-    const book = resolveBook(m[1].trim());
+    const book = resolveBookTail(m[1]);
     if (!book) continue;
     const chapter = parseInt(m[2]);
     const verse = parseInt(m[3]);
@@ -232,4 +286,4 @@ function parse(text, fallbackTranslation = 'KJV') {
   return null;
 }
 
-module.exports = { parse, detectTranslation, resolveBook };
+module.exports = { parse, detectTranslation, resolveBook, normaliseNumbers };

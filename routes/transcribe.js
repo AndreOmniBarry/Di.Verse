@@ -7,11 +7,33 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Created on first use so a missing key disables transcription instead of
+// crashing the whole server (manual search and projection must keep working).
+let openai = null;
+function getClient() {
+  if (!process.env.OPENAI_API_KEY) return null;
+  if (!openai) openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return openai;
+}
+
+const TRANSCRIBE_MODEL = process.env.TRANSCRIBE_MODEL || 'whisper-1';
+
+// Turn OpenAI failures into something the operator can act on
+function describeError(err) {
+  const code = err.code || (err.error && err.error.code);
+  if (err.status === 401) return { code: 'OPENAI_KEY_INVALID', message: 'OpenAI API key is invalid or revoked — create a new key at platform.openai.com/api-keys and update .env' };
+  if (err.status === 429 && code === 'insufficient_quota') return { code: 'OPENAI_NO_CREDIT', message: 'OpenAI account has no credit — add credit at platform.openai.com/settings/organization/billing' };
+  if (err.status === 429) return { code: 'OPENAI_RATE_LIMIT', message: 'OpenAI rate limit hit — slow down or raise the account tier' };
+  if (err.status === 404) return { code: 'OPENAI_MODEL', message: 'Transcription model "' + TRANSCRIBE_MODEL + '" is not available to this OpenAI account' };
+  if (!err.status) return { code: 'NETWORK', message: 'Cannot reach OpenAI — check internet connection' };
+  return { code: 'OPENAI_ERROR', message: 'OpenAI error ' + err.status + ': ' + err.message };
+}
 
 router.post('/transcribe', async (req, res) => {
   const { audio, sampleRate = 48000 } = req.body;
   if (!audio) return res.status(400).json({ error: 'No audio data' });
+  const client = getClient();
+  if (!client) return res.status(503).json({ code: 'OPENAI_KEY_MISSING', error: 'OPENAI_API_KEY is not set in .env — live transcription is off, manual search still works', text: '' });
 
   let tmpPath = null;
   try {
@@ -31,9 +53,9 @@ router.post('/transcribe', async (req, res) => {
     const fileBuffer = fs.readFileSync(tmpPath);
     const file = await toFile(fileBuffer, 'audio.wav', { type: 'audio/wav' });
 
-    const response = await openai.audio.transcriptions.create({
+    const response = await client.audio.transcriptions.create({
       file,
-      model: 'whisper-1',
+      model: TRANSCRIBE_MODEL,
       response_format: 'text',
       temperature: 0,
       prompt: 'Bible verse, chapter, scripture, sermon, church service.',
@@ -45,8 +67,9 @@ router.post('/transcribe', async (req, res) => {
     res.json({ text: cleaned });
 
   } catch (err) {
+    const info = describeError(err);
     console.error('[Whisper Error]', err.status || '', err.message);
-    res.status(500).json({ error: err.message, text: '' });
+    res.status(502).json({ code: info.code, error: info.message, text: '' });
   } finally {
     if (tmpPath) try { fs.unlinkSync(tmpPath); } catch(e) {}
   }

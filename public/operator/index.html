@@ -39,7 +39,7 @@
     .ws-badge { font-size: 0.58rem; color: var(--mid); background: var(--surface2); padding: 2px 6px; border-radius: 3px; }
     .ws-badge.bad { color: #E74C3C; border: 1px solid #E74C3C; }
     main { display: grid; grid-template-columns: 1fr 340px; overflow: hidden; }
-    .left { display: grid; grid-template-rows: 1fr 160px; border-right: 1px solid var(--surface2); overflow: hidden; }
+    .left { display: grid; grid-template-rows: 1fr 250px; border-right: 1px solid var(--surface2); overflow: hidden; }
     .transcription-panel { padding: 16px; overflow-y: auto; }
     .label { font-size: 0.62rem; letter-spacing: 2px; color: var(--mid); text-transform: uppercase; margin-bottom: 10px; }
     #transcriptionFeed { font-size: 0.88rem; line-height: 1.8; color: #8888AA; }
@@ -80,6 +80,11 @@
     .api-status { font-size: 0.6rem; padding: 2px 6px; border-radius: 3px; }
     .api-status.ok { background: rgba(46,204,113,0.15); color: #2ECC71; }
     .api-status.fail { background: rgba(231,76,60,0.15); color: #E74C3C; animation: pulse 1s infinite; }
+    .songs-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 8px; height: 120px; }
+    .song-list, .slide-list { overflow-y: auto; background: var(--brand); border: 1px solid var(--surface2); border-radius: 4px; padding: 4px; }
+    .song-list div, .slide-list div { font-size: 0.75rem; padding: 5px 6px; border-radius: 3px; cursor: pointer; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .song-list div:hover, .slide-list div:hover { background: var(--surface2); color: var(--white); }
+    .song-list div.active, .slide-list div.active { background: rgba(233,69,96,0.15); color: var(--white); }
     .api-status.offline { background: rgba(243,156,18,0.15); color: #F39C12; }
   </style>
 </head>
@@ -123,6 +128,9 @@
     <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
     <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
     <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
+    <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Push confident explicit references straight to the screen">
+      <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
+    </label>
     <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
     <a href="/about" style="font-size:0.7rem;color:var(--mid);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
   </div>
@@ -149,6 +157,14 @@
         <button class="btn btn-dim" onclick="manualSearch()">Find</button>
       </div>
       <div class="hint">← → = prev/next queue · Space = push · Esc = clear · M = mode · +/- = font</div>
+      <div class="label" style="margin-top:12px;margin-bottom:0;">Songs <span style="text-transform:none;letter-spacing:0;">— click a slide to put it on screen · <a href="/admin" style="color:var(--mid);">manage songs</a></span></div>
+      <div class="songs-row">
+        <div style="display:flex;flex-direction:column;gap:6px;min-height:0;">
+          <input type="text" id="songSearch" placeholder="Search songs..." oninput="searchSongs(this.value)">
+          <div class="song-list" id="songList" style="flex:1;"></div>
+        </div>
+        <div class="slide-list" id="slideList"><div style="color:#445;cursor:default;">Pick a song</div></div>
+      </div>
     </div>
   </div>
 
@@ -189,6 +205,7 @@ var lastHeartbeat = Date.now();
 var currentFontSize = 0; // relative offset in px sent to projection
 var apiFailCount = 0;
 var isOffline = false;
+var autoPush = true;
 
 // ===== Themes =====
 var THEMES = {
@@ -212,7 +229,7 @@ var ws = null;
 var wsReconnectTimer = null;
 
 function connectWS() {
-  ws = new WebSocket('ws://' + location.host + '?type=operator');
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '?type=operator');
   ws.onopen = function() {
     document.getElementById('wsStatus').textContent = 'WS: ok';
     document.getElementById('wsStatus').className = 'ws-badge';
@@ -268,9 +285,73 @@ async function manualSearch() {
     var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + '&translation=' + activeTranslation);
     var data = await res.json();
     if (!res.ok) { showAlert(data.error); return; }
+    if (data.fallback) showAlert(data.requestedTranslation + ' text unavailable — showing KJV instead.');
     addToQueue(Object.assign({}, data, { confidence: 1.0, type: 'manual' }));
   } catch (err) { showAlert('Could not reach server.'); }
 }
+
+// ===== Songs =====
+var activeSong = null, activeSlides = [], activeSlideIdx = -1, songSearchTimer = null;
+
+function searchSongs(q) {
+  clearTimeout(songSearchTimer);
+  songSearchTimer = setTimeout(async function() {
+    try {
+      var res = await fetch('/api/songs/search?q=' + encodeURIComponent(q || ''));
+      var songs = await res.json();
+      var el = document.getElementById('songList');
+      el.innerHTML = '';
+      if (!songs.length) { el.innerHTML = '<div style="color:#445;cursor:default;">No songs — add them in Admin</div>'; return; }
+      songs.forEach(function(song) {
+        var d = document.createElement('div');
+        d.textContent = song.title + (song.artist ? ' — ' + song.artist : '');
+        if (activeSong && activeSong.id === song.id) d.className = 'active';
+        d.onclick = function() { openSong(song); };
+        el.appendChild(d);
+      });
+    } catch (e) { showAlert('Could not load songs.'); }
+  }, 150);
+}
+
+async function openSong(song) {
+  activeSong = song; activeSlideIdx = -1;
+  var res = await fetch('/api/songs/' + song.id + '/slides');
+  activeSlides = await res.json();
+  searchSongs(document.getElementById('songSearch').value);
+  renderSlides();
+}
+
+function renderSlides() {
+  var el = document.getElementById('slideList');
+  el.innerHTML = '';
+  if (!activeSlides.length) { el.innerHTML = '<div style="color:#445;cursor:default;">This song has no slides</div>'; return; }
+  activeSlides.forEach(function(slide, i) {
+    var d = document.createElement('div');
+    d.textContent = (i + 1) + '. ' + (slide.section ? '[' + slide.section + '] ' : '') + slide.content.replace(/\s+/g, ' ');
+    if (i === activeSlideIdx) d.className = 'active';
+    d.onclick = function() { pushSlide(i); };
+    el.appendChild(d);
+  });
+}
+
+async function pushSlide(i) {
+  var slide = activeSlides[i];
+  if (!slide) return;
+  try {
+    var res = await broadcast({
+      action: 'SHOW_LYRICS',
+      lyrics: { songTitle: activeSong.title, section: slide.section || '', content: slide.content, slideNum: i + 1, totalSlides: activeSlides.length, displayMode: displayMode },
+      theme: THEMES[currentTheme],
+      fontSize: currentFontSize
+    });
+    if (!res.ok) throw new Error('Push HTTP ' + res.status);
+    activeSlideIdx = i;
+    renderSlides();
+    currentVerse = { reference: activeSong.title + (slide.section ? ' · ' + slide.section : ''), translation: (i + 1) + '/' + activeSlides.length, text: slide.content };
+    renderNowPlaying();
+  } catch (err) { showAlert('Push failed: ' + err.message); }
+}
+searchSongs('');
 
 // ===== Queue =====
 function addToQueue(item) {
@@ -294,10 +375,12 @@ function renderQueue() {
     var meta = item.type === 'manual' ? 'Manual' :
       item.type === 'implicit' ? 'Implicit — confirm before pushing' :
       (item.source === 'parser' ? 'Parser' : 'Claude') + ' · ' + Math.round((item.confidence||0)*100) + '%';
+    if (item.source === 'claude' || item.source === 'claude_cache') meta += ' · AI-recalled text — check wording';
+    if (item.fallback) meta += ' · ' + item.requestedTranslation + ' unavailable, showing KJV';
     return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + '" onclick="selectItem(' + i + ')">' +
-      '<div class="q-ref">' + item.reference + ' <span class="q-trans">' + item.translation + '</span></div>' +
-      '<div class="q-text">' + item.text.slice(0,180) + (item.text.length>180?'...':'') + '</div>' +
-      '<div class="q-meta">' + meta + '</div></div>';
+      '<div class="q-ref">' + escapeHTML(item.reference) + ' <span class="q-trans">' + escapeHTML(item.translation) + '</span></div>' +
+      '<div class="q-text">' + escapeHTML(item.text.slice(0,180)) + (item.text.length>180?'...':'') + '</div>' +
+      '<div class="q-meta">' + escapeHTML(meta) + '</div></div>';
   }).join('');
 }
 
@@ -343,15 +426,71 @@ async function pushSelected() {
 function renderNowPlaying() {
   var el = document.getElementById('nowPlaying');
   if (!currentVerse) { el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>'; return; }
-  el.innerHTML = '<div class="verse-card"><div class="ref">' + currentVerse.reference +
-    ' <span class="trans">' + currentVerse.translation + '</span></div>' +
-    '<div class="txt">' + currentVerse.text + '</div></div>';
+  el.innerHTML = '<div class="verse-card"><div class="ref">' + escapeHTML(currentVerse.reference) +
+    ' <span class="trans">' + escapeHTML(currentVerse.translation) + '</span></div>' +
+    '<div class="txt">' + escapeHTML(currentVerse.text) + '</div></div>';
 }
 
 async function clearScreen() {
   try { await broadcast({ action: 'CLEAR' }); } catch(e) {}
   currentVerse = null;
   renderNowPlaying();
+}
+
+// ===== Detection handling =====
+// Top-level so sendPCMToWhisper can reach it (it used to be nested inside
+// startListening, so every detection threw "handleDetection is not defined").
+async function handleDetection(detection) {
+  if (!detection) return;
+  if (detection.error) reportProblem('AI detection unavailable: ' + detection.error);
+  if (detection.type === 'none') return;
+  console.log('[Detection]', detection.type, detection.verseData ? detection.verseData.reference : '');
+
+  if (detection.type === 'explicit' && detection.verseData) {
+    var v = detection.verseData;
+    appendTranscription(v.reference, true);
+    var item = { reference: v.reference, translation: v.translation, text: v.text, confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source || v.source, fallback: v.fallback, requestedTranslation: v.requestedTranslation };
+    addToQueue(item);
+    if (autoPush && (item.confidence || 0) >= 0.9) await pushVerse(item);
+  }
+
+  if (detection.type === 'implicit' && detection.candidates && detection.candidates.length > 0) {
+    for (var i = 0; i < Math.min(2, detection.candidates.length); i++) {
+      var c = detection.candidates[i];
+      try {
+        var res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
+        if (res.ok) {
+          var vd = await res.json();
+          addToQueue({ reference: vd.reference, translation: vd.translation, text: vd.text, confidence: c.confidence || 0.65, type: 'implicit', source: vd.source });
+        }
+      } catch(e) {}
+    }
+  }
+
+  if (detection.type === 'translation_change' && detection.new_translation) {
+    activeTranslation = detection.new_translation;
+    document.getElementById('translationSelect').value = detection.new_translation;
+    appendTranscription('[ Translation: ' + detection.new_translation + ' ]', false, true);
+  }
+
+  if (detection.type === 'validation_error') showAlert(detection.message);
+}
+
+// Same problem (dead key, no credit) arrives every few seconds while
+// listening — show it once a minute, not on every chunk
+var lastProblem = '', lastProblemAt = 0;
+function reportProblem(message) {
+  setApiStatus('fail', message);
+  if (message === lastProblem && Date.now() - lastProblemAt < 60000) return;
+  lastProblem = message; lastProblemAt = Date.now();
+  showAlert(message);
+  appendTranscription('[ ' + message + ' ]', false, false, true);
+}
+
+function escapeHTML(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
 }
 
 // ===== Alerts =====
@@ -369,14 +508,16 @@ function showAlert(message) {
 }
 
 // ===== API Status =====
-function setApiStatus(state) {
+function setApiStatus(state, message) {
   var el = document.getElementById('apiStatus');
+  el.title = message || '';
   if (state === 'ok') { apiFailCount = 0; el.className = 'api-status ok'; el.textContent = 'API: ok'; }
   else if (state === 'fail') {
     apiFailCount++;
     el.className = 'api-status fail';
     el.textContent = 'API: error (' + apiFailCount + ')';
-    if (apiFailCount >= 3) { el.textContent = 'API: unreachable — check internet'; }
+    if (message) el.textContent = 'API: ' + (message.length > 48 ? message.slice(0, 48) + '…' : message);
+    else if (apiFailCount >= 3) el.textContent = 'API: unreachable — check internet';
   } else if (state === 'offline') {
     el.className = 'api-status offline';
     el.textContent = 'OFFLINE — manual only';
@@ -390,12 +531,7 @@ function setApiStatus(state) {
   var audioCtx = null;
   var workletNode = null;
   var sourceNode = null;
-  var pcmBuffer = [];
-  var SAMPLE_RATE = 16000;
-  var TARGET_SAMPLES = 4096; // send every 4096 samples regardless of rate
-  var sessionId = 0;
-  var watchdogTimer = null;
-  var lastHeartbeat = Date.now();
+  var transcribeChain = Promise.resolve(); // one request at a time keeps text in spoken order
 
   async function toggleListening() {
     if (isListening) { stopListening(); } else { await startListening(); }
@@ -409,84 +545,40 @@ function setApiStatus(state) {
       audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          sampleRate: SAMPLE_RATE,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
         }
       });
 
-      // Create AudioContext at 16kHz for Whisper compatibility
+      // Native rate; the worklet downsamples to 16 kHz itself
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      SAMPLE_RATE = audioCtx.sampleRate;
 
       // Load PCM worklet
       await audioCtx.audioWorklet.addModule('/worklets/pcm-processor.js');
 
       sourceNode = audioCtx.createMediaStreamSource(audioStream);
 
-      // VAD analyser
-      var analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.8;
-      var vadData = new Uint8Array(analyser.frequencyBinCount);
-      sourceNode.connect(analyser);
-
       // PCM worklet node
       workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
 
       workletNode.port.onmessage = function(e) {
         if (sessionId !== mySession) return;
-        var pcm = new Int16Array(e.data.pcm);
+        lastHeartbeat = Date.now(); // audio is flowing
 
-        // VAD — measure energy
-        analyser.getByteFrequencyData(vadData);
-        var energy = 0;
-        for (var i = 0; i < vadData.length; i++) energy += vadData[i];
-        energy = energy / vadData.length;
-        var pct = Math.min(100, Math.round(energy / 20 * 100));
-        document.getElementById('vadFill').style.width = pct + '%';
-        document.getElementById('vadLabel').textContent = 'VAD: ' + Math.round(energy) + (energy > 2 ? ' SPEECH' : ' silence');
-
-        // Only send to Whisper if energy indicates speech
-        if (energy >= 0) {
-          lastHeartbeat = Date.now();
-          sendPCMToWhisper(pcm, mySession);
+        // Level meter
+        if (e.data.level !== undefined) {
+          var pct = Math.min(100, Math.round(e.data.level / 0.1 * 100));
+          document.getElementById('vadFill').style.width = pct + '%';
+          document.getElementById('vadLabel').textContent = 'VAD: ' + (e.data.speech ? 'SPEECH' : 'silence');
+          return;
         }
+
+        // A finished utterance (silence is already filtered out in the worklet)
+        var pcm = new Int16Array(e.data.pcm);
+        var rate = e.data.sampleRate;
+        transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(pcm, rate, mySession); });
       };
-      async function handleDetection(detection) {
-    if (!detection || detection.type === 'none') return;
-    console.log('[Detection]', detection.type, detection.verseData ? detection.verseData.reference : '');
-
-    if (detection.type === 'explicit' && detection.verseData) {
-      var v = detection.verseData;
-      appendTranscription(v.reference, true);
-      var item = { reference: v.reference, translation: v.translation, text: v.text, confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source };
-      await pushVerse(item);
-      addToQueue(item);
-    }
-
-    if (detection.type === 'implicit' && detection.candidates && detection.candidates.length > 0) {
-      for (var i = 0; i < Math.min(2, detection.candidates.length); i++) {
-        var c = detection.candidates[i];
-        try {
-          var res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
-          if (res.ok) {
-            var vd = await res.json();
-            addToQueue({ reference: vd.reference, translation: vd.translation, text: vd.text, confidence: c.confidence || 0.65, type: 'implicit' });
-          }
-        } catch(e) {}
-      }
-    }
-
-    if (detection.type === 'translation_change' && detection.new_translation) {
-      activeTranslation = detection.new_translation;
-      document.getElementById('translationSelect').value = detection.new_translation;
-      appendTranscription('[ Translation: ' + detection.new_translation + ' ]', false, true);
-    }
-
-    if (detection.type === 'validation_error') showAlert(detection.message);
-  }
 
       sourceNode.connect(workletNode);
       workletNode.connect(audioCtx.destination);
@@ -550,7 +642,7 @@ function setApiStatus(state) {
     document.getElementById('vadLabel').textContent = 'VAD: ready';
   }
 
-  async function sendPCMToWhisper(pcmInt16, mySession) {
+  async function sendPCMToWhisper(pcmInt16, rate, mySession) {
     try {
       // Convert Int16Array to base64
       var uint8 = new Uint8Array(pcmInt16.buffer);
@@ -564,18 +656,17 @@ var base64 = btoa(binary);
       var transcribeRes = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audio: base64, sampleRate: audioCtx ? audioCtx.sampleRate : 48000 })
+        body: JSON.stringify({ audio: base64, sampleRate: rate })
       });
 
       if (sessionId !== mySession) return;
+      var result = await transcribeRes.json().catch(function() { return {}; });
       if (!transcribeRes.ok) {
-        setApiStatus('fail');
+        reportProblem(result.error || ('Transcription failed (HTTP ' + transcribeRes.status + ')'));
         return;
       }
 
-      var result = await transcribeRes.json();
       var text = result.text;
-      lastHeartbeat = Date.now();
       setApiStatus('ok');
 
       if (!text || text.trim().length < 3) return;
@@ -598,11 +689,11 @@ var base64 = btoa(binary);
       if (!detectRes.ok) { setApiStatus('fail'); return; }
 
       var detection = await detectRes.json();
+      if (!detection.error) setApiStatus('ok');
       await handleDetection(detection);
-      setApiStatus('ok');
 
     } catch(err) {
-      console.error('[Audio Error]', err.message);
+      console.error('[Audio Error]', err);
       if (err.message.includes('fetch') || err.message.includes('network')) {
         setApiStatus('offline');
       } else {

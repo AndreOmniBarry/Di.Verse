@@ -38,6 +38,14 @@ db.exec(`
   );
 `);
 
+// Makes INSERT OR REPLACE replace instead of duplicating rows on --force reseeds.
+// An older DB that already holds duplicates can't take the index — say so.
+try {
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_verse ON verses(translation, book, chapter, verse)`);
+} catch (err) {
+  console.warn('⚠️  Duplicate verses found in db/bible.db — delete the file and reseed for a clean copy.');
+}
+
 // ── All 66 books with correct GitHub filenames ──
 const BOOKS = [
   ['Genesis','Genesis'],['Exodus','Exodus'],['Leviticus','Leviticus'],

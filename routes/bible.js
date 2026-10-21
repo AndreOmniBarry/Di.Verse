@@ -10,6 +10,10 @@ router.get('/verse', async (req, res) => {
     return res.status(400).json({ error: 'book, chapter, and verse are required' });
   }
 
+  if (!/^\d+$/.test(chapter) || !/^\d+$/.test(verse)) {
+    return res.status(400).json({ error: 'chapter and verse must be whole numbers' });
+  }
+
   const validation = validateReference(book, parseInt(chapter), parseInt(verse));
   if (!validation.valid) {
     return res.status(422).json({ error: validation.message, code: validation.code });

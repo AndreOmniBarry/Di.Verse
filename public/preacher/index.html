@@ -140,18 +140,21 @@
       const sc = sizeClass(v.text);
       content.innerHTML = `
         <div class="verse-ref">
-          ${v.reference}
-          <span class="badge">${v.translation}</span>
+          <span class="ref"></span>
+          <span class="badge"></span>
         </div>
-        <div class="verse-text ${sc}">${v.text}</div>
+        <div class="verse-text ${sc}"></div>
       `;
+      content.querySelector('.ref').textContent = v.reference;
+      content.querySelector('.badge').textContent = v.translation;
+      content.querySelector('.verse-text').textContent = v.text;
     } else if (msg.action === 'CLEAR') {
       content.innerHTML = '<div class="standby">Standing by...</div>';
     }
   }
 
   function connect() {
-    const ws = new WebSocket(`ws://${location.host}?type=preacher`);
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}?type=preacher`);
 
     ws.onopen = () => {
       clearTimeout(reconnectTimer);
