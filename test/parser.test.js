@@ -40,3 +40,11 @@ test('translation requests', () => {
   assert.strictEqual(parse('John 3 verse 16 in the Amplified').translation, 'AMP');
   assert.deepStrictEqual(parse('let us read from the amplified'), { translationOnly: true, translation: 'AMP', confidence: 0.95 });
 });
+
+test('long sentences without numbers return instantly (old pattern froze the server)', () => {
+  const sentence = 'for god so loved the world that he gave his only begotten son that whosoever believeth in him should not perish but have everlasting life';
+  const t = Date.now();
+  assert.strictEqual(parse(sentence + ' ' + sentence), null);
+  assert.strictEqual(ref(sentence + ' and turn with me to the gospel of John 3:16'), 'John 3:16');
+  assert.ok(Date.now() - t < 200, `took ${Date.now() - t} ms`);
+});

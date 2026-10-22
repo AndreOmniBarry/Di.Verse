@@ -10,7 +10,7 @@ const base = `http://localhost:${PORT}`;
 let server;
 
 test.before(async () => {
-  const env = { ...process.env, PORT: String(PORT), OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' };
+  const env = { ...process.env, PORT: String(PORT), OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', APIBIBLE_KEY: '' };
   server = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env, stdio: 'pipe' });
   for (let i = 0; i < 50; i++) {
     try { await fetch(base + '/api/songs/search'); return; } catch (e) { await new Promise(r => setTimeout(r, 100)); }
@@ -25,7 +25,7 @@ test('server boots without an OpenAI key and explains why listening is off', asy
     body: JSON.stringify({ audio: Buffer.alloc(4000).toString('base64') })
   });
   assert.strictEqual(res.status, 503);
-  assert.strictEqual((await res.json()).code, 'OPENAI_KEY_MISSING');
+  assert.strictEqual((await res.json()).code, 'TRANSCRIBE_KEY_MISSING');
 });
 
 test('push forwards theme and font size to the projection screen', async () => {

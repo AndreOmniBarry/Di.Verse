@@ -221,6 +221,12 @@ function detectTranslation(text) {
   return null;
 }
 
+// Book name = up to 4 words, optionally after a 1-3 prefix ("1 John",
+// "Song of Solomon", "the gospel of John"). Bounded on purpose: the old
+// pattern (?:\s*[a-z]+)+? backtracked exponentially, so one ordinary
+// 15-word sentence with no numbers froze the whole server for minutes.
+const BOOK = String.raw`\b((?:[1-3]\s*)?[a-z]+(?:\s+[a-z]+){0,3}?)`;
+
 // Common filler words that appear before a book name in natural speech
 const FILLER = /\b(can we have|give me|let us go to|let's go to|open to|open up to|turn to|read|we are in|we're in|go to|that is|that's|it is|it's|and|now|also|see|look at|i said)\b/gi;
 
@@ -236,7 +242,7 @@ function parse(text, fallbackTranslation = 'KJV') {
   const detectedTranslation = detectTranslation(clean) || fallbackTranslation;
 
   // Pattern 1: Book chapter:verse  e.g. "John 3:16", "Rom 8:28"
-  const p1 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(\d+)\s*[:.]\s*(\d+)/gi;
+  const p1 = new RegExp(BOOK + String.raw`\s+(\d+)\s*[:.]\s*(\d+)`, 'gi');
   let m;
   while ((m = p1.exec(clean)) !== null) {
     const book = resolveBookTail(m[1]);
@@ -248,7 +254,7 @@ function parse(text, fallbackTranslation = 'KJV') {
   }
 
   // Pattern 2: Book chapter verse N  e.g. "John chapter 3 verse 16"
-  const p2 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(?:chapter\s+)?(\w+)\s+verse\s+(\w+)/gi;
+  const p2 = new RegExp(BOOK + String.raw`\s+(?:chapter\s+)?(\w+)\s+verse\s+(\w+)`, 'gi');
   while ((m = p2.exec(clean)) !== null) {
     const book = resolveBookTail(m[1]);
     if (!book) continue;
@@ -259,7 +265,7 @@ function parse(text, fallbackTranslation = 'KJV') {
   }
 
   // Pattern 3: Book N and N  e.g. "John 3 and 16"
-  const p3 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(\d+)\s+and\s+(\d+)\b/gi;
+  const p3 = new RegExp(BOOK + String.raw`\s+(\d+)\s+and\s+(\d+)\b`, 'gi');
   while ((m = p3.exec(clean)) !== null) {
     const book = resolveBookTail(m[1]);
     if (!book) continue;
@@ -270,7 +276,7 @@ function parse(text, fallbackTranslation = 'KJV') {
   }
 
   // Pattern 4: Book N N  e.g. "John 3 16" (space separated, sanity-checked)
-  const p4 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(\d{1,3})\s+(\d{1,3})\b/gi;
+  const p4 = new RegExp(BOOK + String.raw`\s+(\d{1,3})\s+(\d{1,3})\b`, 'gi');
   while ((m = p4.exec(clean)) !== null) {
     const book = resolveBookTail(m[1]);
     if (!book) continue;

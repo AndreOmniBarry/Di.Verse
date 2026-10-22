@@ -469,6 +469,7 @@ async function clearScreen() {
 async function handleDetection(detection) {
   if (!detection) return;
   if (detection.error) reportProblem('AI detection unavailable: ' + detection.error);
+  if (detection.warning) noteOnce(detection.warning);
   if (detection.type === 'none') return;
   console.log('[Detection]', detection.type, detection.verseData ? detection.verseData.reference : '');
 
@@ -509,6 +510,14 @@ function reportProblem(message) {
   lastProblem = message; lastProblemAt = Date.now();
   showAlert(message);
   appendTranscription('[ ' + message + ' ]', false, false, true);
+}
+
+// Informational alert (e.g. backup provider in use), at most once a minute
+var lastNote = '', lastNoteAt = 0;
+function noteOnce(message) {
+  if (message === lastNote && Date.now() - lastNoteAt < 60000) return;
+  lastNote = message; lastNoteAt = Date.now();
+  showAlert(message);
 }
 
 function escapeHTML(str) {
@@ -583,8 +592,11 @@ function setApiStatus(state, message) {
 
       sourceNode = audioCtx.createMediaStreamSource(audioStream);
 
-      // PCM worklet node
-      workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
+      // Chunk length depends on the transcription provider (see /api/transcribe/config)
+      var tconf = { chunk: {} };
+      try { tconf = await (await fetch('/api/transcribe/config')).json(); } catch (e) {}
+      if (!tconf.provider) reportProblem('No transcription key in .env — set GROQ_API_KEY (free) or OPENAI_API_KEY');
+      workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor', { processorOptions: tconf.chunk || {} });
 
       workletNode.port.onmessage = function(e) {
         if (sessionId !== mySession) return;
@@ -692,6 +704,7 @@ var base64 = btoa(binary);
 
       var text = result.text;
       setApiStatus('ok');
+      if (result.warning) noteOnce(result.warning);
 
       if (!text || text.trim().length < 3) return;
 
