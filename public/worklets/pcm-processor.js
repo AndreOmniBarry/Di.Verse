@@ -4,14 +4,19 @@
 // "John 3:16" isn't split across two fixed-length chunks.
 const OUT_RATE = 16000;
 const SPEECH_RMS = 0.012;        // block RMS above this counts as speech
-const MIN_SECONDS = 2.5;         // don't cut before this much audio
-const MAX_SECONDS = 8;           // always cut by this point
+// Defaults; the operator page passes the active provider's values
+// (Groq bills each request as 10 s minimum, so it gets longer chunks)
+const DEFAULT_MIN_SECONDS = 2.5; // don't cut before this much audio
+const DEFAULT_MAX_SECONDS = 8;   // always cut by this point
 const PAUSE_SECONDS = 0.45;      // silence that ends an utterance
 const MIN_SPEECH_SECONDS = 0.4;  // less speech than this = drop the chunk
 
 class PCMProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
+    const opts = (options && options.processorOptions) || {};
+    this._minSeconds = opts.minSeconds || DEFAULT_MIN_SECONDS;
+    this._maxSeconds = opts.maxSeconds || DEFAULT_MAX_SECONDS;
     this._ratio = sampleRate / OUT_RATE; // `sampleRate` is a worklet global
     this._pos = 0;                       // fractional read position for resampling
     this._out = [];
@@ -48,10 +53,10 @@ class PCMProcessor extends AudioWorkletProcessor {
     if (++this._levelTick % 37 === 0) this.port.postMessage({ level: rms, speech: isSpeech });
 
     const len = this._out.length;
-    const pauseEnded = len >= MIN_SECONDS * OUT_RATE && this._silenceRun >= PAUSE_SECONDS * OUT_RATE;
-    if (pauseEnded || len >= MAX_SECONDS * OUT_RATE) this._flush();
+    const pauseEnded = len >= this._minSeconds * OUT_RATE && this._silenceRun >= PAUSE_SECONDS * OUT_RATE;
+    if (pauseEnded || len >= this._maxSeconds * OUT_RATE) this._flush();
     // Long silence with no speech: discard instead of growing forever
-    else if (this._speechSamples === 0 && len >= MIN_SECONDS * OUT_RATE) this._reset();
+    else if (this._speechSamples === 0 && len >= DEFAULT_MIN_SECONDS * OUT_RATE) this._reset();
     return true;
   }
 

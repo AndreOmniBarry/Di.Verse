@@ -1,7 +1,28 @@
 require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
 
+const OpenAI = require('openai');
+
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Free fallback for detection: Groq (OpenAI-compatible). Used when there is no
+// Anthropic key, or when Claude fails on key / credit / rate limit.
+let groqClient = null;
+let groqDetectModel = null;
+function groq() {
+  if (!groqClient) groqClient = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
+  return groqClient;
+}
+async function pickGroqDetectModel() {
+  if (process.env.GROQ_DETECT_MODEL) return process.env.GROQ_DETECT_MODEL;
+  if (groqDetectModel) return groqDetectModel;
+  const ids = ((await groq().models.list()).data || []).map(m => m.id);
+  const prefs = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant'];
+  groqDetectModel = prefs.find(p => ids.includes(p)) || ids.find(id => !/whisper|guard|tts|embed|compound/i.test(id));
+  if (!groqDetectModel) throw new Error('no usable Groq chat model — set GROQ_DETECT_MODEL');
+  console.log('[Detect] Groq model:', groqDetectModel);
+  return groqDetectModel;
+}
 
 // Pull the JSON object out of a reply even if the model wrapped it in prose
 function extractJSON(raw) {
@@ -81,34 +102,56 @@ async function detectScripture(transcriptionChunk, recentContext = '', activeTra
     return { type: 'none' };
   }
 
-  try {
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 512,
-      system: DETECTION_SYSTEM,
-      messages: [{
-        role: 'user',
-        content: `ACTIVE TRANSLATION: ${activeTranslation}
+  const userMessage = `ACTIVE TRANSLATION: ${activeTranslation}
 RECENT CONTEXT: ${recentContext}
 NEW TRANSCRIPTION: ${transcriptionChunk}
 
-Analyse and return JSON only.`
-      }]
-    });
+Analyse and return JSON only.`;
 
-    const parsed = extractJSON(response.content[0].text);
+  const hasClaude = Boolean(process.env.ANTHROPIC_API_KEY);
+  const hasGroq = Boolean(process.env.GROQ_API_KEY);
+  if (!hasClaude && !hasGroq) return { type: 'none' }; // parser-only mode; explicit references still work
 
-    // Safety net: discard explicit detections with suspiciously low confidence
-    if (parsed.type === 'explicit' && (parsed.confidence || 0) < 0.7) {
-      return { type: 'none' };
+  let claudeError = null;
+  if (hasClaude) {
+    try {
+      const response = await client.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 512,
+        system: DETECTION_SYSTEM,
+        messages: [{ role: 'user', content: userMessage }]
+      });
+      return screen(extractJSON(response.content[0].text));
+    } catch (err) {
+      console.error('[Claude Detection Error]', err.message);
+      claudeError = describeError(err);
+      const recoverable = err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError ||
+        err instanceof Anthropic.RateLimitError || err instanceof Anthropic.APIConnectionError ||
+        (err instanceof Anthropic.BadRequestError && /credit/i.test(err.message));
+      if (!hasGroq || !recoverable) return { type: 'none', error: claudeError };
     }
-
-    return parsed;
-
-  } catch (err) {
-    console.error('[Claude Detection Error]', err.message);
-    return { type: 'none', error: describeError(err) };
   }
+
+  try {
+    const res = await groq().chat.completions.create({
+      model: await pickGroqDetectModel(),
+      temperature: 0,
+      max_tokens: 512,
+      messages: [{ role: 'system', content: DETECTION_SYSTEM }, { role: 'user', content: userMessage }],
+    }, { maxRetries: 0, timeout: 10000 });
+    const result = screen(extractJSON(res.choices[0].message.content));
+    return claudeError ? { ...result, warning: claudeError + ' — using Groq for detection' } : result;
+  } catch (err) {
+    console.error('[Groq Detection Error]', err.status || '', err.message);
+    const groqError = err.status === 429 ? 'Groq free-tier limit reached for detection' : err.status === 401 ? 'Groq API key is invalid' : 'Groq detection failed: ' + err.message;
+    return { type: 'none', error: claudeError ? claudeError + '; ' + groqError : groqError };
+  }
+}
+
+// Safety net: discard explicit detections with suspiciously low confidence
+function screen(parsed) {
+  if (parsed.type === 'explicit' && (parsed.confidence || 0) < 0.7) return { type: 'none' };
+  return parsed;
 }
 
 // Quick heuristic check before even calling Claude — catches counting loops, repeated words

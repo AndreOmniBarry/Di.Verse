@@ -7,33 +7,75 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+// Two interchangeable speech-to-text providers (both speak the OpenAI API):
+//   groq   — whisper-large-v3-turbo, free tier (about 8 hours of audio a day)
+//   openai — whisper-1, paid from your OpenAI API credit balance
+// TRANSCRIBE_PROVIDER picks one; otherwise Groq is used when GROQ_API_KEY is
+// set (free), else OpenAI. If the first one fails on key/quota/network, the
+// other is tried, so a dead key or used-up quota doesn't stop the service.
+const PROVIDERS = {
+  groq: {
+    label: 'Groq',
+    key: () => process.env.GROQ_API_KEY,
+    baseURL: 'https://api.groq.com/openai/v1',
+    model: () => process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
+    // Groq bills every request as at least 10 s, so send longer chunks
+    chunk: { minSeconds: 6, maxSeconds: 12 },
+    keyUrl: 'console.groq.com/keys',
+  },
+  openai: {
+    label: 'OpenAI',
+    key: () => process.env.OPENAI_API_KEY,
+    baseURL: undefined,
+    model: () => process.env.TRANSCRIBE_MODEL || 'whisper-1',
+    chunk: { minSeconds: 2.5, maxSeconds: 8 },
+    keyUrl: 'platform.openai.com/api-keys',
+  },
+};
+
 // Created on first use so a missing key disables transcription instead of
 // crashing the whole server (manual search and projection must keep working).
-let openai = null;
-function getClient() {
-  if (!process.env.OPENAI_API_KEY) return null;
-  if (!openai) openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  return openai;
+const clients = {};
+function getClient(name) {
+  const p = PROVIDERS[name];
+  if (!p.key()) return null;
+  if (!clients[name]) clients[name] = new OpenAI({ apiKey: p.key(), baseURL: p.baseURL });
+  return clients[name];
 }
 
-const TRANSCRIBE_MODEL = process.env.TRANSCRIBE_MODEL || 'whisper-1';
+function providerOrder() {
+  const configured = Object.keys(PROVIDERS).filter(n => PROVIDERS[n].key());
+  const preferred = (process.env.TRANSCRIBE_PROVIDER || '').toLowerCase();
+  const first = configured.includes(preferred) ? preferred : configured.includes('groq') ? 'groq' : configured[0];
+  return first ? [first, ...configured.filter(n => n !== first)] : [];
+}
 
-// Turn OpenAI failures into something the operator can act on
-function describeError(err) {
+// Turn provider failures into something the operator can act on
+function describeError(name, err) {
+  const p = PROVIDERS[name];
   const code = err.code || (err.error && err.error.code);
-  if (err.status === 401) return { code: 'OPENAI_KEY_INVALID', message: 'OpenAI API key is invalid or revoked — create a new key at platform.openai.com/api-keys and update .env' };
-  if (err.status === 429 && code === 'insufficient_quota') return { code: 'OPENAI_NO_CREDIT', message: 'OpenAI account has no credit — add credit at platform.openai.com/settings/organization/billing' };
-  if (err.status === 429) return { code: 'OPENAI_RATE_LIMIT', message: 'OpenAI rate limit hit — slow down or raise the account tier' };
-  if (err.status === 404) return { code: 'OPENAI_MODEL', message: 'Transcription model "' + TRANSCRIBE_MODEL + '" is not available to this OpenAI account' };
-  if (!err.status) return { code: 'NETWORK', message: 'Cannot reach OpenAI — check internet connection' };
-  return { code: 'OPENAI_ERROR', message: 'OpenAI error ' + err.status + ': ' + err.message };
+  const tag = name.toUpperCase();
+  if (err.status === 401) return { code: tag + '_KEY_INVALID', message: `${p.label} API key is invalid or revoked — create a new key at ${p.keyUrl} and update .env` };
+  if (err.status === 429 && code === 'insufficient_quota') return { code: tag + '_NO_CREDIT', message: `${p.label} account has no credit left — add credit in its billing page, or set GROQ_API_KEY to use Groq's free tier` };
+  if (err.status === 429) return { code: tag + '_RATE_LIMIT', message: `${p.label} ${name === 'groq' ? 'free-tier' : 'rate'} limit reached — wait a minute${name === 'groq' ? ', or add OPENAI_API_KEY as a backup' : ''}` };
+  if (err.status === 404) return { code: tag + '_MODEL', message: `Transcription model "${p.model()}" is not available to this ${p.label} account` };
+  if (!err.status) return { code: 'NETWORK', message: `Cannot reach ${p.label} — check internet connection` };
+  return { code: tag + '_ERROR', message: `${p.label} error ${err.status}: ${err.message}` };
 }
+
+const FAILOVER = err => !err.status || err.status === 401 || err.status === 403 || err.status === 429 || err.status >= 500;
+
+// Tells the operator page how to cut audio for the active provider
+router.get('/transcribe/config', (req, res) => {
+  const order = providerOrder();
+  res.json({ provider: order[0] || null, chunk: order[0] ? PROVIDERS[order[0]].chunk : PROVIDERS.openai.chunk });
+});
 
 router.post('/transcribe', async (req, res) => {
   const { audio, sampleRate = 48000 } = req.body;
   if (!audio) return res.status(400).json({ error: 'No audio data' });
-  const client = getClient();
-  if (!client) return res.status(503).json({ code: 'OPENAI_KEY_MISSING', error: 'OPENAI_API_KEY is not set in .env — live transcription is off, manual search still works', text: '' });
+  const order = providerOrder();
+  if (!order.length) return res.status(503).json({ code: 'TRANSCRIBE_KEY_MISSING', error: 'No transcription key in .env — set GROQ_API_KEY (free) or OPENAI_API_KEY. Manual search still works.', text: '' });
 
   let tmpPath = null;
   try {
@@ -51,25 +93,37 @@ router.post('/transcribe', async (req, res) => {
     console.log('[Transcribe] WAV written:', wavBuffer.length, 'bytes');
 
     const fileBuffer = fs.readFileSync(tmpPath);
-    const file = await toFile(fileBuffer, 'audio.wav', { type: 'audio/wav' });
 
-    const response = await client.audio.transcriptions.create({
-      file,
-      model: TRANSCRIBE_MODEL,
-      response_format: 'text',
-      temperature: 0,
-      prompt: 'Bible verse, chapter, scripture, sermon, church service.',
-    });
+    let lastErr = null;
+    for (const name of order) {
+      try {
+        const response = await getClient(name).audio.transcriptions.create({
+          file: await toFile(fileBuffer, 'audio.wav', { type: 'audio/wav' }),
+          model: PROVIDERS[name].model(),
+          response_format: 'json',
+          temperature: 0,
+          prompt: 'Bible verse, chapter, scripture, sermon, church service.',
+        }, { maxRetries: 0, timeout: 20000 });
 
-    const text = (response || '').toString().trim();
-    const cleaned = filterHallucinations(text);
-    console.log('[Whisper]', cleaned ? '"' + cleaned.slice(0, 80) + '"' : '(silence)');
-    res.json({ text: cleaned });
+        const text = String((response && response.text) || '').trim();
+        const cleaned = filterHallucinations(text);
+        console.log(`[Whisper:${name}]`, cleaned ? '"' + cleaned.slice(0, 80) + '"' : '(silence)');
+        // A backup provider answering is worth knowing about, once per chunk
+        const warning = name !== order[0] && lastErr ? describeError(lastErr.provider, lastErr).message + ` — using ${PROVIDERS[name].label} instead` : undefined;
+        return res.json({ text: cleaned, provider: name, warning });
+      } catch (err) {
+        lastErr = err;
+        lastErr.provider = name;
+        console.error(`[Whisper:${name} Error]`, err.status || '', err.message);
+        if (!FAILOVER(err)) break;
+      }
+    }
+    const info = describeError(lastErr.provider || order[0], lastErr);
+    res.status(502).json({ code: info.code, error: info.message, text: '' });
 
   } catch (err) {
-    const info = describeError(err);
-    console.error('[Whisper Error]', err.status || '', err.message);
-    res.status(502).json({ code: info.code, error: info.message, text: '' });
+    console.error('[Transcribe Error]', err.message);
+    res.status(500).json({ code: 'TRANSCRIBE_ERROR', error: err.message, text: '' });
   } finally {
     if (tmpPath) try { fs.unlinkSync(tmpPath); } catch(e) {}
   }
