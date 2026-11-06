@@ -3,7 +3,7 @@ const router = express.Router();
 const { parse } = require('../services/parser');
 const { detectScripture } = require('../services/claude');
 const { validateReference, normaliseBook } = require('../services/validation');
-const { getVerse } = require('../services/bibleDb');
+const { getPassage } = require('../services/bibleDb');
 
 router.post('/detect', async (req, res) => {
   const { text, context = '', activeTranslation = 'KJV' } = req.body;
@@ -21,7 +21,7 @@ router.post('/detect', async (req, res) => {
       }
 
       // Full explicit reference — validate then fetch
-      const { book, chapter, verse, translation, confidence } = parsed;
+      const { book, chapter, verse, verseEnd, translation, confidence } = parsed;
 
       // Hard gate: reject NaN or non-positive integers
       if (!Number.isInteger(chapter) || !Number.isInteger(verse) || chapter < 1 || verse < 1) {
@@ -30,17 +30,16 @@ router.post('/detect', async (req, res) => {
 
       const validation = validateReference(book, chapter, verse);
 
+      // The operator alerts from this response (a WebSocket copy as well showed it twice)
       if (!validation.valid) {
-        const { alertOperator } = req.app.locals;
-        alertOperator({ action: 'VALIDATION_ALERT', message: validation.message, code: validation.code, reference: book + ' ' + chapter + ':' + verse });
         return res.json({ type: 'validation_error', message: validation.message });
       }
 
-      const verseData = await getVerse(validation.normalised || book, chapter, verse, translation);
+      const verseData = await getPassage(validation.normalised || book, chapter, verse, verseEnd, translation);
       if (!verseData) return res.json({ type: 'none' });
 
       console.log('[Parser] ' + verseData.reference + ' (' + translation + ') conf:' + confidence);
-      return res.json({ type: 'explicit', reference: { book, chapter, verse, translation }, verseData, confidence, source: 'parser' });
+      return res.json({ type: 'explicit', reference: { book, chapter, verse, verseEnd, translation }, verseData, confidence, source: 'parser' });
     }
 
     // ── LAYER 2: Claude — implicit quotes, ambiguous speech, hard cases ──
@@ -59,12 +58,13 @@ router.post('/detect', async (req, res) => {
 
       const validation = validateReference(book, parseInt(chapter), parseInt(verse));
       if (!validation.valid) {
-        const { alertOperator } = req.app.locals;
-        alertOperator({ action: 'VALIDATION_ALERT', message: validation.message });
         return res.json({ type: 'validation_error', message: validation.message });
       }
 
-      const verseData = await getVerse(validation.normalised || book, parseInt(chapter), parseInt(verse), usedTranslation);
+      const start = parseInt(verse);
+      const end = parseInt(detection.reference.verse_end);
+      const verseEnd = end > start ? Math.min(end, start + 9) : undefined;
+      const verseData = await getPassage(validation.normalised || book, parseInt(chapter), start, verseEnd, usedTranslation);
       if (verseData) detection.verseData = verseData;
     }
 

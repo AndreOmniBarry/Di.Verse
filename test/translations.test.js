@@ -93,3 +93,15 @@ test('translation list marks exactly what works', { skip: !seeded && 'run npm ru
   assert.strictEqual(by.TPT.available, false);
   assert.strictEqual(by.NIV.available, false);
 });
+
+test('passage: range joined with verse numbers, clipped at chapter end', { skip: !seeded && 'run npm run seed first' }, async () => {
+  const { getPassage } = require('../services/bibleDb');
+  const p = await getPassage('John', 3, 16, 18, 'KJV');
+  assert.strictEqual(p.reference, 'John 3:16-18');
+  assert.match(p.text, /^¹⁶ For God so loved.*¹⁷ For God sent.*¹⁸ He that believeth/);
+  const end = await getPassage('Jude', 1, 24, 30, 'KJV');
+  assert.strictEqual(end.reference, 'Jude 1:24-25');
+  const mixed = await getPassage('Acts', 8, 36, 38, 'ASV');   // ASV has no 8:37
+  assert.strictEqual(mixed.fallback, true);
+  assert.match(mixed.fallbackReason, /1 of 3 verses/);
+});

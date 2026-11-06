@@ -85,7 +85,7 @@ Cost guide: `whisper-1` is billed per minute of audio. Silence is no longer sent
 
 1. **Translations: done (see §7).** No AI-generated scripture anywhere. Four translations are stored locally, and licensed ones come through API.Bible once you add a key and plan. TPT needs its own arrangement.
 2. **Real-room accuracy.** The speech threshold (`SPEECH_RMS` in the worklet) is tuned for a laptop mic. Test with the church's mixer feed and adjust if the meter never shows SPEECH or never shows silence.
-3. **Verse ranges** ("John 3:16 to 18") aren't supported. Only the first verse shows.
+3. **Verse ranges: done.** "John 3:16-18", "verses 28 through 30" and manual "16-18" show up to 10 verses with verse numbers, shrunk to fit the projector.
 4. **Run on the target machine:** `npm ci` on the Mac (`better-sqlite3` is a native module), then `npm run seed` once (needs internet), then `npm start`.
 
 ---
@@ -163,3 +163,17 @@ The operator dropdown is built from `GET /api/translations`. Available translati
 - `npm run check:apibible` lists your Bibles, then fetches John 3:16 through Di.Verse.
 - If a translation shows up under a different abbreviation, pin it with `APIBIBLE_IDS`.
 - Read API.Bible's terms for your plan on (a) copyright display and (b) "FUMS" usage reporting. The verse response's `fumsId` is already passed through to the operator, ready to wire into the reporting script those terms specify.
+
+---
+
+## 8. Final review pass (all fixed, with tests)
+
+| Bug | Effect | Fix |
+|---|---|---|
+| Translation names matched inside everyday words | "the **good news**" → GNT, "his **message**" → MSG, "com**passion**" → TPT, "ex**amp**le" → AMP, "u**niv**erse" → NIV, mid-sermon | Whole-word matching. Names that are also everyday words ("message", "good news", "passion", "web") only count with a clear cue: "Message Bible", "Good News translation", or "…in the Message" at the end of what was said |
+| Long passages ran off the projector | 10-verse ranges overflowed the lower third | Text shrinks until it fits (lower third ≤ 60% of the screen, full screen ≤ 72%), then resets for the next verse; re-fits on resize |
+| Saved AI wording outranked licensed text | After adding API.Bible, earlier AI-saved verses never switched to licensed text | Lookup order: stored public domain → API.Bible → saved AI → live AI |
+| Invalid references alerted twice | Two identical red alerts | One alert, from the detect response |
+| Passages fetched one verse at a time | A 10-verse AI passage could take minutes | Three at a time (fast, but under free-tier per-minute limits) |
+| Saving a song deleted in another window | Generic 500 error | 404 with a clear message in Admin |
+| AI-detected ranges | Only the first verse shown | AI detection returns `verse_end`; the full range is shown |

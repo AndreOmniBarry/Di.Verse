@@ -112,7 +112,8 @@ Chrome opens the **Operator** page. The Terminal window shows two more addresses
 2. Say: *"Turn with me to John chapter 3 verse 16."*
 3. Within a few seconds the words appear under Live Transcription, the verse appears in the Queue, and it shows on the projector (Auto-push is on).
 4. Say: *"Let's read that in the Passion Translation."* The translation switches to TPT.
-5. Try a song: add one in **Admin** (`/admin`), then click its slides in the Operator's **Songs** panel.
+5. Try a range: *"Romans chapter 8 verses 28 through 30."* All three verses show, numbered.
+6. Try a song: add one in **Admin** (`/admin`), then click its slides in the Operator's **Songs** panel.
 
 If something's wrong, the red **ALERT** box on the Operator page says exactly what (for example, "Groq free-tier limit reached", "OpenAI account has no credit", "No transcription key").
 

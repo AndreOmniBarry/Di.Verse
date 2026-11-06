@@ -27,7 +27,8 @@ router.put('/songs/:id', (req, res) => {
   const { title, artist, language, tags, slides } = req.body;
   if (!title) return res.status(400).json({ error: 'title is required' });
   if (!Array.isArray(slides)) return res.status(400).json({ error: 'slides must be an array' });
-  updateSong(parseInt(req.params.id), { title, artist, language, tags, slides: slides.filter(sl => sl && sl.content) });
+  const found = updateSong(parseInt(req.params.id), { title, artist, language, tags, slides: slides.filter(sl => sl && sl.content) });
+  if (!found) return res.status(404).json({ error: 'This song no longer exists — it may have been deleted in another window' });
   res.json({ ok: true });
 });
 

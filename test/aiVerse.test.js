@@ -132,3 +132,23 @@ test('with an AI key every listed translation is selectable, marked as AI beta',
   assert.strictEqual(tpt.available, true);
   assert.strictEqual(tpt.provider, 'ai');
 });
+
+test('licensed API.Bible text takes over from saved AI text once a key is added', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'g'; process.env.GROQ_API_KEY = 'q';
+  replies = { gemini: TPT_JOHN_3_16, groq: TPT_JOHN_3_16 };
+  assert.strictEqual((await getVerse('John', 3, 16, 'TPT')).verification, 'verified');   // saved from AI
+
+  process.env.APIBIBLE_KEY = 'k';
+  const aiFetch = global.fetch;
+  global.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('api.bible') && u.endsWith('/bibles?language=eng')) return json({ data: [{ id: 'tpt-id', abbreviation: 'TPT' }] });
+    if (u.includes('api.bible')) return json({ data: { content: 'Licensed TPT wording.' }, meta: {} });
+    return aiFetch(url, init);
+  };
+  try {
+    const v = await getVerse('John', 3, 16, 'TPT');
+    assert.strictEqual(v.source, 'apibible');
+    assert.strictEqual(v.text, 'Licensed TPT wording.');
+  } finally { delete process.env.APIBIBLE_KEY; }
+});

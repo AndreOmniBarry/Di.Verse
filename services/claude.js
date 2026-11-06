@@ -88,7 +88,7 @@ RULES — NO EXCEPTIONS:
 JSON SCHEMA — always return exactly this structure:
 {
   "type": "explicit" | "implicit" | "translation_change" | "none",
-  "reference": { "book": string, "chapter": number, "verse": number, "translation": string },
+  "reference": { "book": string, "chapter": number, "verse": number, "verse_end": number (only for a range like "verses 28 to 30", else omit), "translation": string },
   "candidates": [ { "book": string, "chapter": number, "verse": number, "confidence": number, "snippet": string } ],
   "new_translation": string,
   "confidence": number,

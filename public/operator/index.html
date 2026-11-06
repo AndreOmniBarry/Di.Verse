@@ -138,7 +138,7 @@
       <div class="search-row">
         <input type="text" id="bookInput" placeholder="Book — e.g. John" style="flex:2;">
         <input type="number" id="chapterInput" placeholder="Ch" style="flex:0.7;min-width:52px;">
-        <input type="number" id="verseInput" placeholder="Vs" style="flex:0.7;min-width:52px;">
+        <input type="text" id="verseInput" placeholder="Vs (16 or 16-18)" inputmode="numeric" style="flex:1;min-width:70px;">
         <button class="btn btn-dim" onclick="manualSearch()">Find</button>
       </div>
       <div class="hint">← → = prev/next queue · Space = push · Esc = clear · M = mode · +/- = font</div>
@@ -304,13 +304,16 @@ function adjustFont(delta) {
 async function manualSearch() {
   var book = document.getElementById('bookInput').value.trim();
   var chapter = parseInt(document.getElementById('chapterInput').value);
-  var verse = parseInt(document.getElementById('verseInput').value);
-  if (!book || !chapter || !verse) { showAlert('Please enter a book, chapter, and verse.'); return; }
+  // "16" or a range "16-18"
+  var vs = document.getElementById('verseInput').value.match(/^\s*(\d+)\s*(?:[-–]\s*(\d+))?\s*$/);
+  var verse = vs && parseInt(vs[1]);
+  var verseEnd = vs && vs[2] ? parseInt(vs[2]) : null;
+  if (!book || !chapter || !verse) { showAlert('Please enter a book, chapter, and verse (e.g. 16 or 16-18).'); return; }
   try {
-    var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + '&translation=' + activeTranslation);
+    var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + (verseEnd ? '&verseEnd=' + verseEnd : '') + '&translation=' + activeTranslation);
     var data = await res.json();
     if (!res.ok) { showAlert(data.error); return; }
-    if (data.fallback) showAlert(data.requestedTranslation + ' unavailable: ' + data.fallbackReason + ' — showing KJV instead.');
+    if (data.fallback) showAlert(data.requestedTranslation + ' unavailable: ' + data.fallbackReason + ' — showing KJV where needed.');
     addToQueue(Object.assign({}, data, { confidence: 1.0, type: 'manual' }));
   } catch (err) { showAlert('Could not reach server.'); }
 }
