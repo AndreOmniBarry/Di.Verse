@@ -93,12 +93,15 @@ async function listTranslations() {
   return out;
 }
 
-function localVerse(book, chapter, verse, translation) {
+// Saved AI answers (source ai_*) are looked up separately so licensed
+// API.Bible text, once a key is added, takes precedence over them
+function localVerse(book, chapter, verse, translation, { ai = false } = {}) {
   const row = getDb().prepare(`
     SELECT text, book, chapter, verse, translation, source
     FROM verses
     WHERE book = ? AND chapter = ? AND verse = ? AND translation = ?
-  `).get(book, chapter, verse, translation);
+      AND (substr(source, 1, 3) = 'ai_') = ?
+  `).get(book, chapter, verse, translation, ai ? 1 : 0);
   if (!row) return null;
   return {
     reference: `${row.book} ${row.chapter}:${row.verse}`,
@@ -148,6 +151,9 @@ async function getVerse(book, chapter, verse, translation = 'KJV') {
     if (!remote.error) return remote;
     reason = remote.error;
 
+    const savedAi = localVerse(book, chapter, verse, translation, { ai: true });
+    if (savedAi) return savedAi;
+
     if (aiVerse.isAvailable()) {
       const kjvRow = localVerse(book, chapter, verse, 'KJV');
       const ai = await aiVerse.getVerse(book, chapter, verse, translation, kjvRow && kjvRow.text);
@@ -194,4 +200,48 @@ function searchVerses(query, translation = 'KJV', limit = 10) {
   `).all(translation, `%${query}%`, limit);
 }
 
-module.exports = { getDb, getVerse, searchVerses, getBookNum, listTranslations };
+// ── Passage: a range of verses in one chapter, e.g. John 3:16-18 ──
+const SUPERSCRIPT = { 0:'⁰',1:'¹',2:'²',3:'³',4:'⁴',5:'⁵',6:'⁶',7:'⁷',8:'⁸',9:'⁹' };
+const sup = n => String(n).split('').map(d => SUPERSCRIPT[d]).join('');
+const VERIFY_RANK = { verified: 1, grounded: 2, unverified: 3 };
+
+async function getPassage(book, chapter, verse, verseEnd, translation = 'KJV') {
+  if (!verseEnd || verseEnd <= verse) return getVerse(book, chapter, verse, translation);
+
+  // Don't run past the end of the chapter
+  const row = getDb().prepare(`SELECT max_verse FROM bible_structure WHERE book = ? AND chapter = ?`).get(book, chapter);
+  const last = Math.min(verseEnd, row ? row.max_verse : verseEnd);
+  if (last <= verse) return getVerse(book, chapter, verse, translation);
+
+  // A few at a time: fast for network-backed translations without bursting
+  // past free-tier per-minute limits (3 AI providers per verse)
+  const verses = [];
+  for (let v = verse; v <= last; v++) verses.push(v);
+  const results = new Array(verses.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(3, verses.length) }, async () => {
+    while (next < verses.length) {
+      const i = next++;
+      results[i] = await getVerse(book, chapter, verses[i], translation);
+    }
+  }));
+  const parts = results.filter(Boolean);
+  if (!parts.length) return null;
+
+  const fallbacks = parts.filter(p => p.fallback);
+  const worst = parts.filter(p => p.verification).sort((a, b) => VERIFY_RANK[b.verification] - VERIFY_RANK[a.verification])[0];
+  const shownTranslations = [...new Set(parts.map(p => p.translation))];
+  return {
+    reference: `${book} ${chapter}:${verse}-${last}`,
+    translation: shownTranslations.join('/'),
+    text: parts.map(p => sup(p.verse) + '\u2009' + p.text).join(' '),
+    book, chapter, verse, verseEnd: last,
+    source: parts[0].source,
+    ...(fallbacks.length ? { fallback: true, requestedTranslation: String(translation).toUpperCase(),
+      fallbackReason: `${fallbacks.length} of ${parts.length} verses: ${fallbacks[0].fallbackReason}` } : {}),
+    ...(worst ? { verification: worst.verification, note: worst.note } : {}),
+    ...(parts[0].copyright ? { copyright: parts[0].copyright } : {}),
+  };
+}
+
+module.exports = { getDb, getVerse, getPassage, searchVerses, getBookNum, listTranslations };

@@ -15,7 +15,7 @@
       display: flex; flex-direction: column; justify-content: center;
       padding: 20px 56px; opacity: 0; transform: translateY(8px);
       transition: opacity 0.3s ease, transform 0.3s ease;
-      pointer-events: none; z-index: 10;
+      pointer-events: none; z-index: 10; max-height: 62vh; overflow: hidden;
     }
     #lowerThird.show { opacity: 1; transform: translateY(0); }
     .lt-ref { font-size: 1.1rem; font-weight: bold; color: #F5C518; letter-spacing: 2px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; }
@@ -71,15 +71,37 @@
     badges.forEach(function(b) { b.style.background = theme.accent; });
   }
 
+  var fontDelta = 0; // operator's +/- setting, kept for every new verse
+
   function applyFontSize(delta) {
+    if (delta !== undefined) fontDelta = delta;
     var ltEl = document.getElementById('ltText');
     var fsEl = document.getElementById('fsText');
     var sc = ltEl.className.includes('sm') ? 0.66 : ltEl.className.includes('md') ? 0.82 : 1;
-    var ltPx = (baseLTSize + delta/16) * sc;
-    var fsPx = (baseFSSize + delta/16) * sc;
-    ltEl.style.fontSize = ltPx + 'rem';
-    fsEl.style.fontSize = fsPx + 'rem';
+    var fsSc = fsEl.className.includes('sm') ? 0.64 : fsEl.className.includes('md') ? 0.82 : 1;
+    ltEl.style.fontSize = ((baseLTSize + fontDelta/16) * sc) + 'rem';
+    fsEl.style.fontSize = ((baseFSSize + fontDelta/16) * fsSc) + 'rem';
+    fitToScreen();
   }
+
+  // Long passages (up to 10 verses) and long slides: shrink the text until
+  // its box fits on screen instead of running off the top
+  function fitToScreen() {
+    // [box, text element, what to measure, max share of screen height]
+    [['lowerThird', 'ltText', 'box', 0.6], ['fullScreen', 'fsText', 'text', 0.72]].forEach(function(p) {
+      var box = document.getElementById(p[0]), el = document.getElementById(p[1]);
+      if (!box.classList.contains('show')) return;
+      // The full-screen box always fills the screen, so measure its text there
+      var measured = p[2] === 'box' ? box : el;
+      var limit = window.innerHeight * p[3];
+      var size = parseFloat(getComputedStyle(el).fontSize);
+      while (measured.scrollHeight > limit && size > 12) {
+        size *= 0.92;
+        el.style.fontSize = size + 'px';
+      }
+    });
+  }
+  window.addEventListener('resize', function() { applyFontSize(); });
 
   function showVerse(verse, theme, fontSize) {
     hide();
@@ -98,7 +120,7 @@
       document.getElementById('ltBadge').textContent = verse.translation;
       document.getElementById('lowerThird').classList.add('show');
     }
-    if (fontSize !== undefined) applyFontSize(fontSize);
+    applyFontSize(fontSize);
   }
 
   function showLyrics(lyrics, theme, fontSize) {
@@ -119,7 +141,7 @@
       document.getElementById('ltBadge').textContent = badge;
       document.getElementById('lowerThird').classList.add('show');
     }
-    if (fontSize !== undefined) applyFontSize(fontSize);
+    applyFontSize(fontSize);
   }
 
   function hide() {

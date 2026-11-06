@@ -59,3 +59,21 @@ test('editing a song replaces its slides instead of duplicating them', async () 
   await fetch(base + `/api/songs/${id}`, { method: 'DELETE' });
   assert.strictEqual((await (await fetch(base + `/api/songs/${id}/slides`)).json()).length, 0);
 });
+
+test('saving a song that was deleted elsewhere says so (404, not a crash)', async () => {
+  const res = await fetch(base + '/api/songs/999999', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'x', slides: [{ content: 'a' }] }) });
+  assert.strictEqual(res.status, 404);
+  assert.match((await res.json()).error, /no longer exists/);
+});
+
+test('an invalid reference is reported once (response only, no WebSocket copy)', async () => {
+  const ws = new WebSocket(`ws://localhost:${PORT}?type=operator`);
+  await new Promise(r => ws.on('open', r));
+  const pushed = [];
+  ws.on('message', m => pushed.push(JSON.parse(m)));
+  const d = await (await fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Jude chapter 2 verse 1' }) })).json();
+  await new Promise(r => setTimeout(r, 200));
+  ws.close();
+  assert.strictEqual(d.type, 'validation_error');
+  assert.strictEqual(pushed.length, 0);
+});

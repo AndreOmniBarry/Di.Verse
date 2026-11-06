@@ -48,3 +48,27 @@ test('long sentences without numbers return instantly (old pattern froze the ser
   assert.strictEqual(ref(sentence + ' and turn with me to the gospel of John 3:16'), 'John 3:16');
   assert.ok(Date.now() - t < 200, `took ${Date.now() - t} ms`);
 });
+
+test('verse ranges', () => {
+  const r = t => { const p = parse(t); return p && `${p.book} ${p.chapter}:${p.verse}${p.verseEnd ? '-' + p.verseEnd : ''}`; };
+  assert.strictEqual(r('John 3:16-18'), 'John 3:16-18');
+  assert.strictEqual(r('John 3:16 to 18'), 'John 3:16-18');
+  assert.strictEqual(r('Romans chapter 8 verses 28 through 30'), 'Romans 8:28-30');
+  assert.strictEqual(r('Psalm 23 verse one to six'), 'Psalms 23:1-6');
+  assert.strictEqual(r('Psalm 119:1-40'), 'Psalms 119:1-10');   // capped at 10 verses for one screen
+  assert.strictEqual(r('John 3:16 to 12'), 'John 3:16');          // backwards range ignored
+  assert.strictEqual(r('John 3:16 to the end'), 'John 3:16');
+});
+
+test('everyday sermon words do not switch the translation', () => {
+  for (const t of ['the good news is that Jesus saves', 'his message to the church was clear', 'have compassion on them',
+    'what an example of faith', 'the universe declares his glory', 'check our website after service']) {
+    assert.strictEqual(parse(t), null, t);
+  }
+  assert.strictEqual(parse('John 3:16 and the message is simple').translation, 'KJV');
+  assert.strictEqual(parse('let us read that in the message').translation, 'MSG');
+  assert.strictEqual(parse('John 3:16 in the Message Bible').translation, 'MSG');
+  assert.strictEqual(parse('read it from the Passion Translation').translation, 'TPT');
+  assert.strictEqual(parse('the good news translation says').translation, 'GNT');
+  assert.strictEqual(parse('John 3 16 NKJV').translation, 'NKJV');
+});

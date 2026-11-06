@@ -83,6 +83,7 @@ function deleteSong(songId) {
 // a song doesn't append a second copy of every slide
 function updateSong(songId, { title, artist, language = 'English', tags = '', slides = [] }) {
   const db = getDb();
+  if (!db.prepare(`SELECT 1 FROM songs WHERE id = ?`).get(songId)) return false;
   db.transaction(() => {
     db.prepare(`UPDATE songs SET title = ?, artist = ?, language = ?, tags = ? WHERE id = ?`)
       .run(title, artist || null, language, tags, songId);
@@ -90,6 +91,7 @@ function updateSong(songId, { title, artist, language = 'English', tags = '', sl
     const insert = db.prepare(`INSERT INTO slides (song_id, slide_num, section, content) VALUES (?, ?, ?, ?)`);
     slides.forEach((sl, i) => insert.run(songId, i + 1, sl.section || null, sl.content));
   })();
+  return true;
 }
 
 module.exports = { getDb, searchSongs, getSongSlides, addSong, addSlide, deleteSong, updateSong };
