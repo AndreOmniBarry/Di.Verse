@@ -62,6 +62,10 @@ function describeError(name, err) {
   return { code: tag + '_ERROR', message: `${p.label} error ${err.status}: ${err.message}` };
 }
 
+// Whisper spells unfamiliar words by sound ("Purvas", "Poovams" for Proverbs);
+// listing the book names makes it expect them
+const WHISPER_PROMPT = 'Church sermon with Bible references, e.g. John chapter 3 verse 16. Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, Samuel, Kings, Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, Corinthians, Galatians, Ephesians, Philippians, Colossians, Thessalonians, Timothy, Titus, Philemon, Hebrews, James, Peter, Jude, Revelation. KJV, NKJV, NIV, Amplified, The Passion Translation, The Message.';
+
 const FAILOVER = err => !err.status || err.status === 401 || err.status === 403 || err.status === 429 || err.status >= 500;
 
 // Tells the operator page how to cut audio for the active provider
@@ -101,7 +105,7 @@ router.post('/transcribe', async (req, res) => {
           model: PROVIDERS[name].model(),
           response_format: 'json',
           temperature: 0,
-          prompt: 'Bible verse, chapter, scripture, sermon, church service.',
+          prompt: WHISPER_PROMPT,
         }, { maxRetries: 0, timeout: 20000 });
 
         const text = String((response && response.text) || '').trim();
