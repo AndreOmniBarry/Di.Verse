@@ -4,11 +4,8 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-// Tests control the key themselves, whatever .env says
-require('dotenv').config({ quiet: true });
-delete process.env.APIBIBLE_KEY;
-delete process.env.APIBIBLE_IDS;
-for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_MODEL', 'GROQ_MODEL']) delete process.env[k];
+// Tests set keys themselves and never touch your real ones in .env
+for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_MODEL', 'GROQ_MODEL', 'APIBIBLE_KEY', 'APIBIBLE_IDS']) process.env[k] = '';
 
 const seeded = fs.existsSync(path.join(__dirname, '../db/bible.db'));
 const apiBible = require('../services/apiBible');
@@ -34,7 +31,7 @@ function mockApiBible() {
   };
 }
 
-test.afterEach(() => { global.fetch = realFetch; delete process.env.APIBIBLE_KEY; apiBible._reset(); calls.length = 0; });
+test.afterEach(() => { global.fetch = realFetch; process.env.APIBIBLE_KEY = ''; apiBible._reset(); calls.length = 0; });
 
 test('local public-domain translations are real stored text', { skip: !seeded && 'run npm run seed first' }, async () => {
   const asv = await getVerse('John', 3, 16, 'ASV');

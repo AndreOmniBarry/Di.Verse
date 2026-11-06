@@ -2,7 +2,7 @@
 // Usage: npm run prefetch -- TPT "John 3:16; Romans 8:28-30; Psalm 23:1-6"
 // Confirmed AI answers (verified / web-grounded) are saved; anything
 // unverified is listed so you can check it before the service.
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const { getVerse } = require('../services/bibleDb');
 const { resolveBook } = require('../services/parser');
 

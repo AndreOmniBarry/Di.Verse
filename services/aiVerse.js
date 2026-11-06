@@ -14,7 +14,6 @@
 //
 // Not for a commercial release: replace with licensed text (API.Bible or a
 // publisher licence) before charging customers.
-require('dotenv').config();
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 
@@ -70,8 +69,9 @@ function parseReply(raw) {
   const s = String(raw || '');
   const start = s.indexOf('{');
   const end = s.lastIndexOf('}');
-  if (start === -1 || end <= start) throw new Error('no JSON in reply');
-  const data = JSON.parse(s.slice(start, end + 1));
+  if (start === -1 || end <= start) return null;
+  let data;
+  try { data = JSON.parse(s.slice(start, end + 1)); } catch (e) { return null; }
   if (!data.found || !data.text) return null;
   const text = String(data.text)
     .replace(/^\s*\d+\s+/, '')                // stray verse number
@@ -98,47 +98,74 @@ async function geminiFetch(path, body) {
   return json;
 }
 
-// Model names change often; use GEMINI_MODEL if set, otherwise pick the
-// newest "flash" model this key can call
-async function pickGeminiModel() {
-  if (process.env.GEMINI_MODEL) return process.env.GEMINI_MODEL;
-  if (geminiModel) return geminiModel;
-  const { models = [] } = await geminiFetch('/models?pageSize=200');
-  const usable = models
-    .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
-    .map(m => m.name.replace(/^models\//, ''))
-    .filter(n => /^gemini-[\d.]+-flash(-lite)?$/.test(n));
+// Model names and free-tier quotas change often. Build an ordered list of
+// candidates (GEMINI_MODEL first if set, then flash models newest first) and
+// fall through it: a free key often has no quota on the newest model, so a
+// 429/404 on one model means "try the next", not "Gemini is down".
+let geminiCandidates = null;
+async function geminiModelList() {
+  if (geminiCandidates) return geminiCandidates;
+  let found = [];
+  try {
+    const { models = [] } = await geminiFetch('/models?pageSize=200');
+    found = models
+      .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+      .map(m => m.name.replace(/^models\//, ''))
+      .filter(n => /^gemini-[\d.]+-flash(-lite)?$/.test(n));
+  } catch (err) {
+    if (!process.env.GEMINI_MODEL) throw err;
+  }
   const version = n => parseFloat(n.match(/gemini-([\d.]+)/)[1]);
-  usable.sort((a, b) => (version(b) - version(a)) || (a.includes('lite') - b.includes('lite')));
-  if (!usable.length) throw new Error('no Gemini flash model available to this key — set GEMINI_MODEL');
-  geminiModel = usable[0];
-  console.log('[AI Verse] Gemini model:', geminiModel);
-  return geminiModel;
+  found.sort((a, b) => (version(b) - version(a)) || (a.includes('lite') - b.includes('lite')));
+  geminiCandidates = [...new Set([process.env.GEMINI_MODEL, ...found].filter(Boolean))].slice(0, 5);
+  if (!geminiCandidates.length) throw new Error('no Gemini flash model available to this key — set GEMINI_MODEL');
+  return geminiCandidates;
+}
+
+// Moves a model that worked to the front so later calls go straight to it
+function preferGemini(model) {
+  geminiCandidates = [model, ...geminiCandidates.filter(m => m !== model)];
+  if (geminiModel !== model) console.log('[AI Verse] Gemini model:', model);
+  geminiModel = model;
 }
 
 async function askGemini(book, chapter, verse, translation) {
-  const model = await pickGeminiModel();
+  const candidates = await geminiModelList();
   const body = grounded => ({
     contents: [{ role: 'user', parts: [{ text: prompt(book, chapter, verse, translation, grounded) }] }],
     generationConfig: { temperature: 0 },
     ...(grounded ? { tools: [{ google_search: {} }] } : {}),
   });
-  let json, grounded = true;
-  try {
-    json = await geminiFetch(`/models/${model}:generateContent`, body(true));
-  } catch (err) {
-    // Some free keys/models don't allow search grounding — fall back to recall
-    if (err.status !== 400 && err.status !== 403) throw err;
-    grounded = false;
-    json = await geminiFetch(`/models/${model}:generateContent`, body(false));
+
+  let lastErr = null;
+  for (const model of candidates) {
+    let json = null, grounded = true;
+    try {
+      json = await geminiFetch(`/models/${model}:generateContent`, body(true));
+    } catch (err) {
+      // Search grounding has its own (smaller) free quota — retry as plain recall
+      if (![400, 403, 429].includes(err.status)) throw err;
+      grounded = false;
+      try {
+        json = await geminiFetch(`/models/${model}:generateContent`, body(false));
+      } catch (err2) {
+        if (![403, 404, 429].includes(err2.status)) throw err2;
+        console.log(`[AI Verse] Gemini ${model}: no free quota (${err2.status}) — trying the next model`);
+        lastErr = err2;
+        continue;
+      }
+    }
+    preferGemini(model);
+    const cand = (json.candidates || [])[0] || {};
+    const raw = ((cand.content && cand.content.parts) || []).map(p => p.text || '').join('');
+    // Grounding counts only if the response shows a search actually ran
+    const meta = cand.groundingMetadata;
+    const searched = grounded && Boolean(meta && ((meta.groundingChunks || []).length || (meta.webSearchQueries || []).length));
+    const text = parseReply(raw);
+    if (!text) console.log(`[AI Verse] Gemini ${model} did not give the wording. Reply: ${raw.slice(0, 160).replace(/\s+/g, ' ')}`);
+    return text && { provider: 'gemini', model, text, grounded: searched };
   }
-  const cand = (json.candidates || [])[0] || {};
-  const raw = ((cand.content && cand.content.parts) || []).map(p => p.text || '').join('');
-  // Grounding counts only if the response shows a search actually ran
-  const meta = cand.groundingMetadata;
-  const searched = grounded && Boolean(meta && ((meta.groundingChunks || []).length || (meta.webSearchQueries || []).length));
-  const text = parseReply(raw);
-  return text && { provider: 'gemini', model, text, grounded: searched };
+  throw lastErr;
 }
 
 // ── Groq (OpenAI-compatible) ──
@@ -148,32 +175,52 @@ function groq() {
   return groqClient;
 }
 
-// groq/compound has built-in web search; otherwise the largest general model
-async function pickGroqModel() {
-  if (process.env.GROQ_MODEL) return process.env.GROQ_MODEL;
-  if (groqModel) return groqModel;
-  const list = await groq().models.list();
-  const ids = (list.data || []).map(m => m.id);
-  const prefs = ['groq/compound', 'compound-beta', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'];
-  groqModel = prefs.find(p => ids.includes(p)) || ids.find(id => !/whisper|guard|tts|embed/i.test(id));
-  if (!groqModel) throw new Error('no usable Groq chat model — set GROQ_MODEL');
-  console.log('[AI Verse] Groq model:', groqModel);
-  return groqModel;
+// groq/compound has built-in web search; otherwise large general models. Up to
+// two are asked in turn, because a model may decline to quote a translation
+// it isn't sure of.
+let groqCandidates = null;
+async function groqModelList() {
+  if (groqCandidates) return groqCandidates;
+  const ids = ((await groq().models.list()).data || []).map(m => m.id);
+  const prefs = ['groq/compound', 'compound-beta', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'moonshotai/kimi-k2-instruct', 'qwen/qwen3-32b'];
+  const general = ids.filter(id => !/whisper|guard|tts|embed|orpheus|prompt|mini|8b|20b/i.test(id));
+  groqCandidates = [...new Set([process.env.GROQ_MODEL, ...prefs.filter(p => ids.includes(p)), ...general].filter(Boolean))].slice(0, 2);
+  if (!groqCandidates.length) throw new Error('no usable Groq chat model — set GROQ_MODEL');
+  console.log('[AI Verse] Groq models:', groqCandidates.join(', '));
+  groqModel = groqCandidates[0];
+  return groqCandidates;
 }
 
 async function askGroq(book, chapter, verse, translation) {
-  const model = await pickGroqModel();
-  const canSearch = /compound/.test(model);
-  const res = await groq().chat.completions.create({
-    model,
-    temperature: 0,
-    messages: [{ role: 'user', content: prompt(book, chapter, verse, translation, canSearch) }],
-  }, { timeout: TIMEOUT_MS, maxRetries: 0 });
-  const msg = (res.choices && res.choices[0] && res.choices[0].message) || {};
-  const text = parseReply(msg.content);
-  // compound reports the tools it ran; only call it grounded if a search happened
-  const searched = canSearch && Boolean((msg.executed_tools || []).length);
-  return text && { provider: 'groq', model, text, grounded: searched };
+  const candidates = await groqModelList();
+  let lastErr = null;
+  for (const model of candidates) {
+    const canSearch = /compound/.test(model);
+    let res;
+    try {
+      res = await groq().chat.completions.create({
+        model,
+        temperature: 0,
+        messages: [{ role: 'user', content: prompt(book, chapter, verse, translation, canSearch) }],
+      }, { timeout: TIMEOUT_MS, maxRetries: 0 });
+    } catch (err) {
+      if (err.status === 401) throw err; // bad key: no point trying another model
+      console.log(`[AI Verse] Groq ${model}: ${err.status || ''} ${err.message.slice(0, 100)} — trying the next model`);
+      lastErr = err;
+      continue;
+    }
+    const msg = (res.choices && res.choices[0] && res.choices[0].message) || {};
+    const text = parseReply(msg.content);
+    if (!text) {
+      console.log(`[AI Verse] Groq ${model} did not give the wording. Reply: ${String(msg.content || '').slice(0, 160).replace(/\s+/g, ' ')}`);
+      continue;
+    }
+    // compound reports the tools it ran; only call it grounded if a search happened
+    const searched = canSearch && Boolean((msg.executed_tools || []).length);
+    return { provider: 'groq', model, text, grounded: searched };
+  }
+  if (lastErr) throw lastErr;
+  return null;
 }
 
 // ── Claude (recall) ──
@@ -249,7 +296,7 @@ async function getVerse(book, chapter, verse, translation, kjvText) {
   for (const a of answers) lastError[a.provider] = null;
 
   if (!answers.length) {
-    const errs = settled.filter(r => r.status === 'rejected').map(r => r.reason.message);
+    const errs = settled.map((r, i) => r.status === 'rejected' ? lastError[enabled[i][0]] || r.reason.message : null).filter(Boolean);
     return { error: errs.length ? 'AI lookup failed: ' + errs.join('; ') : `No AI provider could find ${translation} wording for this verse` };
   }
 
@@ -289,4 +336,4 @@ function status() {
   return { available: isAvailable(), providers: Object.keys(c).filter(k => c[k]), errors: { ...lastError } };
 }
 
-module.exports = { getVerse, isAvailable, status, similarity, parseReply, TRANSLATION_NAMES, _reset: () => { geminiModel = null; groqModel = null; groqClient = null; claudeClient = null; for (const k in downUntil) delete downUntil[k]; for (const k in lastError) delete lastError[k]; } };
+module.exports = { getVerse, isAvailable, status, similarity, parseReply, TRANSLATION_NAMES, _reset: () => { geminiModel = null; groqModel = null; geminiCandidates = null; groqCandidates = null; groqClient = null; claudeClient = null; for (const k in downUntil) delete downUntil[k]; for (const k in lastError) delete lastError[k]; } };
