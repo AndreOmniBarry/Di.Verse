@@ -170,3 +170,18 @@ test('Groq first model declines → second model asked', { skip: !seeded }, asyn
   assert.strictEqual(v.translation, 'TPT');
   assert.strictEqual(calls, 2);
 });
+
+test('Gemini web search times out → asks again without search', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'g';
+  replies = { gemini: TPT_JOHN_3_16 };
+  const mocked = global.fetch;
+  global.fetch = async (url, init) => {
+    if (String(url).includes(':generateContent') && JSON.parse(init.body).tools) {
+      const err = new Error('The operation was aborted due to timeout'); err.name = 'TimeoutError'; throw err;
+    }
+    return mocked(url, init);
+  };
+  const v = await getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.translation, 'TPT');
+  assert.strictEqual(v.verification, 'unverified');   // recall only, one source
+});
