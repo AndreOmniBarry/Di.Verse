@@ -18,6 +18,8 @@ const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const TIMEOUT_MS = 15000;
+const SEARCH_TIMEOUT_MS = 25000; // a web-search-grounded answer takes longer
+const PROVIDER_TIMEOUT_MS = 45000; // overall cap per provider, fallbacks included
 const AGREE_THRESHOLD = 0.8;   // word-bigram similarity counted as "same wording"
 const DOWN_FOR_MS = 60000;     // skip a provider for a minute after auth/quota errors
 
@@ -61,7 +63,10 @@ function prompt(book, chapter, verse, translation, canSearch) {
   return `Give the exact text of ${book} ${chapter}:${verse} in the ${name} (${translation}).
 ${canSearch ? 'Search the web for this verse on a Bible website and copy its wording exactly.\n' : ''}Rules:
 - Only that single verse, word for word. No verse number, no reference, no footnotes, no commentary.
-- If you cannot find or are not certain of the exact ${translation} wording, set "found" to false.
+- Give the ${translation} wording as exactly as you can, even if you are unsure of a word or two:
+  your answer is compared with other sources and a person checks anything that doesn't match.
+- Set "found" to false only if you do not know this verse in the ${translation} at all.
+- Never substitute another translation's wording (for example KJV) for the ${translation}.
 Reply with JSON only: {"found": true|false, "text": "..."}`;
 }
 
@@ -82,12 +87,12 @@ function parseReply(raw) {
 }
 
 // ── Gemini ──
-async function geminiFetch(path, body) {
+async function geminiFetch(path, body, timeoutMs = TIMEOUT_MS) {
   const res = await fetch(GEMINI_BASE + path, {
     method: body ? 'POST' : 'GET',
     headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -141,10 +146,13 @@ async function askGemini(book, chapter, verse, translation) {
   for (const model of candidates) {
     let json = null, grounded = true;
     try {
-      json = await geminiFetch(`/models/${model}:generateContent`, body(true));
+      json = await geminiFetch(`/models/${model}:generateContent`, body(true), SEARCH_TIMEOUT_MS);
     } catch (err) {
-      // Search grounding has its own (smaller) free quota — retry as plain recall
-      if (![400, 403, 429].includes(err.status)) throw err;
+      // Search grounding has its own (smaller) free quota and can be slow —
+      // on a quota error or a timeout, retry as plain recall
+      const timedOut = err.name === 'TimeoutError' || err.name === 'AbortError';
+      if (!timedOut && ![400, 403, 429].includes(err.status)) throw err;
+      if (timedOut) console.log(`[AI Verse] Gemini ${model}: web search too slow — asking without search`);
       grounded = false;
       try {
         json = await geminiFetch(`/models/${model}:generateContent`, body(false));
@@ -280,7 +288,7 @@ async function getVerse(book, chapter, verse, translation, kjvText) {
   }
 
   const settled = await Promise.allSettled(enabled.map(([name]) =>
-    withTimeout(PROVIDERS[name](book, chapter, verse, translation), TIMEOUT_MS + 2000, name)
+    withTimeout(PROVIDERS[name](book, chapter, verse, translation), PROVIDER_TIMEOUT_MS, name)
       .catch(err => {
         lastError[name] = describeError(name, err);
         if ([401, 403, 429].includes(err.status)) downUntil[name] = Date.now() + DOWN_FOR_MS;
