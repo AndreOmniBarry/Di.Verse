@@ -5,7 +5,6 @@
 //
 // Run `npm run check:apibible` with your key to see exactly which
 // translations your plan unlocks and the raw response for one verse.
-require('dotenv').config();
 
 const BASE_URL = process.env.APIBIBLE_BASE_URL || 'https://rest.api.bible/v1';
 

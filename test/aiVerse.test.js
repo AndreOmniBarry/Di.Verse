@@ -4,8 +4,8 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-require('dotenv').config({ quiet: true });
-for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_MODEL', 'GROQ_MODEL', 'APIBIBLE_KEY', 'APIBIBLE_IDS']) delete process.env[k];
+// Tests set keys themselves and never touch your real ones in .env
+for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_MODEL', 'GROQ_MODEL', 'APIBIBLE_KEY', 'APIBIBLE_IDS']) process.env[k] = '';
 
 const seeded = fs.existsSync(path.join(__dirname, '../db/bible.db'));
 const aiVerse = require('../services/aiVerse');
@@ -18,8 +18,8 @@ let replies;   // provider -> text | {status} | function
 const seen = [];
 
 function json(body, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }); }
-function reply(provider) {
-  const r = typeof replies[provider] === 'function' ? replies[provider]() : replies[provider];
+function reply(provider, url) {
+  const r = typeof replies[provider] === 'function' ? replies[provider](url) : replies[provider];
   return r;
 }
 function mock() {
@@ -35,7 +35,7 @@ function mock() {
       ] });
     }
     if (u.includes('generativelanguage') && u.includes(':generateContent')) {
-      const r = reply('gemini');
+      const r = reply('gemini', u);
       if (r && r.status) return json({ error: { message: 'quota' } }, r.status);
       const body = JSON.parse(init.body);
       return json({ candidates: [{ content: { parts: [{ text: JSON.stringify(r ? { found: true, text: r } : { found: false, text: '' }) }] },
@@ -61,7 +61,7 @@ function mock() {
 function clearTpt() { if (seeded) getDb().prepare(`DELETE FROM verses WHERE translation = 'TPT'`).run(); }
 
 test.beforeEach(() => { aiVerse._reset(); apiBible._reset(); seen.length = 0; clearTpt(); mock(); });
-test.afterEach(() => { global.fetch = realFetch; for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY']) delete process.env[k]; clearTpt(); });
+test.afterEach(() => { global.fetch = realFetch; for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY']) process.env[k] = ''; clearTpt(); });
 
 test('parseReply copes with prose, footnotes and "not found"', () => {
   assert.strictEqual(aiVerse.parseReply('Sure! {"found": true, "text": "16 For God[a] so loved"}'), 'For God so loved');
@@ -150,5 +150,23 @@ test('licensed API.Bible text takes over from saved AI text once a key is added'
     const v = await getVerse('John', 3, 16, 'TPT');
     assert.strictEqual(v.source, 'apibible');
     assert.strictEqual(v.text, 'Licensed TPT wording.');
-  } finally { delete process.env.APIBIBLE_KEY; }
+  } finally { process.env.APIBIBLE_KEY = ''; }
+});
+
+test('newest Gemini model has no free quota → falls back to an older one', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'g';
+  replies = { gemini: url => url.includes('gemini-3.5-flash:') ? { status: 429 } : TPT_JOHN_3_16 };
+  const v = await getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.translation, 'TPT');
+  assert.strictEqual(v.aiSources[0], 'gemini');
+  assert.ok(seen.some(u => u.includes('gemini-3.5-flash-lite:generateContent')));
+});
+
+test('Groq first model declines → second model asked', { skip: !seeded }, async () => {
+  process.env.GROQ_API_KEY = 'q';
+  let calls = 0;
+  replies = { groq: () => (++calls === 1 ? null : TPT_JOHN_3_16) };
+  const v = await getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.translation, 'TPT');
+  assert.strictEqual(calls, 2);
 });

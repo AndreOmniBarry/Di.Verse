@@ -1,7 +1,7 @@
 // Shows what your API.Bible key unlocks and the raw response for John 3:16.
 // Usage: put APIBIBLE_KEY in .env, then `npm run check:apibible`
 //        optional: npm run check:apibible -- NKJV   (fetch that translation)
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const apiBible = require('../services/apiBible');
 
 (async () => {

@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true }); // the only place .env is loaded for the app
 const express = require('express');
 const http = require('http');
 const { WebSocketServer } = require('ws');
@@ -94,6 +94,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('\n  Share Projection + Preacher URLs with other devices.');
   console.log('========================================\n');
 
+  // Tests and headless runs set DIVERSE_NO_BROWSER so no Chrome tabs pop up
+  if (process.env.DIVERSE_NO_BROWSER) return;
   const { exec } = require('child_process');
   const cmd = process.platform === 'darwin'
     ? `open -a "Google Chrome" http://localhost:${PORT}/operator`

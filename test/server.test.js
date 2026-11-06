@@ -10,7 +10,7 @@ const base = `http://localhost:${PORT}`;
 let server;
 
 test.before(async () => {
-  const env = { ...process.env, PORT: String(PORT), OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', APIBIBLE_KEY: '' };
+  const env = { ...process.env, PORT: String(PORT), OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', APIBIBLE_KEY: '', DIVERSE_NO_BROWSER: '1' };
   server = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env, stdio: 'pipe' });
   for (let i = 0; i < 50; i++) {
     try { await fetch(base + '/api/songs/search'); return; } catch (e) { await new Promise(r => setTimeout(r, 100)); }

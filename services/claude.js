@@ -1,4 +1,3 @@
-require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
 
 const OpenAI = require('openai');
