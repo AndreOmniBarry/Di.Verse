@@ -135,7 +135,11 @@ function saveAiVerse(v) {
 }
 
 // ── Get verse — real text only: local DB, then API.Bible, then KJV with the reason ──
-async function getVerse(book, chapter, verse, translation = 'KJV') {
+// opts.live: the operator is waiting — AI lookups answer within a few seconds
+// and anything confirmed later is saved for next time
+const LIVE_DEADLINE_MS = 6000;
+
+async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
   translation = String(translation || 'KJV').toUpperCase();
 
   const local = localVerse(book, chapter, verse, translation);
@@ -156,7 +160,8 @@ async function getVerse(book, chapter, verse, translation = 'KJV') {
 
     if (aiVerse.isAvailable()) {
       const kjvRow = localVerse(book, chapter, verse, 'KJV');
-      const ai = await aiVerse.getVerse(book, chapter, verse, translation, kjvRow && kjvRow.text);
+      const ai = await aiVerse.getVerse(book, chapter, verse, translation, kjvRow && kjvRow.text,
+        opts.live ? { deadlineMs: LIVE_DEADLINE_MS, onLateResult: saveAiVerse } : {});
       if (!ai.error) { saveAiVerse(ai); return ai; }
       reason = ai.error;
     }
@@ -205,13 +210,13 @@ const SUPERSCRIPT = { 0:'⁰',1:'¹',2:'²',3:'³',4:'⁴',5:'⁵',6:'⁶',7:'�
 const sup = n => String(n).split('').map(d => SUPERSCRIPT[d]).join('');
 const VERIFY_RANK = { verified: 1, grounded: 2, unverified: 3 };
 
-async function getPassage(book, chapter, verse, verseEnd, translation = 'KJV') {
-  if (!verseEnd || verseEnd <= verse) return getVerse(book, chapter, verse, translation);
+async function getPassage(book, chapter, verse, verseEnd, translation = 'KJV', opts = {}) {
+  if (!verseEnd || verseEnd <= verse) return getVerse(book, chapter, verse, translation, opts);
 
   // Don't run past the end of the chapter
   const row = getDb().prepare(`SELECT max_verse FROM bible_structure WHERE book = ? AND chapter = ?`).get(book, chapter);
   const last = Math.min(verseEnd, row ? row.max_verse : verseEnd);
-  if (last <= verse) return getVerse(book, chapter, verse, translation);
+  if (last <= verse) return getVerse(book, chapter, verse, translation, opts);
 
   // A few at a time: fast for network-backed translations without bursting
   // past free-tier per-minute limits (3 AI providers per verse)
@@ -222,7 +227,7 @@ async function getPassage(book, chapter, verse, verseEnd, translation = 'KJV') {
   await Promise.all(Array.from({ length: Math.min(3, verses.length) }, async () => {
     while (next < verses.length) {
       const i = next++;
-      results[i] = await getVerse(book, chapter, verses[i], translation);
+      results[i] = await getVerse(book, chapter, verses[i], translation, opts);
     }
   }));
   const parts = results.filter(Boolean);

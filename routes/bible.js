@@ -21,7 +21,7 @@ router.get('/verse', async (req, res) => {
 
   // Use normalised book name for DB lookup
   const normalisedBook = validation.normalised || book;
-  const result = await getPassage(normalisedBook, parseInt(chapter), parseInt(verse), verseEnd ? Math.min(parseInt(verseEnd), parseInt(verse) + 9) : undefined, translation);
+  const result = await getPassage(normalisedBook, parseInt(chapter), parseInt(verse), verseEnd ? Math.min(parseInt(verseEnd), parseInt(verse) + 9) : undefined, translation, { live: true });
 
   if (!result) {
     return res.status(404).json({

@@ -715,22 +715,9 @@ var base64 = btoa(binary);
       transcriptionContext.push(text);
       if (transcriptionContext.length > 3) transcriptionContext.shift();
 
-      var detectRes = await fetch('/api/detect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text,
-          context: transcriptionContext.slice(0, -1).join(' '),
-          activeTranslation: activeTranslation
-        })
-      });
-
-      if (sessionId !== mySession) return;
-      if (!detectRes.ok) { setApiStatus('fail'); return; }
-
-      var detection = await detectRes.json();
-      if (!detection.error) setApiStatus('ok');
-      await handleDetection(detection);
+      // Detection runs alongside: a slow verse lookup must never hold up the
+      // transcription of what the preacher says next
+      detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession);
 
     } catch(err) {
       console.error('[Audio Error]', err);
@@ -739,6 +726,24 @@ var base64 = btoa(binary);
       } else {
         setApiStatus('fail');
       }
+    }
+  }
+
+  async function detectScripture(text, context, translation, mySession) {
+    try {
+      var detectRes = await fetch('/api/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, context: context, activeTranslation: translation })
+      });
+      if (sessionId !== mySession) return;
+      if (!detectRes.ok) { setApiStatus('fail'); return; }
+      var detection = await detectRes.json();
+      if (!detection.error) setApiStatus('ok');
+      await handleDetection(detection);
+    } catch (err) {
+      console.error('[Detect Error]', err);
+      setApiStatus(String(err.message).includes('fetch') ? 'offline' : 'fail');
     }
   }
 

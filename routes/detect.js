@@ -35,7 +35,7 @@ router.post('/detect', async (req, res) => {
         return res.json({ type: 'validation_error', message: validation.message });
       }
 
-      const verseData = await getPassage(validation.normalised || book, chapter, verse, verseEnd, translation);
+      const verseData = await getPassage(validation.normalised || book, chapter, verse, verseEnd, translation, { live: true });
       if (!verseData) return res.json({ type: 'none' });
 
       console.log('[Parser] ' + verseData.reference + ' (' + translation + ') conf:' + confidence);
@@ -64,7 +64,7 @@ router.post('/detect', async (req, res) => {
       const start = parseInt(verse);
       const end = parseInt(detection.reference.verse_end);
       const verseEnd = end > start ? Math.min(end, start + 9) : undefined;
-      const verseData = await getPassage(validation.normalised || book, parseInt(chapter), start, verseEnd, usedTranslation);
+      const verseData = await getPassage(validation.normalised || book, parseInt(chapter), start, verseEnd, usedTranslation, { live: true });
       if (verseData) detection.verseData = verseData;
     }
 
