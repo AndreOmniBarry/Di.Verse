@@ -185,3 +185,16 @@ test('Gemini web search times out → asks again without search', { skip: !seede
   assert.strictEqual(v.translation, 'TPT');
   assert.strictEqual(v.verification, 'unverified');   // recall only, one source
 });
+
+test('Gemini model list too slow → known model names are tried', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'g';
+  replies = { gemini: url => url.includes('gemini-3.8-flash:') ? { status: 404 } : TPT_JOHN_3_16 };
+  const mocked = global.fetch;
+  global.fetch = async (url, init) => {
+    if (String(url).includes('/models?')) { const e = new Error('The operation was aborted due to timeout'); e.name = 'TimeoutError'; throw e; }
+    return mocked(url, init);
+  };
+  const v = await getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.translation, 'TPT');
+  assert.ok(seen.some(u => u.includes('gemini-3.5-flash:generateContent')), 'moved past the missing model');
+});
