@@ -215,3 +215,34 @@ test('two Groq models disagree (e.g. one gives KJV wording) → unverified', { s
   assert.strictEqual(v.verification, 'unverified');
   assert.match(v.note, /sources disagreed/);
 });
+
+test('live: answers as soon as two sources agree, without waiting for a slow Gemini', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'g'; process.env.GROQ_API_KEY = 'q';
+  replies = { gemini: TPT_JOHN_3_16, groq: TPT_JOHN_3_16 };
+  const mocked = global.fetch;
+  global.fetch = async (url, init) => {
+    if (String(url).includes(':generateContent')) await new Promise(r => setTimeout(r, 3000));
+    return mocked(url, init);
+  };
+  const t = Date.now();
+  const v = await aiVerse.getVerse('John', 3, 16, 'TPT', null, { deadlineMs: 2000 });
+  assert.strictEqual(v.verification, 'verified');            // the two Groq models agreed
+  assert.ok(Date.now() - t < 1500, `took ${Date.now() - t} ms`);
+});
+
+test('live: after the deadline shows what it has, and saves a later confirmation', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'g'; process.env.ANTHROPIC_API_KEY = 'a';
+  replies = { gemini: TPT_JOHN_3_16, claude: TPT_JOHN_3_16 };
+  const mocked = global.fetch;
+  global.fetch = async (url, init) => {
+    if (String(url).includes(':generateContent')) await new Promise(r => setTimeout(r, 1200));
+    return mocked(url, init);
+  };
+  let late = null;
+  const t = Date.now();
+  const v = await aiVerse.getVerse('John', 3, 16, 'TPT', null, { deadlineMs: 300, onLateResult: r => { late = r; } });
+  assert.ok(Date.now() - t < 1000, `took ${Date.now() - t} ms`);
+  assert.strictEqual(v.verification, 'unverified');          // Claude alone so far
+  await new Promise(r => setTimeout(r, 1500));
+  assert.strictEqual(late && late.verification, 'verified'); // Gemini agreed later
+});

@@ -34,7 +34,9 @@ const TRANSLATION_NAMES = {
   WEB: 'World English Bible', NRSV: 'New Revised Standard Version', RSV: 'Revised Standard Version',
 };
 
-const downUntil = {};   // provider -> timestamp
+const downUntil = {};   // provider -> timestamp (auth/quota errors)
+const slowUntil = {};   // provider -> timestamp (timed out: skipped for live lookups)
+const SLOW_FOR_MS = 5 * 60000;
 const lastError = {};   // provider -> message
 let geminiModel = null; // discovered once
 let groqModel = null;
@@ -285,33 +287,77 @@ function describeError(provider, err) {
 }
 
 // Main entry. kjvText is used only as a length sanity check.
-async function getVerse(book, chapter, verse, translation, kjvText) {
-  const enabled = Object.entries(configured()).filter(([name, on]) => on && !(downUntil[name] > Date.now()));
+// Options for live use (the operator is waiting):
+//   deadlineMs   — answer as soon as two sources agree, or once this much
+//                  time has passed and at least one answer is in, instead of
+//                  waiting for the slowest provider
+//   onLateResult — called if the providers still running afterwards turn the
+//                  answer into a verified/grounded one (so it can be saved)
+async function getVerse(book, chapter, verse, translation, kjvText, { deadlineMs, onLateResult } = {}) {
+  const now = Date.now();
+  const enabled = Object.entries(configured())
+    .filter(([name, on]) => on && !(downUntil[name] > now) && !(deadlineMs && slowUntil[name] > now));
   if (!enabled.length) {
     const why = Object.values(lastError).filter(Boolean).join('; ');
     return { error: why || 'No AI provider configured (GEMINI_API_KEY, GROQ_API_KEY or ANTHROPIC_API_KEY)' };
   }
 
-  const settled = await Promise.allSettled(enabled.map(([name]) =>
+  const answers = [];
+  const errors = {};
+  const tasks = enabled.map(([name]) =>
     withTimeout(PROVIDERS[name](book, chapter, verse, translation), PROVIDER_TIMEOUT_MS, name)
+      .then(value => {
+        lastError[name] = null;
+        // A provider may return one answer or several (one per model)
+        for (const a of [].concat(value || [])) {
+          if (plausibleLength(a.text, kjvText)) answers.push({ ...a, label: a.label || a.provider });
+        }
+      })
       .catch(err => {
         lastError[name] = describeError(name, err);
+        errors[name] = lastError[name];
         if ([401, 403, 429].includes(err.status)) downUntil[name] = Date.now() + DOWN_FOR_MS;
+        // Too slow for a live service: skip it for live lookups for a while
+        if (/timed out|timeout|aborted/i.test(err.message)) slowUntil[name] = Date.now() + SLOW_FOR_MS;
         console.error('[AI Verse]', lastError[name]);
-        throw err;
       })
-  ));
+  );
+  const allDone = Promise.all(tasks);
+  const decideNow = () => decide(answers, errors, { book, chapter, verse, translation });
 
-  // A provider may return one answer or several (one per model)
-  const answers = settled
-    .filter(r => r.status === 'fulfilled' && r.value)
-    .flatMap(r => r.value)
-    .map(a => ({ ...a, label: a.label || a.provider }))
-    .filter(a => plausibleLength(a.text, kjvText));
-  for (const a of answers) lastError[a.provider] = null;
+  if (!deadlineMs) {
+    await allDone;
+    return decideNow();
+  }
 
+  // Live: resolve on agreement, on the deadline (if anything has arrived), or
+  // when everyone is done — whichever comes first
+  const started = Date.now();
+  const early = await new Promise(resolve => {
+    let finished = false;
+    const done = v => { if (!finished) { finished = true; clearInterval(tick); resolve(v); } };
+    const tick = setInterval(() => {
+      const r = answers.length ? decideNow() : null;
+      if (r && r.verification === 'verified') return done(r);
+      if (r && Date.now() - started >= deadlineMs) return done(r);
+    }, 100);
+    allDone.then(() => done(decideNow()));
+  });
+
+  if (onLateResult && early.verification !== 'verified') {
+    allDone.then(() => {
+      const late = decideNow();
+      if (!late.error && (late.verification === 'verified' || late.verification === 'grounded') && late.verification !== early.verification) {
+        onLateResult(late);
+      }
+    });
+  }
+  return early;
+}
+
+function decide(answers, errors, { book, chapter, verse, translation }) {
   if (!answers.length) {
-    const errs = settled.map((r, i) => r.status === 'rejected' ? lastError[enabled[i][0]] || r.reason.message : null).filter(Boolean);
+    const errs = Object.values(errors);
     return { error: errs.length ? 'AI lookup failed: ' + errs.join('; ') : `No AI provider could find ${translation} wording for this verse` };
   }
 
@@ -351,4 +397,4 @@ function status() {
   return { available: isAvailable(), providers: Object.keys(c).filter(k => c[k]), errors: { ...lastError } };
 }
 
-module.exports = { getVerse, isAvailable, status, similarity, parseReply, TRANSLATION_NAMES, _reset: () => { geminiModel = null; groqModel = null; geminiCandidates = null; groqCandidates = null; groqClient = null; claudeClient = null; for (const k in downUntil) delete downUntil[k]; for (const k in lastError) delete lastError[k]; } };
+module.exports = { getVerse, isAvailable, status, similarity, parseReply, TRANSLATION_NAMES, _reset: () => { geminiModel = null; groqModel = null; geminiCandidates = null; groqCandidates = null; groqClient = null; claudeClient = null; for (const k in downUntil) delete downUntil[k]; for (const k in slowUntil) delete slowUntil[k]; for (const k in lastError) delete lastError[k]; } };
