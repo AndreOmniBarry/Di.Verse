@@ -8,6 +8,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // Anthropic key, or when Claude fails on key / credit / rate limit.
 let groqClient = null;
 let groqDetectModel = null;
+let groqNoReasoningEffort = false;
 function groq() {
   if (!groqClient) groqClient = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
   return groqClient;
@@ -132,13 +133,33 @@ Analyse and return JSON only.`;
   }
 
   try {
-    const res = await groq().chat.completions.create({
-      model: await pickGroqDetectModel(),
+    const model = await pickGroqDetectModel();
+    // gpt-oss / qwen models "think" before answering: give them room, and ask
+    // gpt-oss for brief thinking so detection stays quick
+    const request = {
+      model,
       temperature: 0,
-      max_tokens: 512,
+      max_tokens: 2048,
       messages: [{ role: 'system', content: DETECTION_SYSTEM }, { role: 'user', content: userMessage }],
-    }, { maxRetries: 0, timeout: 10000 });
-    const result = screen(extractJSON(res.choices[0].message.content));
+      ...(/gpt-oss/.test(model) && !groqNoReasoningEffort ? { reasoning_effort: 'low' } : {}),
+    };
+    let res;
+    try {
+      res = await groq().chat.completions.create(request, { maxRetries: 0, timeout: 15000 });
+    } catch (err) {
+      if (err.status !== 400 || !request.reasoning_effort) throw err;
+      groqNoReasoningEffort = true; // this model doesn't take the setting
+      delete request.reasoning_effort;
+      res = await groq().chat.completions.create(request, { maxRetries: 0, timeout: 15000 });
+    }
+    const content = (res.choices[0].message.content || '').trim();
+    // An empty or prose reply means "nothing to report", not an outage
+    let parsed;
+    try { parsed = extractJSON(content); } catch (e) {
+      console.log('[Groq Detection] no JSON in reply, treating as none:', content.slice(0, 120));
+      parsed = { type: 'none' };
+    }
+    const result = screen(parsed);
     return claudeError ? { ...result, warning: claudeError + ' — using Groq for detection' } : result;
   } catch (err) {
     console.error('[Groq Detection Error]', err.status || '', err.message);

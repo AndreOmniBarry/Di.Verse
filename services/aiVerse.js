@@ -205,35 +205,34 @@ async function groqModelList() {
   return groqCandidates;
 }
 
+// Every available Groq model is asked (two at most, from different makers),
+// and each answer counts as a separate opinion in the cross-check below
 async function askGroq(book, chapter, verse, translation) {
   const candidates = await groqModelList();
-  let lastErr = null;
-  for (const model of candidates) {
+  const results = await Promise.allSettled(candidates.map(async model => {
     const canSearch = /compound/.test(model);
-    let res;
-    try {
-      res = await groq().chat.completions.create({
-        model,
-        temperature: 0,
-        messages: [{ role: 'user', content: prompt(book, chapter, verse, translation, canSearch) }],
-      }, { timeout: TIMEOUT_MS, maxRetries: 0 });
-    } catch (err) {
-      if (err.status === 401) throw err; // bad key: no point trying another model
-      console.log(`[AI Verse] Groq ${model}: ${err.status || ''} ${err.message.slice(0, 100)} — trying the next model`);
-      lastErr = err;
-      continue;
-    }
+    const res = await groq().chat.completions.create({
+      model,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt(book, chapter, verse, translation, canSearch) }],
+    }, { timeout: TIMEOUT_MS, maxRetries: 0 });
     const msg = (res.choices && res.choices[0] && res.choices[0].message) || {};
     const text = parseReply(msg.content);
     if (!text) {
       console.log(`[AI Verse] Groq ${model} did not give the wording. Reply: ${String(msg.content || '').slice(0, 160).replace(/\s+/g, ' ')}`);
-      continue;
+      return null;
     }
     // compound reports the tools it ran; only call it grounded if a search happened
     const searched = canSearch && Boolean((msg.executed_tools || []).length);
-    return { provider: 'groq', model, text, grounded: searched };
+    return { provider: 'groq', model, label: model.split('/').pop(), text, grounded: searched };
+  }));
+  const answers = results.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value);
+  if (answers.length) return answers;
+  const failed = results.find(r => r.status === 'rejected');
+  if (failed) {
+    console.log(`[AI Verse] Groq: ${failed.reason.status || ''} ${String(failed.reason.message).slice(0, 100)}`);
+    throw failed.reason;
   }
-  if (lastErr) throw lastErr;
   return null;
 }
 
@@ -303,9 +302,11 @@ async function getVerse(book, chapter, verse, translation, kjvText) {
       })
   ));
 
+  // A provider may return one answer or several (one per model)
   const answers = settled
     .filter(r => r.status === 'fulfilled' && r.value)
-    .map(r => r.value)
+    .flatMap(r => r.value)
+    .map(a => ({ ...a, label: a.label || a.provider }))
     .filter(a => plausibleLength(a.text, kjvText));
   for (const a of answers) lastError[a.provider] = null;
 
@@ -317,17 +318,17 @@ async function getVerse(book, chapter, verse, translation, kjvText) {
   // For each answer, which other providers agree with it?
   const scored = answers.map(a => ({
     ...a,
-    agreeing: answers.filter(b => b !== a && similarity(a.text, b.text) >= AGREE_THRESHOLD).map(b => b.provider),
+    agreeing: answers.filter(b => b !== a && similarity(a.text, b.text) >= AGREE_THRESHOLD).map(b => b.label),
   }));
   // Prefer: most agreement, then a web-grounded answer, then Gemini > Groq > Claude
-  const order = ['gemini', 'groq', 'claude'];
+  const order = ['gemini', 'groq', 'claude']; // tie-break by provider
   scored.sort((x, y) => (y.agreeing.length - x.agreeing.length) || (y.grounded - x.grounded) || (order.indexOf(x.provider) - order.indexOf(y.provider)));
   const best = scored[0];
 
   // Any disagreement means a human checks it, even if one side searched the web
   const disagreed = answers.length > 1 && !best.agreeing.length;
   const verification = best.agreeing.length ? 'verified' : (best.grounded && !disagreed) ? 'grounded' : 'unverified';
-  const sources = [best.provider, ...best.agreeing];
+  const sources = [best.label, ...best.agreeing];
 
   return {
     reference: `${book} ${chapter}:${verse}`,
@@ -338,10 +339,10 @@ async function getVerse(book, chapter, verse, translation, kjvText) {
     verse,
     source: 'ai',
     verification,
-    aiSources: sources,
+    aiSources: [...new Set([best.provider, ...answers.filter(x => best.agreeing.includes(x.label)).map(x => x.provider)])],
     note: verification === 'verified' ? `AI beta · matched by ${sources.join(' + ')}`
       : verification === 'grounded' ? `AI beta · web-searched by ${best.provider}`
-      : `AI beta · UNVERIFIED (${disagreed ? 'providers disagreed, showing ' + best.provider + (best.grounded ? ' web-searched' : '') : best.provider + ' only'}) — check wording`,
+      : `AI beta · UNVERIFIED (${disagreed ? 'sources disagreed, showing ' + best.label + (best.grounded ? ' web-searched' : '') : best.label + ' only'}) — check wording`,
   };
 }
 

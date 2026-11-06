@@ -43,7 +43,7 @@ function mock() {
     }
     if (u.includes('api.groq.com') && u.endsWith('/models')) return json({ object: 'list', data: [{ id: 'llama-3.3-70b-versatile' }, { id: 'groq/compound' }] });
     if (u.includes('api.groq.com')) {
-      const r = reply('groq');
+      const r = reply('groq', init && init.body ? JSON.parse(init.body).model : '');
       if (r && r.status) return json({ error: { message: 'rate limit' } }, r.status);
       return json({ id: 'x', object: 'chat.completion', created: 0, model: 'groq/compound',
         choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(r ? { found: true, text: r } : { found: false, text: '' }), executed_tools: [{ type: 'search' }] } }] });
@@ -101,8 +101,8 @@ test('single recall, nobody confirms → unverified and NOT saved', { skip: !see
 });
 
 test('providers disagree → unverified, says they disagreed', { skip: !seeded }, async () => {
-  process.env.GROQ_API_KEY = 'q'; process.env.ANTHROPIC_API_KEY = 'a';
-  replies = { groq: TPT_JOHN_3_16, claude: 'God loved everyone so much that he sent his Son so that whoever trusts him has real life forever.' };
+  process.env.GEMINI_API_KEY = 'g'; process.env.ANTHROPIC_API_KEY = 'a';
+  replies = { gemini: TPT_JOHN_3_16, claude: 'God loved everyone so much that he sent his Son so that whoever trusts him has real life forever.' };
   const v = await getVerse('John', 3, 16, 'TPT');
   assert.strictEqual(v.verification, 'unverified');
   assert.match(v.note, /disagreed/);
@@ -197,4 +197,21 @@ test('Gemini model list too slow → known model names are tried', { skip: !seed
   const v = await getVerse('John', 3, 16, 'TPT');
   assert.strictEqual(v.translation, 'TPT');
   assert.ok(seen.some(u => u.includes('gemini-3.5-flash:generateContent')), 'moved past the missing model');
+});
+
+test('two Groq models with the same wording → verified on their own', { skip: !seeded }, async () => {
+  process.env.GROQ_API_KEY = 'q';
+  replies = { groq: TPT_JOHN_3_16 };
+  const v = await getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.verification, 'verified');
+  assert.match(v.note, /compound \+ llama-3.3-70b-versatile|llama-3.3-70b-versatile \+ compound/);
+});
+
+test('two Groq models disagree (e.g. one gives KJV wording) → unverified', { skip: !seeded }, async () => {
+  process.env.GROQ_API_KEY = 'q';
+  replies = { groq: model => model === 'groq/compound' ? TPT_JOHN_3_16
+    : 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish.' };
+  const v = await getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.verification, 'unverified');
+  assert.match(v.note, /sources disagreed/);
 });
