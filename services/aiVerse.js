@@ -19,7 +19,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const TIMEOUT_MS = 15000;
 const SEARCH_TIMEOUT_MS = 25000; // a web-search-grounded answer takes longer
-const PROVIDER_TIMEOUT_MS = 45000; // overall cap per provider, fallbacks included
+const PROVIDER_TIMEOUT_MS = 60000; // overall cap per provider, fallbacks included
 const AGREE_THRESHOLD = 0.8;   // word-bigram similarity counted as "same wording"
 const DOWN_FOR_MS = 60000;     // skip a provider for a minute after auth/quota errors
 
@@ -108,28 +108,34 @@ async function geminiFetch(path, body, timeoutMs = TIMEOUT_MS) {
 // fall through it: a free key often has no quota on the newest model, so a
 // 429/404 on one model means "try the next", not "Gemini is down".
 let geminiCandidates = null;
+const FALLBACK_GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 async function geminiModelList() {
   if (geminiCandidates) return geminiCandidates;
   let found = [];
   try {
-    const { models = [] } = await geminiFetch('/models?pageSize=200');
+    const { models = [] } = await geminiFetch('/models?pageSize=200', undefined, SEARCH_TIMEOUT_MS);
     found = models
       .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
       .map(m => m.name.replace(/^models\//, ''))
       .filter(n => /^gemini-[\d.]+-flash(-lite)?$/.test(n));
   } catch (err) {
-    if (!process.env.GEMINI_MODEL) throw err;
+    // A slow or failed model list shouldn't stop Gemini: try well-known names
+    // (each is checked when called, and a missing one just moves to the next)
+    console.log(`[AI Verse] Gemini model list unavailable (${err.status || err.name}) — trying known models`);
+    found = FALLBACK_GEMINI_MODELS;
   }
   const version = n => parseFloat(n.match(/gemini-([\d.]+)/)[1]);
   found.sort((a, b) => (version(b) - version(a)) || (a.includes('lite') - b.includes('lite')));
-  geminiCandidates = [...new Set([process.env.GEMINI_MODEL, ...found].filter(Boolean))].slice(0, 5);
+  const list = [...new Set([process.env.GEMINI_MODEL, ...found].filter(Boolean))].slice(0, 5);
+  if (found === FALLBACK_GEMINI_MODELS) return list; // try discovery again next call
+  geminiCandidates = list;
   if (!geminiCandidates.length) throw new Error('no Gemini flash model available to this key — set GEMINI_MODEL');
   return geminiCandidates;
 }
 
 // Moves a model that worked to the front so later calls go straight to it
 function preferGemini(model) {
-  geminiCandidates = [model, ...geminiCandidates.filter(m => m !== model)];
+  geminiCandidates = [model, ...(geminiCandidates || []).filter(m => m !== model)];
   if (geminiModel !== model) console.log('[AI Verse] Gemini model:', model);
   geminiModel = model;
 }
@@ -151,7 +157,7 @@ async function askGemini(book, chapter, verse, translation) {
       // Search grounding has its own (smaller) free quota and can be slow —
       // on a quota error or a timeout, retry as plain recall
       const timedOut = err.name === 'TimeoutError' || err.name === 'AbortError';
-      if (!timedOut && ![400, 403, 429].includes(err.status)) throw err;
+      if (!timedOut && ![400, 403, 404, 429].includes(err.status)) throw err;
       if (timedOut) console.log(`[AI Verse] Gemini ${model}: web search too slow — asking without search`);
       grounded = false;
       try {
