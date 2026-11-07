@@ -151,3 +151,13 @@ Anything listed under "Check these before the service" was unconfirmed. Read it 
 | Wrong translation shown | Pick it in the dropdown at the top. Greyed-out ones show why when you hover over them. |
 
 Changing `.env` always needs a restart: Ctrl+C in Terminal, then `npm start`.
+
+---
+
+## How listening works (speed and accuracy)
+
+- **Live captions (fast path):** Chrome's built-in speech recognition shows the words *while* the preacher speaks. A named verse ("John 3:16") reaches the screen about a second after it's said. This uses Google's speech service through Chrome, so it needs internet. It's free and needs no key.
+- **Whisper on Groq (backup):** runs alongside and catches anything the live captions miss. If live captions stop (no internet to Google, blocked mic permission), Whisper takes over automatically, a few seconds slower.
+- **Quoted verses:** when the preacher quotes about 8 words of a KJV verse without naming it ("I wish above all things that thou mayest prosper"), it's recognised instantly from the Bible stored on the laptop and shown. About 6–7 words gives an orange suggestion to confirm.
+- **Misheard numbers:** if the reference heard ("1st John 1:2") and the words quoted (3 John 1:2) differ only by the number in front of the book, the quoted verse is shown.
+- **Other translations (TPT, NKJV, AMP…):** AI wording is shown **only** when two independent AI sources give the same words, or when it was found by a web search. Otherwise KJV is shown with a note saying why. Made-up wording never reaches the screen. Use `npm run prefetch` before the service so sermon verses are ready and instant.

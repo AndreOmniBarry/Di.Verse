@@ -4,14 +4,22 @@ const { parse } = require('../services/parser');
 const { detectScripture } = require('../services/claude');
 const { validateReference, normaliseBook } = require('../services/validation');
 const { getPassage } = require('../services/bibleDb');
+const quotes = require('../services/quoteMatch');
+quotes.warmUp();
 
 router.post('/detect', async (req, res) => {
-  const { text, context = '', activeTranslation = 'KJV' } = req.body;
+  // fast: parser + quote matching only (used on live words while the
+  // preacher is still talking); the AI layer runs on finished sentences
+  const { text, context = '', activeTranslation = 'KJV', fast = false } = req.body;
   if (!text || text.trim().length < 3) return res.json({ type: 'none' });
 
   try {
     // ── LAYER 1: Local parser — fast, offline, zero cost ──
     const parsed = parse(text, activeTranslation);
+
+    // ── LAYER 1b: quoted KJV words — offline, a few milliseconds ──
+    const quoted = quotes.match(text);
+    const quoteTranslation = (parsed && parsed.translation) || activeTranslation;
 
     if (parsed) {
       // Translation-only change
@@ -35,12 +43,47 @@ router.post('/detect', async (req, res) => {
         return res.json({ type: 'validation_error', message: validation.message });
       }
 
-      const verseData = await getPassage(validation.normalised || book, chapter, verse, verseEnd, translation, { live: true });
+      // The words quoted in the same breath point at a different verse
+      const named = validation.normalised || book;
+      const conflict = quoted.find(q => q.strong && !(q.book === named && q.chapter === chapter && q.verse >= verse && q.verse <= (verseEnd || verse)));
+
+      // Same book name and verse but a different number in front ("1st John
+      // 1:2" said while quoting 3 John 1:2): the number was misheard — the
+      // quoted words are the stronger evidence
+      const bare = name => name.replace(/^[1-3] /, '');
+      if (conflict && bare(conflict.book) === bare(named) && conflict.chapter === chapter && conflict.verse === verse) {
+        const fixed = await getPassage(conflict.book, chapter, verse, verseEnd, translation, { live: true });
+        if (fixed) {
+          console.log('[Parser] ' + named + ' corrected to ' + conflict.book + ' from the quoted words');
+          return res.json({ type: 'explicit', reference: { book: conflict.book, chapter, verse, verseEnd, translation }, verseData: fixed, confidence: 0.95, source: 'quote' });
+        }
+      }
+
+      const verseData = await getPassage(named, chapter, verse, verseEnd, translation, { live: true });
       if (!verseData) return res.json({ type: 'none' });
 
-      console.log('[Parser] ' + verseData.reference + ' (' + translation + ') conf:' + confidence);
-      return res.json({ type: 'explicit', reference: { book, chapter, verse, verseEnd, translation }, verseData, confidence, source: 'parser' });
+      // Otherwise offer the quoted verse alongside the named one
+      const alsoQuoted = conflict ? [{ book: conflict.book, chapter: conflict.chapter, verse: conflict.verse, confidence: 0.9, snippet: 'quoted words match' }] : undefined;
+
+      console.log('[Parser] ' + verseData.reference + ' (' + translation + ') conf:' + confidence + (conflict ? ' — quote matches ' + conflict.book + ' ' + conflict.chapter + ':' + conflict.verse : ''));
+      return res.json({ type: 'explicit', reference: { book, chapter, verse, verseEnd, translation }, verseData, confidence, source: 'parser', candidates: alsoQuoted });
     }
+
+    // A clearly quoted verse: show it like a named reference
+    if (quoted.length && quoted[0].strong) {
+      const q = quoted[0];
+      const verseData = await getPassage(q.book, q.chapter, q.verse, undefined, quoteTranslation, { live: true });
+      if (verseData) {
+        console.log('[Quote] ' + verseData.reference + ' (' + q.hits + ' phrases)');
+        return res.json({ type: 'explicit', reference: { book: q.book, chapter: q.chapter, verse: q.verse, translation: quoteTranslation }, verseData, confidence: 0.92, source: 'quote' });
+      }
+    }
+    // Partly quoted: suggest, the operator decides
+    if (quoted.length) {
+      return res.json({ type: 'implicit', candidates: quoted.map(q => ({ book: q.book, chapter: q.chapter, verse: q.verse, confidence: 0.7 })), source: 'quote' });
+    }
+
+    if (fast) return res.json({ type: 'none' });
 
     // ── LAYER 2: Claude — implicit quotes, ambiguous speech, hard cases ──
     const detection = await detectScripture(text, context, activeTranslation);

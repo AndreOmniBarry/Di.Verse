@@ -46,6 +46,7 @@
     #transcriptionFeed .hit { color: var(--accent); font-weight: bold; background: rgba(233,69,96,0.1); padding: 1px 4px; border-radius: 3px; }
     #transcriptionFeed .sys { color: #555577; font-style: italic; }
     #transcriptionFeed .err { color: #E74C3C; }
+    #transcriptionFeed .interim { color: #CCCCDD; opacity: 0.6; font-style: italic; }
     .search-panel { padding: 14px 16px; background: var(--surface); border-top: 1px solid var(--surface2); }
     .search-row { display: flex; gap: 8px; margin-top: 8px; }
     input[type="text"], input[type="number"] { background: var(--brand); border: 1px solid var(--mid); color: var(--white); padding: 8px 10px; border-radius: 4px; font-size: 0.82rem; outline: none; transition: border-color 0.2s; }
@@ -224,6 +225,9 @@ function connectWS() {
     var msg = JSON.parse(e.data);
     if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message);
     if (msg.action === 'TRANSLATION_CHANGE') setTranslation(msg.translation, true);
+    if (msg.action === 'LATE_VERSE' && msg.verse) {
+      addToQueue(Object.assign({}, msg.verse, { confidence: 0.9, type: 'explicit', note: msg.verse.note + ' (confirmed after a delay)' }));
+    }
   };
   ws.onclose = function() {
     document.getElementById('wsStatus').textContent = 'WS: down';
@@ -275,6 +279,7 @@ async function loadTranslations() {
 
 // Spoken requests ("in the Amplified") land here too
 function setTranslation(code, fromSpeech) {
+  if (fromSpeech && code === activeTranslation) return; // heard again while still being said
   var t = translations[code];
   if (t && !t.available) {
     showAlert(code + ' requested but unavailable: ' + t.reason + '. Staying on ' + activeTranslation + '.');
@@ -382,13 +387,18 @@ async function pushSlide(i) {
 searchSongs('');
 
 // ===== Queue =====
+// Live captions and Whisper both hear the same reference; the same verse is
+// queued once per 30 s (manual searches always go through)
+var recentlyQueued = {};
 function addToQueue(item) {
-  var isDuplicate = queue.length > 0 && queue[0].reference === item.reference && queue[0].translation === item.translation;
-  if (isDuplicate) return;
+  var key = item.reference + '|' + item.translation;
+  if (item.type !== 'manual' && recentlyQueued[key] && Date.now() - recentlyQueued[key] < 30000) return false;
+  recentlyQueued[key] = Date.now();
   queue.unshift(item);
   queue = queue.slice(0, 10);
   selectedIndex = 0;
   renderQueue();
+  return true;
 }
 
 function renderQueue() {
@@ -478,15 +488,21 @@ async function handleDetection(detection) {
 
   if (detection.type === 'explicit' && detection.verseData) {
     var v = detection.verseData;
-    appendTranscription(v.reference, true);
     var item = Object.assign({}, v, { confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source || v.source, textSource: v.source });
-    addToQueue(item);
-    // Unconfirmed AI wording waits for the operator to read it first
-    if (item.verification === 'unverified') appendTranscription('[ ' + v.reference + ' ' + v.translation + ': AI wording unconfirmed — check before pushing ]', false, false, true);
-    else if (autoPush && (item.confidence || 0) >= 0.9) await pushVerse(item);
+    // Queued once even though live captions and Whisper both hear it
+    if (addToQueue(item)) {
+      appendTranscription(v.reference, true);
+      if (v.fallback) appendTranscription('[ ' + v.requestedTranslation + ' not shown: ' + v.fallbackReason + ' — KJV instead ]', false, false, true);
+      // Unconfirmed AI wording waits for the operator to read it first.
+      // Book, chapter and verse are validated, so "John 3 16" (85%) goes up too.
+      if (item.verification === 'unverified') appendTranscription('[ ' + v.reference + ' ' + v.translation + ': AI wording unconfirmed — check before pushing ]', false, false, true);
+      else if (autoPush && (item.confidence || 0) >= 0.85) await pushVerse(item);
+    }
   }
 
-  if (detection.type === 'implicit' && detection.candidates && detection.candidates.length > 0) {
+  // Suggestions: implicit quotes, or the verse whose words were quoted when the
+  // spoken reference pointed somewhere else
+  if (detection.candidates && detection.candidates.length > 0) {
     for (var i = 0; i < Math.min(2, detection.candidates.length); i++) {
       var c = detection.candidates[i];
       try {
@@ -621,6 +637,7 @@ function setApiStatus(state, message) {
 
       sourceNode.connect(workletNode);
       workletNode.connect(audioCtx.destination);
+      startCaptions(mySession);
 
       isListening = true;
       updateListeningUI('active');
@@ -668,6 +685,7 @@ function setApiStatus(state, message) {
   function stopListening() {
     isListening = false;
     sessionId++;
+    stopCaptions();
     if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
     if (workletNode) { try { workletNode.disconnect(); } catch(e) {} workletNode = null; }
     if (sourceNode) { try { sourceNode.disconnect(); } catch(e) {} sourceNode = null; }
@@ -711,6 +729,13 @@ var base64 = btoa(binary);
 
       if (!text || text.trim().length < 3) return;
 
+      // While Chrome's live captions are working they lead (they're seconds
+      // faster); Whisper then quietly double-checks for references they missed
+      if (captionsHealthy()) {
+        detectScripture(text, '', activeTranslation, mySession, true);
+        return;
+      }
+
       appendTranscription(text);
       transcriptionContext.push(text);
       if (transcriptionContext.length > 3) transcriptionContext.shift();
@@ -729,12 +754,12 @@ var base64 = btoa(binary);
     }
   }
 
-  async function detectScripture(text, context, translation, mySession) {
+  async function detectScripture(text, context, translation, mySession, fast) {
     try {
       var detectRes = await fetch('/api/detect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, context: context, activeTranslation: translation })
+        body: JSON.stringify({ text: text, context: context, activeTranslation: translation, fast: !!fast })
       });
       if (sessionId !== mySession) return;
       if (!detectRes.ok) { setApiStatus('fail'); return; }
@@ -745,6 +770,105 @@ var base64 = btoa(binary);
       console.error('[Detect Error]', err);
       setApiStatus(String(err.message).includes('fetch') ? 'offline' : 'fail');
     }
+  }
+
+  // ===== Live captions (Chrome speech recognition) =====
+  // Words arrive while the preacher is still speaking, so a reference is
+  // found about a second after it's said. Whisper (Groq) keeps running as the
+  // backup and takes over if captions stop working.
+  var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var recognition = null;
+  var captionLang = 'en-NG';
+  var captionsLastResult = 0;
+  var interimTimer = null;
+  var lastFastText = '';
+
+  function captionsHealthy() {
+    return !!recognition && Date.now() - captionsLastResult < 20000;
+  }
+
+  function startCaptions(mySession) {
+    if (!SpeechRec) return; // not Chrome: Whisper does everything
+    var rec = new SpeechRec();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = captionLang;
+    rec.onresult = function(e) {
+      if (sessionId !== mySession) return;
+      captionsLastResult = Date.now();
+      var interim = '';
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        var t = e.results[i][0].transcript.trim();
+        if (!t) continue;
+        if (e.results[i].isFinal) onCaptionFinal(t, mySession);
+        else interim += t + ' ';
+      }
+      interim = interim.trim();
+      showInterim(interim);
+      // Check the words so far once they've been steady briefly (the
+      // recogniser revises them as it hears more: "verse 1" → "verse 16")
+      clearTimeout(interimTimer);
+      if (interim) interimTimer = setTimeout(function() {
+        if (interim === lastFastText) return;
+        lastFastText = interim;
+        detectScripture(interim, '', activeTranslation, mySession, true);
+      }, 500);
+    };
+    rec.onerror = function(e) {
+      if (e.error === 'language-not-supported' && captionLang !== 'en-US') { captionLang = 'en-US'; return; }
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        recognition = null;
+        noteOnce('Chrome live captions are blocked — using Whisper only (a few seconds slower)');
+      }
+      if (e.error === 'network') noteOnce('Chrome live captions lost their connection — Whisper is covering');
+    };
+    rec.onend = function() {
+      // Chrome ends recognition after a pause or a network blip: keep it going
+      if (sessionId === mySession && isListening && recognition === rec) {
+        setTimeout(function() {
+          if (sessionId !== mySession || recognition !== rec) return;
+          rec.lang = captionLang;
+          try { rec.start(); } catch (err) {}
+        }, 250);
+      }
+    };
+    recognition = rec;
+    try { rec.start(); } catch (err) {}
+  }
+
+  function stopCaptions() {
+    clearTimeout(interimTimer);
+    var rec = recognition;
+    recognition = null;
+    if (rec) { try { rec.abort(); } catch (err) {} }
+    showInterim('');
+  }
+
+  function onCaptionFinal(text, mySession) {
+    showInterim('');
+    clearTimeout(interimTimer);
+    appendTranscription(text);
+    transcriptionContext.push(text);
+    if (transcriptionContext.length > 3) transcriptionContext.shift();
+    lastFastText = '';
+    // Finished sentence: parser + quotes + (for longer sentences) AI
+    var words = text.split(/\s+/).length;
+    detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession, words < 8);
+  }
+
+  function showInterim(text) {
+    var feed = document.getElementById('transcriptionFeed');
+    var el = document.getElementById('interimLine');
+    if (!text) { if (el) el.remove(); return; }
+    if (!el) {
+      if (feed.querySelector('.sys') && feed.children.length === 1) feed.innerHTML = '';
+      el = document.createElement('span');
+      el.id = 'interimLine';
+      el.className = 'interim';
+      feed.appendChild(el);
+    }
+    el.textContent = text;
+    feed.scrollTop = feed.scrollHeight;
   }
 
   function updateListeningUI(state) {
@@ -765,7 +889,8 @@ var base64 = btoa(binary);
     if (isSystem) span.className = 'sys';
     if (isError) span.className = 'err';
     span.textContent = text + ' ';
-    feed.appendChild(span);
+    var interimEl = document.getElementById('interimLine');
+    if (interimEl) feed.insertBefore(span, interimEl); else feed.appendChild(span);
     feed.scrollTop = feed.scrollHeight;
     while (feed.children.length > 400) feed.removeChild(feed.firstChild);
   }

@@ -64,6 +64,9 @@ function alertOperator(payload) {
   });
 }
 
+// AI translation wording confirmed after the live answer: offer it in the queue
+require('./services/bibleDb').events.on('lateVerse', verse => alertOperator({ action: 'LATE_VERSE', verse }));
+
 app.locals.broadcast = broadcast;
 app.locals.alertOperator = alertOperator;
 app.locals.clients = clients;
