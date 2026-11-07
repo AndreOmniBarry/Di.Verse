@@ -95,8 +95,9 @@ test('single recall, nobody confirms → unverified and NOT saved', { skip: !see
   process.env.ANTHROPIC_API_KEY = 'a';
   replies = { claude: TPT_JOHN_3_16 };
   const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.verification, 'unverified');
-  assert.match(v.note, /UNVERIFIED/);
+  // never shown: a single AI recollection can be invented text
+  assert.strictEqual(v.translation, 'KJV');
+  assert.match(v.fallbackReason, /could not be confirmed \(UNVERIFIED \(claude only\)/);
   assert.strictEqual(getDb().prepare(`SELECT COUNT(*) c FROM verses WHERE translation='TPT'`).get().c, 0);
 });
 
@@ -104,8 +105,8 @@ test('providers disagree → unverified, says they disagreed', { skip: !seeded }
   process.env.GEMINI_API_KEY = 'g'; process.env.ANTHROPIC_API_KEY = 'a';
   replies = { gemini: TPT_JOHN_3_16, claude: 'God loved everyone so much that he sent his Son so that whoever trusts him has real life forever.' };
   const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.verification, 'unverified');
-  assert.match(v.note, /disagreed/);
+  assert.strictEqual(v.translation, 'KJV');
+  assert.match(v.fallbackReason, /disagreed/);
 });
 
 test('one provider out of quota → the others still answer', { skip: !seeded }, async () => {
@@ -166,8 +167,8 @@ test('Groq first model declines → second model asked', { skip: !seeded }, asyn
   process.env.GROQ_API_KEY = 'q';
   let calls = 0;
   replies = { groq: () => (++calls === 1 ? null : TPT_JOHN_3_16) };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.translation, 'TPT');
+  const v = await aiVerse.getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.text, TPT_JOHN_3_16);
   assert.strictEqual(calls, 2);
 });
 
@@ -181,8 +182,8 @@ test('Gemini web search times out → asks again without search', { skip: !seede
     }
     return mocked(url, init);
   };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.translation, 'TPT');
+  const v = await aiVerse.getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.text, TPT_JOHN_3_16);
   assert.strictEqual(v.verification, 'unverified');   // recall only, one source
 });
 
@@ -212,8 +213,8 @@ test('two Groq models disagree (e.g. one gives KJV wording) → unverified', { s
   replies = { groq: model => model === 'groq/compound' ? TPT_JOHN_3_16
     : 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish.' };
   const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.verification, 'unverified');
-  assert.match(v.note, /sources disagreed/);
+  assert.strictEqual(v.translation, 'KJV');           // not shown
+  assert.match(v.fallbackReason, /sources disagreed/);
 });
 
 test('live: answers as soon as two sources agree, without waiting for a slow Gemini', { skip: !seeded }, async () => {
@@ -245,4 +246,13 @@ test('live: after the deadline shows what it has, and saves a later confirmation
   assert.strictEqual(v.verification, 'unverified');          // Claude alone so far
   await new Promise(r => setTimeout(r, 1500));
   assert.strictEqual(late && late.verification, 'verified'); // Gemini agreed later
+});
+
+test('AI_SHOW_UNVERIFIED=true lets flagged single-source wording into the queue', { skip: !seeded }, async () => {
+  process.env.ANTHROPIC_API_KEY = 'a'; process.env.AI_SHOW_UNVERIFIED = 'true';
+  replies = { claude: TPT_JOHN_3_16 };
+  try {
+    const v = await getVerse('John', 3, 16, 'TPT');
+    assert.strictEqual(v.verification, 'unverified');
+  } finally { delete process.env.AI_SHOW_UNVERIFIED; }
 });

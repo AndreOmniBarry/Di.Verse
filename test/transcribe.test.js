@@ -57,7 +57,7 @@ test('OpenAI only, no credit → clear billing message', async () => {
 async function detect(port) {
   const res = await fetch(`http://localhost:${port}/api/detect`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: 'for God so loved the world that he gave his only son' }),
+    body: JSON.stringify({ text: 'God loved everybody so much that He sent Jesus to rescue all of us' }),
   });
   return res.json();
 }

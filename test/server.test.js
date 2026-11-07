@@ -77,3 +77,20 @@ test('an invalid reference is reported once (response only, no WebSocket copy)',
   assert.strictEqual(d.type, 'validation_error');
   assert.strictEqual(pushed.length, 0);
 });
+
+test('a quoted verse is shown without a reference; a misheard reference gets the quoted verse offered', async () => {
+  const post = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+  const quoted = await post({ text: 'I wish above all things that thou mayest prosper', fast: true });
+  assert.strictEqual(quoted.type, 'explicit');
+  assert.strictEqual(quoted.source, 'quote');
+  assert.strictEqual(quoted.verseData.reference, '3 John 1:2');
+
+  // "1st John" misheard for "3rd John" while quoting it: corrected
+  const misheard = await post({ text: 'I wish above all things that thou mayest prosper. 1st John 1 verse 2', fast: true });
+  assert.strictEqual(misheard.verseData.reference, '3 John 1:2');
+
+  // A genuinely different reference: shown as said, the quoted verse offered
+  const different = await post({ text: 'I wish above all things that thou mayest prosper. Romans 8 verse 28', fast: true });
+  assert.strictEqual(different.verseData.reference, 'Romans 8:28');
+  assert.deepStrictEqual(different.candidates.map(c => `${c.book} ${c.chapter}:${c.verse}`), ['3 John 1:2']);
+});

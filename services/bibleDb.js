@@ -2,6 +2,11 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const apiBible = require('./apiBible');
 const aiVerse = require('./aiVerse');
+const { EventEmitter } = require('events');
+
+// 'lateVerse': an AI translation confirmed after the live answer was given
+// (server.js forwards it to the operator's queue)
+const events = new EventEmitter();
 
 const DB_PATH = path.join(__dirname, '../db/bible.db');
 let db;
@@ -137,7 +142,7 @@ function saveAiVerse(v) {
 // ── Get verse — real text only: local DB, then API.Bible, then KJV with the reason ──
 // opts.live: the operator is waiting — AI lookups answer within a few seconds
 // and anything confirmed later is saved for next time
-const LIVE_DEADLINE_MS = 6000;
+const LIVE_DEADLINE_MS = 4000;
 
 async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
   translation = String(translation || 'KJV').toUpperCase();
@@ -161,9 +166,13 @@ async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
     if (aiVerse.isAvailable()) {
       const kjvRow = localVerse(book, chapter, verse, 'KJV');
       const ai = await aiVerse.getVerse(book, chapter, verse, translation, kjvRow && kjvRow.text,
-        opts.live ? { deadlineMs: LIVE_DEADLINE_MS, onLateResult: saveAiVerse } : {});
-      if (!ai.error) { saveAiVerse(ai); return ai; }
-      reason = ai.error;
+        opts.live ? { deadlineMs: LIVE_DEADLINE_MS, onLateResult: late => { saveAiVerse(late); events.emit('lateVerse', late); } } : {});
+      // Only confirmed wording is ever shown: two sources agreeing, or a web
+      // search. A single AI's recollection can be invented text, so it is
+      // never put in front of a congregation (set AI_SHOW_UNVERIFIED=true to
+      // see it in the queue anyway, flagged).
+      if (!ai.error && (ai.verification !== 'unverified' || process.env.AI_SHOW_UNVERIFIED === 'true')) { saveAiVerse(ai); return ai; }
+      reason = ai.error || `${translation} wording could not be confirmed (${ai.note.replace(/^AI beta · /, '')})`;
     }
   }
 
@@ -249,4 +258,4 @@ async function getPassage(book, chapter, verse, verseEnd, translation = 'KJV', o
   };
 }
 
-module.exports = { getDb, getVerse, getPassage, searchVerses, getBookNum, listTranslations };
+module.exports = { getDb, getVerse, getPassage, searchVerses, getBookNum, listTranslations, events };
