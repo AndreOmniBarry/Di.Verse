@@ -20,6 +20,7 @@ const WINDOW_TOP = 0.05;
 let squeezed = false;
 let squeezedInput = null;   // input number we shrank (automatic) or left (scene)
 let chain = Promise.resolve();
+let warnedUnset = false;
 
 function base() { return String(process.env.VMIX_URL || '').replace(/\/+$/, ''); }
 function configured() { return Boolean(base()); }
@@ -51,7 +52,7 @@ function transition(input) {
 
 // Zoom and pan that put the full camera picture exactly into the window
 function windowPosition(cameraPercent) {
-  const z = Math.min(0.5, Math.max(0.15, (parseFloat(cameraPercent) || 46) / 100));
+  const z = Math.min(0.5, Math.max(0.15, (parseFloat(cameraPercent) || 20) / 100));
   const shiftRight = WINDOW_LEFT + z / 2 - 0.5; // as a share of the frame width
   const shiftDown = WINDOW_TOP + z / 2 - 0.5;   // as a share of the frame height
   const r = n => Math.round(n * 10000) / 10000;
@@ -79,9 +80,15 @@ function modeOf(payload) {
 // Called for every screen change. notify(message) tells the operator;
 // screen() returns the current screen state (for the Camera size setting).
 function onScreen(payload, notify, screen) {
-  if (!configured()) return;
   const showing = payload.action === 'SHOW_VERSE' || payload.action === 'SHOW_LYRICS';
-  const cameraPercent = () => ((screen && screen().background) || {}).camera || 46;
+  if (!configured()) {
+    if (showing && modeOf(payload) === 'squeeze' && !warnedUnset) {
+      warnedUnset = true;
+      notify('Squeeze is drawn, but vMix won\'t shrink the camera until VMIX_URL is set in .env (see SETUP.md, "Automatic squeeze")');
+    }
+    return;
+  }
+  const cameraPercent = () => ((screen && screen().background) || {}).camera || 20;
   const wantSqueeze = showing && modeOf(payload) === 'squeeze';
   const resize = payload.action === 'APPLY_BACKGROUND' && squeezed && !sceneMode();
   if (!showing && payload.action !== 'CLEAR' && !resize) return;
@@ -108,4 +115,4 @@ function onScreen(payload, notify, screen) {
   });
 }
 
-module.exports = { onScreen, state, configured, sceneMode, windowPosition, _reset: () => { squeezed = false; squeezedInput = null; chain = Promise.resolve(); } };
+module.exports = { onScreen, state, configured, sceneMode, windowPosition, _reset: () => { warnedUnset = false; squeezed = false; squeezedInput = null; chain = Promise.resolve(); } };

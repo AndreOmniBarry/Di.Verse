@@ -320,6 +320,13 @@
     },
     // CSS stand-in for a live effect (shown if WebGL is unavailable)
     fallbackCss: function (live) { var p = P[live.pal]; return 'linear-gradient(100deg, ' + rgb(p[0]) + ', ' + rgb(p[1]) + ')'; },
+    // Slowly drifting CSS version of a live effect (vMix: no WebGL needed)
+    driftCss: function (live, seeThrough) {
+      // a little darker than the palette, so white scripture stays crisp
+      var p = P[live.pal], k = seeThrough ? 0.86 : 1;
+      var c = function (v, d) { return 'rgba(' + v.map(function (x) { return Math.round(x * 255 * d); }).join(',') + ',' + k + ')'; };
+      return 'linear-gradient(100deg, ' + c(p[0], 1) + ', ' + c(p[1], 0.8) + ' 35%, ' + c(p[0], 0.9) + ' 55%, ' + c(p[1], 0.8) + ' 75%, ' + c(p[0], 1) + ')';
+    },
     Renderer: Renderer,
     _fx: FX,
   };

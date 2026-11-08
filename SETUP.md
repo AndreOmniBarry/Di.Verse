@@ -207,11 +207,11 @@ Use **Lower-Third** mode for the stream (Full-Screen mode deliberately covers th
 ## Squeeze-back: shrink the preacher, big scripture (vMix)
 
 Three caption modes, chosen with the mode button on the Operator page:
-- **Squeeze (camera small, big text):** the preacher shrinks into a glass-framed window at the **top left** and the scripture fills a large glass panel on the right. Choose the window size with the **Camera** picker: **46%** (default, side by side), or 33% / 25% / 20% (camera smaller, verse runs full width underneath).
-- **Full-Screen:** the verse covers the whole picture.
-- **Lower-Third:** verse across the bottom of the camera picture.
+- **Lower Third:** the verse across the bottom of the camera picture.
+- **Squeeze (UEFA in-game style):** the preacher shrinks to a small framed window at the **top left** (20% of the screen by default: the **Camera** picker also offers 25%, 33% and 46%) and the scripture fills the rest of the screen in a large glass panel.
+- **Full Screen:** scripture only, no preacher.
 
-The whole verse always fits on one screen (no "1/6" pages): long verses get slightly smaller type, short ones grow.
+**Every verse fits on one screen, in every mode, however long** (Esther 8:9, 90 words, included). There are never "1/3" pages. Full Screen and Squeeze use the largest text that fits: short verses come up huge, long ones as large as the space allows. The Lower Third keeps your chosen size for ordinary verses, and for a very long verse it grows upward with smaller type.
 
 **Automatic squeeze: vMix shrinks the camera for you, so you don't build any scene.** Set it up once:
 
@@ -224,6 +224,7 @@ The whole verse always fits on one screen (no "1/6" pages): long verses get slig
    Save, then restart Di.Verse (Ctrl + C, then `npm start`).
 4. **Check the link.** On the Mac open `http://localhost:3000/api/vmix`. It should say `"reachable": true`, `"mode": "automatic"` and name your camera as `live`.
 5. In vMix, keep the Di.Verse Web Browser input on **Overlay 1** all the time, with the URL ending `?overlay=1`.
+6. **Check the vMix screen itself.** With the vMix input refreshed, `http://localhost:3000/api/vmix` also lists `screens`: one should say `"where": "vMix …"` with its browser version. If anything on that screen goes wrong, the Operator page shows a "Screen problem on vMix…" message and Terminal prints a `[Screen]` line. Send that line to your helper.
 
 From then on: pushing a verse in **Squeeze** mode makes vMix zoom the live camera down into the window at the top left (exactly inside Di.Verse's frame). **✕ Clear**, or showing the next verse in another mode, puts the camera back to full screen. Changing the Camera size while squeezed resizes it live.
 

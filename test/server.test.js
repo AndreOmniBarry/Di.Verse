@@ -109,6 +109,36 @@ test('a screen that reconnects gets the current picture back', async () => {
   assert.strictEqual(got[1].verse.reference, 'Psalms 23:1');
 });
 
+test('a screen reports its browser and errors; the operator is told', async () => {
+  const op = new WebSocket(`ws://localhost:${PORT}?type=operator`);
+  const notices = [];
+  op.on('message', m => { const msg = JSON.parse(m); if (msg.action === 'NOTICE') notices.push(msg.message); });
+  await new Promise(r => op.on('open', r));
+  const scr = new WebSocket(`ws://localhost:${PORT}?type=projection&overlay=1`);
+  await new Promise(r => scr.on('open', r));
+  scr.send(JSON.stringify({ action: 'CLIENT_INFO', ua: 'Mozilla/5.0 (Windows NT 10.0) Chrome/75.0.3770.100 vMix/24', width: 1280, height: 720, overlay: true, webgl: false }));
+  scr.send(JSON.stringify({ action: 'CLIENT_ERROR', message: 'layout: test failure' }));
+  await new Promise(r => setTimeout(r, 300));
+  const info = await (await fetch(base + '/api/vmix')).json();
+  scr.close(); op.close();
+  const screen = info.screens.find(s => s.where.startsWith('vMix'));
+  assert.ok(screen, JSON.stringify(info.screens));
+  assert.strictEqual(screen.browser, 'Chrome 75');
+  assert.strictEqual(screen.size, '1280×720');
+  assert.strictEqual(screen.errors, 1);
+  assert.ok(notices.some(n => /vMix.*Chrome 75.*layout: test failure/.test(n)), notices.join(' | '));
+});
+
+test('an operator cannot send screen reports (projection pages only)', async () => {
+  const op = new WebSocket(`ws://localhost:${PORT}?type=operator`);
+  await new Promise(r => op.on('open', r));
+  op.send(JSON.stringify({ action: 'CLIENT_INFO', ua: 'Chrome/99', width: 1, height: 1 }));
+  await new Promise(r => setTimeout(r, 200));
+  const info = await (await fetch(base + '/api/vmix')).json();
+  op.close();
+  assert.ok(!info.screens.some(s => s.browser === 'Chrome 99'));
+});
+
 test('squeeze mode switches vMix to the squeeze scene and back to the camera that was live', async () => {
   // Stand-in for vMix's web API on another port
   const http = require('http');
