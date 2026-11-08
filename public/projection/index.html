@@ -9,6 +9,10 @@
     body { background: #000; width: 100vw; height: 100vh; overflow: hidden; font-family: Arial, sans-serif; }
     #idle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #0A0A1E; }
     #idle .logo { font-size: 3rem; font-weight: bold; color: rgba(255,255,255,0.06); letter-spacing: 10px; text-transform: uppercase; }
+    /* Livestream overlay (/projection?overlay=1): transparent page, so OBS /
+       vMix show only the verse box on top of the camera */
+    html.overlay, html.overlay body { background: transparent; }
+    html.overlay #idle, html.overlay #reconnect { display: none !important; }
     #lowerThird {
       position: fixed; bottom: 0; left: 0; width: 100%; min-height: 32vh;
       background: rgba(8,8,25,0.92); border-top: 3px solid #E94560;
@@ -48,6 +52,7 @@
   </div>
   <div id="reconnect">Reconnecting...</div>
 <script>
+  if (new URLSearchParams(location.search).has('overlay')) document.documentElement.classList.add('overlay');
   var reconnectTimer;
   var baseLTSize = 1.9;
   var baseFSSize = 2.2;
