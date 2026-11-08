@@ -6,12 +6,12 @@
  * Run: node db/seeds/seedBible.js
  */
 
-const Database = require('better-sqlite3');
+const sqlite = require('../../services/sqlite');
 const path = require('path');
 const https = require('https');
 
 const DB_PATH = path.join(__dirname, '../bible.db');
-const db = new Database(DB_PATH);
+const db = sqlite.open(DB_PATH);
 db.pragma('journal_mode = WAL');
 
 // ── Schema ──

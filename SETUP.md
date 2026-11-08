@@ -171,6 +171,13 @@ Changing `.env` always needs a restart: Ctrl+C in Terminal, then `npm start`.
 
 ---
 
+## Bibles on this computer
+
+**Admin → 📖 Bibles** (or `http://localhost:3000/admin/bibles.html`) lists the translations stored on this computer. They show instantly and work without internet.
+- **Free to add**, about a second each: BSB (Berean Standard), WEB (World English), MSB, AAB, Darby, RV (1885), Geneva (1599), Webster. All come from bible.helloao.org, are public domain or openly licensed, and need no credit line. New installs add BSB and WEB automatically.
+- **Import a licensed file** (NKJV, AMP, TPT, GNT…) if you have one from the publisher, a ministry partner or Bible software you own. It accepts JSON, USFM (select all the book files), OSIS or Zefania XML. You must say where the file comes from, and that's recorded. The page shows what it covers: e.g. TPT is the New Testament plus Psalms, Proverbs and Song of Songs, and other verses fall back to KJV with the reason.
+- Terminal works too: `npm run bibles`, `npm run bibles -- add BSB WEB`, `npm run bibles -- import FILE --code NKJV --name "New King James Version" --obtained "how you're licensed"`.
+
 ## Moving through a passage
 
 When a verse is on screen:
