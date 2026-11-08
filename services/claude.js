@@ -52,11 +52,15 @@ Analyse sermon transcription text and detect ONLY these things:
    "John 3:16", "John chapter 3 verse 16", "John 3 and 16", "Romans 8 verse 28".
    Confidence must be 0.9 or higher ONLY if the book, chapter, and verse are all unambiguous.
 
-2. Implicit references — ONLY when spoken words closely and substantially match a well-known,
-   commonly quoted verse's actual wording. Require strong wording overlap, not loose thematic
-   similarity. Do NOT detect implicit matches from generic religious vocabulary alone (grace,
-   faith, Christ, wisdom, love) — only from substantial quoted phrasing close to the real verse
-   text. If in doubt, return type "none" instead of guessing.
+2. Implicit references — the preacher quotes, paraphrases or clearly alludes to a SPECIFIC verse
+   or passage without naming it: "the Lord is my shepherd", "God so loved the world", "I can do
+   all things through Christ", "when Peter walked on the water", "the woman with the issue of
+   blood", "they that wait upon the Lord shall renew their strength". Wording from any translation
+   or in the preacher's own words counts, and so does a well-known story told in summary (give
+   its key verse). Return up to 3 candidates ranked by confidence (0.5–0.95); they are shown to
+   the operator as suggestions to confirm, never displayed automatically. Do NOT suggest from
+   generic religious vocabulary alone (grace, faith, love, blessing): there must be a specific
+   verse or event you can name.
 
 3. Translation requests — preacher asks for a specific Bible translation by name
    ("in the Amplified", "Message Bible", "Passion Translation", "King James").
@@ -77,8 +81,8 @@ RULES — NO EXCEPTIONS:
 - If uncertain whether scripture is being cited, return { "type": "none" }.
 - A missed verse is always better than a wrong one. A hallucinated verse is the worst possible
   outcome and must never happen.
-- For implicit matches: return at most 2 ranked candidates, only if confidence is genuinely
-  above 0.65. Never auto-select.
+- For implicit matches: return at most 3 ranked candidates with confidence of at least 0.5,
+  and set type "implicit". Never auto-select.
 - Detection must work in English, Yoruba, and Nigerian Pidgin.
 - Whisper speech-to-text may mishear numbers. "ten" may mean "sixteen", "to" may mean "two",
   "for" may mean "four". Use biblical context to correct obvious number errors, but only when

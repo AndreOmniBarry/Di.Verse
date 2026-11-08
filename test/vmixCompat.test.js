@@ -32,3 +32,18 @@ for (const [file, src] of files) {
     for (const [re, what] of CHECKS) assert.ok(!re.test(code), `${file}: ${what}`);
   });
 }
+
+// Every function the projection page calls must exist (a refactor once
+// deleted updateSqueezeClip and the projector page lost its background)
+test('projection page defines every function it calls', () => {
+  const src = files.find(f => f[0] === 'public/projection/index.html')[1];
+  const script = src.slice(src.indexOf('<script>'))
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')       // comments
+    .replace(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"/g, "''")      // strings
+    .replace(/\/(?:[^\/\\\n]|\\.)+\/[gimy]*/g, '/x/');                 // regexes
+  const defined = new Set([...script.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(|([A-Za-z_$][\w$]*)\s*=\s*function\b/g)].map(m => m[1] || m[2]));
+  const called = new Set([...script.matchAll(/(?:^|[^.\w$])([a-z][\w$]*)\s*\(/gm)].map(m => m[1]));
+  const builtins = new Set(['if', 'for', 'while', 'switch', 'catch', 'function', 'return', 'typeof', 'parseFloat', 'parseInt', 'setTimeout', 'clearTimeout', 'getComputedStyle', 'encodeURIComponent', 'requestAnimationFrame', 'polygon', 'calc', 'rgba', 'rgb', 'url', 'var', 'translateY', 'blur', 'saturate', 'linear', 'radial', 'from', 'to']);
+  const missing = [...called].filter(n => !defined.has(n) && !builtins.has(n));
+  assert.deepStrictEqual(missing, []);
+});

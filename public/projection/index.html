@@ -309,6 +309,20 @@
     return fs.clientHeight - parseFloat(fcs.paddingTop) - parseFloat(fcs.paddingBottom) - ref.offsetHeight - H * 0.03 - H * 0.04;
   }
 
+  // The squeeze background has a hole where the camera window is (projector
+  // page; in vMix the four strips do this instead)
+  function updateSqueezeClip() {
+    var w = document.getElementById('sqWindow').getBoundingClientRect();
+    var x1 = Math.round(w.left) + 'px', y1 = Math.round(w.top) + 'px', x2 = Math.round(w.right) + 'px', y2 = Math.round(w.bottom) + 'px';
+    // Outer rectangle clockwise, then in along the top edge of the window and
+    // round it the other way: the window is left uncovered (polygon "keyhole")
+    var poly = 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 ' + y1 + ', ' +
+      x1 + ' ' + y1 + ', ' + x1 + ' ' + y2 + ', ' + x2 + ' ' + y2 + ', ' + x2 + ' ' + y1 + ', 0 ' + y1 + ')';
+    var bg = document.getElementById('sqBg');
+    bg.style.webkitClipPath = poly;
+    bg.style.clipPath = poly;
+  }
+
   // Largest size between lo and hi (px) for which ok(size) holds (lo if none)
   function largest(el, lo, hi, ok) {
     el.style.fontSize = hi + 'px';
