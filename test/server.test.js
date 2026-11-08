@@ -10,7 +10,7 @@ const base = `http://localhost:${PORT}`;
 let server;
 
 test.before(async () => {
-  const env = { ...process.env, PORT: String(PORT), OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', APIBIBLE_KEY: '', DIVERSE_NO_BROWSER: '1' };
+  const env = { ...process.env, PORT: String(PORT), OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', APIBIBLE_KEY: '', DIVERSE_NO_BROWSER: '1', DIVERSE_STATE_FILE: require('path').join(require('os').tmpdir(), 'diverse-test-state-' + process.pid + '.json') };
   server = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env, stdio: 'pipe' });
   for (let i = 0; i < 50; i++) {
     try { await fetch(base + '/api/songs/search'); return; } catch (e) { await new Promise(r => setTimeout(r, 100)); }
@@ -70,7 +70,7 @@ test('an invalid reference is reported once (response only, no WebSocket copy)',
   const ws = new WebSocket(`ws://localhost:${PORT}?type=operator`);
   await new Promise(r => ws.on('open', r));
   const pushed = [];
-  ws.on('message', m => pushed.push(JSON.parse(m)));
+  ws.on('message', m => { const msg = JSON.parse(m); if (msg.action !== 'STATE') pushed.push(msg); });
   const d = await (await fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Jude chapter 2 verse 1' }) })).json();
   await new Promise(r => setTimeout(r, 200));
   ws.close();
@@ -93,4 +93,18 @@ test('a quoted verse is shown without a reference; a misheard reference gets the
   const different = await post({ text: 'I wish above all things that thou mayest prosper. Romans 8 verse 28', fast: true });
   assert.strictEqual(different.verseData.reference, 'Romans 8:28');
   assert.deepStrictEqual(different.candidates.map(c => `${c.book} ${c.chapter}:${c.verse}`), ['3 John 1:2']);
+});
+
+test('a screen that reconnects gets the current picture back', async () => {
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'APPLY_BACKGROUND', background: 'crystal-ocean', frame: 'glass' }) });
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'SHOW_VERSE', verse: { reference: 'Psalms 23:1', text: 'The LORD is my shepherd', translation: 'KJV' } }) });
+  const ws = new WebSocket(`ws://localhost:${PORT}?type=projection`);
+  const got = [];
+  ws.on('message', m => got.push(JSON.parse(m)));
+  await new Promise(r => setTimeout(r, 400));
+  ws.close();
+  assert.deepStrictEqual(got.map(m => m.action), ['APPLY_BACKGROUND', 'SHOW_VERSE']);
+  assert.strictEqual(got[1].verse.reference, 'Psalms 23:1');
 });

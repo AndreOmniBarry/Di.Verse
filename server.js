@@ -4,12 +4,39 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
+
+// A crash must never leave the screen dark for long: log it and exit, and
+// the supervisor (npm start → scripts/supervisor.js) restarts the server in a
+// second, restoring what was on screen (see screen state below)
+process.on('uncaughtException', err => { console.error('[Fatal]', err); process.exit(1); });
+process.on('unhandledRejection', err => console.error('[Unhandled promise]', err));
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '5mb' })); // a 12 s audio chunk is ~0.5 MB
+
+// ── Only the operator laptop controls Di.Verse ──
+// Projection and preacher pages are read-only for any device on the Wi-Fi;
+// pushing, clearing, editing songs and listening need the laptop itself
+// (or OPERATOR_TOKEN, for running the operator page from another computer).
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+function isOperator(req) {
+  if (LOOPBACK.has(req.socket.remoteAddress)) return true;
+  const token = process.env.OPERATOR_TOKEN;
+  return Boolean(token) && (req.get('x-diverse-token') === token || req.query.token === token);
+}
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET' || isOperator(req)) return next();
+  res.status(403).json({ error: 'Only the operator laptop can control Di.Verse' });
+});
+for (const page of ['/operator', '/admin']) {
+  app.use(page, (req, res, next) => isOperator(req) ? next()
+    : res.status(403).send('<p style="font-family:sans-serif">The operator and admin pages only open on the Di.Verse laptop. Use <a href="/projection">/projection</a> or <a href="/preacher">/preacher</a> on this device.</p>'));
+}
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Routes ──
@@ -19,6 +46,12 @@ app.use('/api', require('./routes/transcribe'));
 app.use('/api', require('./routes/detect'));
 app.use('/api', require('./routes/push'));
 
+// Any route error answers in JSON instead of hanging the request
+app.use('/api', (err, req, res, next) => {
+  console.error('[API Error]', req.method, req.path, err.message);
+  res.status(err.status || 500).json({ error: err.message });
+});
+
 // ── Views ──
 app.get('/', (req, res) => res.redirect('/operator'));
 app.get('/operator', (req, res) => res.sendFile(path.join(__dirname, 'public/operator/index.html')));
@@ -27,14 +60,53 @@ app.get('/preacher', (req, res) => res.sendFile(path.join(__dirname, 'public/pre
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public/admin/index.html')));
 app.get('/about', (req, res) => res.sendFile(path.join(__dirname, 'public/about/index.html')));
 
+// ── Screen state ──
+// What is on screen right now (verse/lyrics, theme, background, font size).
+// Sent to every screen that (re)connects, so a projector, phone or OBS source
+// that drops out — or a server restart — comes straight back to the same
+// picture. Saved to disk; a saved verse older than 30 minutes isn't restored
+// at startup (so next week doesn't open on last week's verse).
+const STATE_FILE = process.env.DIVERSE_STATE_FILE || path.join(__dirname, 'db', 'screen-state.json');
+let screenState = {};
+try {
+  screenState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  if (!screenState.savedAt || Date.now() - screenState.savedAt > 30 * 60000) delete screenState.screen;
+} catch (e) { screenState = {}; }
+
+function rememberScreen(payload) {
+  switch (payload.action) {
+    case 'SHOW_VERSE': case 'SHOW_LYRICS': screenState.screen = payload; break;
+    case 'CLEAR': delete screenState.screen; break;
+    case 'APPLY_THEME': screenState.theme = payload; break;
+    case 'APPLY_BACKGROUND': screenState.background = payload; break;
+    case 'FONT_SIZE': screenState.font = payload; break;
+    default: return;
+  }
+  screenState.savedAt = Date.now();
+  // Written straight away (it's tiny) so even a crash right after a push
+  // comes back showing that push
+  try { fs.writeFileSync(STATE_FILE, JSON.stringify(screenState)); }
+  catch (err) { console.error('[State] save failed:', err.message); }
+}
+
+function replayScreen(ws) {
+  for (const key of ['background', 'theme', 'font', 'screen']) {
+    if (screenState[key]) ws.send(JSON.stringify(screenState[key]));
+  }
+}
+
 // ── WebSocket ──
 const clients = new Set();
 
 wss.on('connection', (ws, req) => {
   const type = new URL(req.url, 'http://localhost').searchParams.get('type') || 'unknown';
   ws.clientType = type;
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   clients.add(ws);
   console.log(`[WS] Client connected: ${type} (total: ${clients.size})`);
+  if (type === 'operator') ws.send(JSON.stringify({ action: 'STATE', state: screenState }));
+  else replayScreen(ws);
 
   ws.on('close', () => {
     clients.delete(ws);
@@ -46,7 +118,18 @@ wss.on('connection', (ws, req) => {
   });
 });
 
+// Connections that vanished without closing (Wi-Fi drop, sleeping phone)
+// are found and removed every 30 s instead of piling up over a long service
+setInterval(() => {
+  clients.forEach(ws => {
+    if (!ws.isAlive) { clients.delete(ws); return ws.terminate(); }
+    ws.isAlive = false;
+    try { ws.ping(); } catch (e) {}
+  });
+}, 30000).unref();
+
 function broadcast(payload) {
+  rememberScreen(payload);
   const message = JSON.stringify(payload);
   clients.forEach(client => {
     if (client.readyState === 1 && client.clientType !== 'operator') {

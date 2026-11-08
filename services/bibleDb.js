@@ -171,7 +171,7 @@ async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
       // search. A single AI's recollection can be invented text, so it is
       // never put in front of a congregation (set AI_SHOW_UNVERIFIED=true to
       // see it in the queue anyway, flagged).
-      if (!ai.error && (ai.verification !== 'unverified' || process.env.AI_SHOW_UNVERIFIED === 'true')) { saveAiVerse(ai); return ai; }
+      if (!ai.error && (ai.verification !== 'unverified' || opts.allowUnverified || process.env.AI_SHOW_UNVERIFIED === 'true')) { saveAiVerse(ai); return ai; }
       reason = ai.error || `${translation} wording could not be confirmed (${ai.note.replace(/^AI beta · /, '')})`;
     }
   }

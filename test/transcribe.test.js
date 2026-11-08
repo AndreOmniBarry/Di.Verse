@@ -6,7 +6,7 @@ const path = require('path');
 
 async function boot(port, env) {
   const proc = spawn(process.execPath, ['--require', path.join(__dirname, 'helpers/mock-transcribe.js'), path.join(__dirname, '../server.js')], {
-    env: { ...process.env, OPENAI_API_KEY: '', GROQ_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', APIBIBLE_KEY: '', TRANSCRIBE_PROVIDER: '', DIVERSE_NO_BROWSER: '1', PORT: String(port), ...env },
+    env: { ...process.env, OPENAI_API_KEY: '', GROQ_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', APIBIBLE_KEY: '', TRANSCRIBE_PROVIDER: '', DIVERSE_NO_BROWSER: '1', DIVERSE_STATE_FILE: require('path').join(require('os').tmpdir(), 'diverse-test-state-' + process.pid + '.json'), PORT: String(port), ...env },
     stdio: 'pipe',
   });
   for (let i = 0; i < 50; i++) {

@@ -1,14 +1,15 @@
 {
   "name": "diverse",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Di.Verse \u2014 live scripture and lyrics display for church services",
+  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node scripts/supervisor.js",
     "seed": "node db/seeds/seedBible.js",
     "test": "node --test test/*.test.js",
     "check:apibible": "node scripts/check-apibible.js",
-    "prefetch": "node scripts/prefetch.js"
+    "prefetch": "node scripts/prefetch.js",
+    "server": "node server.js"
   },
   "keywords": [],
   "author": "",
@@ -21,5 +22,8 @@
     "open": "^11.0.0",
     "openai": "^6.45.0",
     "ws": "^8.21.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -111,6 +111,14 @@
       <option value="forest-green">Forest Green</option>
       <option value="cinematic">Cinematic</option>
     </select>
+    <select id="bgSelect" title="Caption background — still colours/gradients or live effects" onchange="applyBackground()">
+      <option value="theme">Background: theme colour</option>
+    </select>
+    <select id="frameSelect" title="Caption style" onchange="applyBackground()">
+      <option value="bar">Style: full bar</option>
+      <option value="glass">Style: liquid glass card</option>
+      <option value="minimal">Style: text only</option>
+    </select>
     <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
     <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
     <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
@@ -143,7 +151,12 @@
         <button class="btn btn-dim" onclick="manualSearch()">Find</button>
       </div>
       <div class="hint">← → = prev/next queue · Space = push · Esc = clear · M = mode · +/- = font</div>
-      <div class="label" style="margin-top:12px;margin-bottom:0;">Songs <span style="text-transform:none;letter-spacing:0;">— click a slide to put it on screen · <a href="/admin" style="color:var(--mid);">manage songs</a></span></div>
+      <div class="label" style="margin-top:12px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;">
+        <span>Songs <span style="text-transform:none;letter-spacing:0;">— click a slide · ↑/↓ or clicker to move · <a href="/admin" style="color:var(--mid);">manage songs</a></span></span>
+        <label style="text-transform:none;letter-spacing:0;font-size:0.72rem;color:var(--text);cursor:pointer;" title="Listen to the worship leader and move to the right slide automatically">
+          <input type="checkbox" id="followToggle" onchange="setFollow(this.checked)"> Follow the singer
+        </label>
+      </div>
       <div class="songs-row">
         <div style="display:flex;flex-direction:column;gap:6px;min-height:0;">
           <input type="text" id="songSearch" placeholder="Search songs..." oninput="searchSongs(this.value)">
@@ -173,6 +186,7 @@
   </div>
 </main>
 
+<script src="/projection/backgrounds.js"></script>
 <script>
 // ===== State =====
 var displayMode = 'lower-third';
@@ -207,8 +221,35 @@ var currentTheme = 'dark-navy';
 
 function applyTheme(name) {
   currentTheme = name;
+  savePref('theme', name);
   broadcast({ action: 'APPLY_THEME', theme: THEMES[name] });
 }
+
+// ===== Caption backgrounds (catalogue shared with the projection page) =====
+function buildBackgroundList() {
+  var sel = document.getElementById('bgSelect');
+  if (!window.DiVerseBackgrounds) return;
+  [['Still — colours & gradients', DiVerseBackgrounds.STILL], ['Live effects', DiVerseBackgrounds.LIVE]].forEach(function(group) {
+    var og = document.createElement('optgroup');
+    og.label = group[0];
+    group[1].forEach(function(bg) {
+      var o = document.createElement('option');
+      o.value = bg.id; o.textContent = bg.name;
+      og.appendChild(o);
+    });
+    sel.appendChild(og);
+  });
+}
+
+function applyBackground() {
+  var bg = document.getElementById('bgSelect').value, frame = document.getElementById('frameSelect').value;
+  savePref('background', bg); savePref('frame', frame);
+  broadcast({ action: 'APPLY_BACKGROUND', background: bg, frame: frame });
+}
+
+// Operator choices survive a page reload or restart (per laptop)
+function savePref(k, v) { try { localStorage.setItem('diverse.' + k, v); } catch (e) {} }
+function loadPref(k) { try { return localStorage.getItem('diverse.' + k); } catch (e) { return null; } }
 
 // ===== WebSocket =====
 var ws = null;
@@ -224,6 +265,15 @@ function connectWS() {
   ws.onmessage = function(e) {
     var msg = JSON.parse(e.data);
     if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message);
+    // On (re)connect: what the screens are showing now, e.g. after a restart
+    if (msg.action === 'STATE' && msg.state) {
+      var st = msg.state;
+      if (st.screen && st.screen.action === 'SHOW_VERSE') { currentVerse = st.screen.verse; renderNowPlaying(); }
+      if (st.background) {
+        document.getElementById('bgSelect').value = st.background.background || 'theme';
+        document.getElementById('frameSelect').value = st.background.frame || 'bar';
+      }
+    }
     if (msg.action === 'TRANSLATION_CHANGE') setTranslation(msg.translation, true);
     if (msg.action === 'LATE_VERSE' && msg.verse) {
       addToQueue(Object.assign({}, msg.verse, { confidence: 0.9, type: 'explicit', note: msg.verse.note + ' (confirmed after a delay)' }));
@@ -237,6 +287,14 @@ function connectWS() {
   ws.onerror = function() { ws.close(); };
 }
 connectWS();
+
+buildBackgroundList();
+(function restorePrefs() {
+  var t = loadPref('theme'), bg = loadPref('background'), fr = loadPref('frame');
+  if (t && THEMES[t]) { currentTheme = t; document.getElementById('themeSelect').value = t; }
+  if (bg) document.getElementById('bgSelect').value = bg;
+  if (fr) document.getElementById('frameSelect').value = fr;
+})();
 
 function broadcast(payload) {
   return fetch('/api/push', {
@@ -315,7 +373,7 @@ async function manualSearch() {
   var verseEnd = vs && vs[2] ? parseInt(vs[2]) : null;
   if (!book || !chapter || !verse) { showAlert('Please enter a book, chapter, and verse (e.g. 16 or 16-18).'); return; }
   try {
-    var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + (verseEnd ? '&verseEnd=' + verseEnd : '') + '&translation=' + activeTranslation);
+    var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + (verseEnd ? '&verseEnd=' + verseEnd : '') + '&translation=' + activeTranslation + '&manual=1');
     var data = await res.json();
     if (!res.ok) { showAlert(data.error); return; }
     if (data.fallback) showAlert(data.requestedTranslation + ' unavailable: ' + data.fallbackReason + ' — showing KJV where needed.');
@@ -350,8 +408,75 @@ async function openSong(song) {
   activeSong = song; activeSlideIdx = -1;
   var res = await fetch('/api/songs/' + song.id + '/slides');
   activeSlides = await res.json();
+  prepareFollow();
   searchSongs(document.getElementById('songSearch').value);
   renderSlides();
+}
+
+// ===== Follow the singer =====
+// Live captions hear the worship leader; each slide's words are compared
+// with the last few words sung, and the screen moves to the slide being
+// sung. When the last line of a slide is sung, the next slide goes up
+// straight away, so the words are there before the singer needs them.
+// Only nearby slides (and any chorus/bridge, which can come back at any time)
+// are considered, so a phrase repeated elsewhere in the song can't jump ahead.
+var followSinger = false, followCache = [], lastFollowMove = 0, advancedFrom = -1;
+
+function lyricWords(t) {
+  return String(t).toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+}
+function wordPairs(ws) {
+  var set = {}; for (var i = 0; i < ws.length - 1; i++) set[ws[i] + ' ' + ws[i + 1]] = true; return set;
+}
+function prepareFollow() {
+  followCache = activeSlides.map(function(sl) {
+    var lines = String(sl.content).split('\n').filter(function(l) { return l.trim(); });
+    return {
+      all: wordPairs(lyricWords(sl.content)),
+      tail: wordPairs(lyricWords(lines[lines.length - 1] || '').slice(-5)),
+      repeats: /chorus|bridge|refrain|tag|vamp/i.test(sl.section || ''),
+    };
+  });
+  advancedFrom = -1;
+}
+function setFollow(on) {
+  followSinger = on;
+  document.getElementById('followToggle').checked = on;
+  if (on && !activeSong) showAlert('Pick a song first, then turn on Follow the singer.');
+}
+
+function followLyrics(heard) {
+  if (!followSinger || !activeSong || !followCache.length) return;
+  var sung = lyricWords(heard).slice(-10);
+  if (sung.length < 3) return;
+  var pairs = Object.keys(wordPairs(sung));
+  function hits(set) { var n = 0; pairs.forEach(function(p) { if (set[p]) n++; }); return n; }
+  var cur = activeSlideIdx;
+
+  // Last line of the current slide is being sung: put the next one up now
+  if (cur >= 0 && cur < followCache.length - 1 && (advancedFrom !== cur || Date.now() - lastFollowMove > 8000)) {
+    var tailSize = Object.keys(followCache[cur].tail).length;
+    if (tailSize && hits(followCache[cur].tail) >= Math.min(2, tailSize)) {
+      advancedFrom = cur;
+      lastFollowMove = Date.now();
+      pushSlide(cur + 1);
+      return;
+    }
+  }
+
+  // Otherwise: which slide is being sung right now?
+  if (Date.now() - lastFollowMove < 1500) return; // no flicking back and forth
+  var best = -1, bestHits = 0;
+  followCache.forEach(function(c, i) {
+    var near = cur < 0 ? i <= 1 : (i >= cur && i <= cur + 2);
+    if (!near && !c.repeats && i !== 0) return;
+    var h = hits(c.all);
+    if (h > bestHits) { best = i; bestHits = h; }
+  });
+  if (best >= 0 && best !== cur && bestHits >= 3 && bestHits / pairs.length >= 0.5) {
+    lastFollowMove = Date.now();
+    pushSlide(best);
+  }
 }
 
 function renderSlides() {
@@ -394,6 +519,8 @@ function addToQueue(item) {
   var key = item.reference + '|' + item.translation;
   if (item.type !== 'manual' && recentlyQueued[key] && Date.now() - recentlyQueued[key] < 30000) return false;
   recentlyQueued[key] = Date.now();
+  // forget old entries so a long service doesn't grow this forever
+  for (var k in recentlyQueued) if (Date.now() - recentlyQueued[k] > 60000) delete recentlyQueued[k];
   queue.unshift(item);
   queue = queue.slice(0, 10);
   selectedIndex = 0;
@@ -439,6 +566,7 @@ function queuePrev() {
 
 // ===== Push =====
 async function pushVerse(item) {
+  if (followSinger) { setFollow(false); noteOnce('Follow the singer paused while a verse is on screen — tick it again for the next song.'); }
   try {
     var res = await broadcast({
       action: 'SHOW_VERSE',
@@ -496,6 +624,9 @@ async function handleDetection(detection) {
       // Unconfirmed AI wording waits for the operator to read it first.
       // Book, chapter and verse are validated, so "John 3 16" (85%) goes up too.
       if (item.verification === 'unverified') appendTranscription('[ ' + v.reference + ' ' + v.translation + ': AI wording unconfirmed — check before pushing ]', false, false, true);
+      // During worship, songs quote scripture all the time: keep those in
+      // the queue instead of covering the lyrics
+      else if (followSinger && activeSong && detection.source === 'quote') appendTranscription('[ ' + v.reference + ' quoted in the song — in the queue ]', false, true);
       else if (autoPush && (item.confidence || 0) >= 0.85) await pushVerse(item);
     }
   }
@@ -737,6 +868,7 @@ var base64 = btoa(binary);
       }
 
       appendTranscription(text);
+      followLyrics(text);
       transcriptionContext.push(text);
       if (transcriptionContext.length > 3) transcriptionContext.shift();
 
@@ -805,6 +937,7 @@ var base64 = btoa(binary);
       }
       interim = interim.trim();
       showInterim(interim);
+      if (interim) followLyrics(interim); // lyrics follow the singer word by word
       // Check the words so far once they've been steady briefly (the
       // recogniser revises them as it hears more: "verse 1" → "verse 16")
       clearTimeout(interimTimer);
@@ -845,6 +978,7 @@ var base64 = btoa(binary);
   }
 
   function onCaptionFinal(text, mySession) {
+    followLyrics(text);
     showInterim('');
     clearTimeout(interimTimer);
     appendTranscription(text);
@@ -897,12 +1031,17 @@ var base64 = btoa(binary);
 
   document.addEventListener('keydown', function(e) {
     var tag = e.target.tagName;
-    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    // Typing in a box: leave keys alone. Checkboxes keep focus after a click,
+    // so they must not swallow the clicker / arrow keys.
+    if ((tag === 'INPUT' && e.target.type !== 'checkbox') || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.code === 'Space')      { e.preventDefault(); pushSelected(); }
     if (e.code === 'Escape')     { clearScreen(); }
     if (e.code === 'KeyM')       { toggleMode(); }
     if (e.code === 'ArrowRight') { e.preventDefault(); queueNext(); }
     if (e.code === 'ArrowLeft')  { e.preventDefault(); queuePrev(); }
+    // Slides: arrow keys, or a presentation clicker (sends Page Up / Page Down)
+    if (activeSong && (e.code === 'ArrowDown' || e.code === 'PageDown')) { e.preventDefault(); pushSlide(Math.min(activeSlideIdx + 1, activeSlides.length - 1)); }
+    if (activeSong && (e.code === 'ArrowUp' || e.code === 'PageUp')) { e.preventDefault(); pushSlide(Math.max(activeSlideIdx - 1, 0)); }
     if (e.key === '+' || e.key === '=') { adjustFont(2); }
     if (e.key === '-')           { adjustFont(-2); }
   });
