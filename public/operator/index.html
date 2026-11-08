@@ -132,7 +132,7 @@
     </label>
       <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
       <span id="versionBadge" class="ws-badge" title="Di.Verse version running on this laptop">v…</span>
-      <a href="/about" style="font-size:0.7rem;color:var(--mid);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
+      <a href="/setup" style="font-size:0.7rem;color:var(--mid);text-decoration:none;margin-right:8px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">Settings</a><a href="/about" style="font-size:0.7rem;color:var(--mid);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
     </div>
     <!-- Look: how the caption appears -->
     <div class="header-row">
@@ -970,7 +970,7 @@ function setApiStatus(state, message) {
       // Chunk length depends on the transcription provider (see /api/transcribe/config)
       var tconf = { chunk: {} };
       try { tconf = await (await fetch('/api/transcribe/config')).json(); } catch (e) {}
-      if (!tconf.provider) reportProblem('No transcription key in .env — set GROQ_API_KEY (free) or OPENAI_API_KEY');
+      if (!tconf.provider) reportProblem('No listening key yet — add a free Groq key in Settings (top right)');
       workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor', { processorOptions: tconf.chunk || {} });
 
       workletNode.port.onmessage = function(e) {

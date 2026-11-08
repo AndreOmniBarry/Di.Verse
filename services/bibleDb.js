@@ -8,7 +8,7 @@ const { EventEmitter } = require('events');
 // (server.js forwards it to the operator's queue)
 const events = new EventEmitter();
 
-const DB_PATH = path.join(__dirname, '../db/bible.db');
+const DB_PATH = require('./paths').BIBLE_DB;
 let db;
 
 function getDb() {

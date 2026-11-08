@@ -1,6 +1,6 @@
 {
   "name": "diverse",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Di.Verse \u2014 live scripture and lyrics display for church services",
   "main": "server.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "check:apibible": "node scripts/check-apibible.js",
     "prefetch": "node scripts/prefetch.js",
     "server": "node server.js",
-    "bibles": "node scripts/bibles.js"
+    "bibles": "node scripts/bibles.js",
+    "build:apps": "node scripts/build-apps.js"
   },
   "keywords": [],
   "author": "",

@@ -1,0 +1,23 @@
+Di.Verse for Windows
+====================
+
+1. Right-click the downloaded zip → Properties → tick "Unblock" (if shown)
+   → OK. Then right-click → Extract All.
+
+2. Open the extracted Di.Verse folder and double-click
+   "Install Di.Verse.cmd". If Windows warns about it, click
+   More info → Run anyway (Di.Verse isn't registered with Microsoft yet).
+   No administrator rights are needed.
+
+3. Di.Verse is added to your Desktop and Start menu and starts straight
+   away: the Operator page opens in Google Chrome (needed for the fastest,
+   live-caption listening). Click Settings (top right) and paste your free
+   Groq and Gemini keys. If Windows Firewall asks about "node", allow it on
+   Private networks, so vMix and the projector can reach Di.Verse.
+
+From then on: open Di.Verse from the Desktop or Start menu. It runs in the
+background; Settings → Stop Di.Verse stops it.
+
+Your keys, Bibles and songs: %APPDATA%\Di.Verse
+(kept when you install a newer version: just run the new installer).
+vMix on the same PC: http://localhost:3000/projection?overlay=1
