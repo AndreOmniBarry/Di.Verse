@@ -348,18 +348,6 @@ function checkVersion() {
 }
 checkVersion();
 
-buildBackgroundList();
-(function restorePrefs() {
-  var t = loadPref('theme'), bg = loadPref('background'), fr = loadPref('frame'), sz = loadPref('size');
-  if (t && THEMES[t]) { currentTheme = t; document.getElementById('themeSelect').value = t; }
-  // First run: the look that reads best over a camera in a big room
-  document.getElementById('bgSelect').value = bg || 'crystal-glass';
-  document.getElementById('frameSelect').value = fr || 'glass';
-  document.getElementById('sizeSelect').value = sz || 'large';
-  document.getElementById('cameraSelect').value = loadPref('camera') || '25';
-  if (loadPref('mode')) setMode(loadPref('mode'));
-  if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
-})();
 
 function broadcast(payload) {
   return fetch('/api/push', {
@@ -1142,6 +1130,24 @@ var base64 = btoa(binary);
   document.getElementById('verseInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') manualSearch();
   });
+
+  // ===== Start-up =====
+  // Runs last, once every function and setting above exists (restoring a
+  // saved mode before the mode list was defined used to stop the page)
+  function restorePrefs() {
+    var t = loadPref('theme'), bg = loadPref('background'), fr = loadPref('frame'), sz = loadPref('size');
+    if (t && THEMES[t]) { currentTheme = t; document.getElementById('themeSelect').value = t; }
+    // First run: the look that reads best over a camera in a big room
+    document.getElementById('bgSelect').value = bg || 'crystal-glass';
+    document.getElementById('frameSelect').value = fr || 'glass';
+    document.getElementById('sizeSelect').value = sz || 'large';
+    document.getElementById('cameraSelect').value = loadPref('camera') || '25';
+    if (loadPref('mode')) setMode(loadPref('mode'));
+    if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
+  }
+  
+  try { buildBackgroundList(); restorePrefs(); }
+  catch (err) { console.error('[Start-up]', err); showAlert('Some saved settings could not be restored: ' + err.message); }
 </script>
 </body>
 </html>
