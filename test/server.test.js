@@ -195,3 +195,41 @@ test('automatic squeeze: vMix zooms the live camera into the window, then puts i
     assert.deepStrictEqual(calls, ['SetZoom 1 0.25', 'SetPanX 1 -0.69', 'SetPanY 1 0.65', 'SetZoom 1 1', 'SetPanX 1 0', 'SetPanY 1 0']);
   } finally { srv.kill(); fake.close(); }
 });
+
+test('an old page left open in vMix is reported, and vMix is told to reload it', async () => {
+  const http = require('http');
+  const calls = [];
+  const fake = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    const fn = u.searchParams.get('Function');
+    if (fn) calls.push(`${fn} ${u.searchParams.get('Input')}`);
+    res.end('<vmix><inputs><input key="a" number="1" type="Capture" title="Camera"/>' +
+      '<input key="b" number="2" type="Browser" title="Browser 192.168.0.133">http://192.168.0.133:3936/projection?overlay=1</input>' +
+      '<input key="c" number="3" type="Browser" title="Browser news">https://example.com/</input></inputs><active>1</active></vmix>');
+  }).listen(3935);
+  const srv = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env: { ...process.env, PORT: '3936', OPENAI_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', ANTHROPIC_API_KEY: '', DIVERSE_NO_BROWSER: '1', DIVERSE_STALE_MS: '300',
+    DIVERSE_STATE_FILE: path.join(require('os').tmpdir(), 'diverse-vmix-stale-' + process.pid + '.json'), VMIX_URL: 'http://localhost:3935', VMIX_SQUEEZE_INPUT: '' }, stdio: 'pipe' });
+  try {
+    for (let i = 0; i < 50; i++) { try { await fetch('http://localhost:3936/api/songs/search'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
+    const op = new WebSocket('ws://localhost:3936?type=operator');
+    const notices = [];
+    op.on('message', m => { const msg = JSON.parse(m); if (msg.action === 'NOTICE') notices.push(msg.message); });
+    await new Promise(r => op.on('open', r));
+    const fresh = new WebSocket('ws://localhost:3936?type=projection&overlay=1'); // a current page introduces itself
+    await new Promise(r => fresh.on('open', r));
+    fresh.send(JSON.stringify({ action: 'CLIENT_INFO', ua: 'Chrome/120', width: 1280, height: 720, overlay: true }));
+    const old = new WebSocket('ws://localhost:3936?type=projection'); // an old page doesn't
+    await new Promise(r => old.on('open', r));
+    await new Promise(r => setTimeout(r, 900));
+    old.close(); fresh.close(); op.close();
+    assert.strictEqual(notices.filter(n => /OLD Di\.Verse page/.test(n)).length, 1, notices.join(' | '));
+    assert.deepStrictEqual(calls, ['BrowserReload 2']);
+  } finally { srv.kill(); fake.close(); }
+});
+
+test('pages are never cached (vMix kept old copies)', async () => {
+  for (const p of ['/projection', '/operator', '/projection/backgrounds.js']) {
+    const res = await fetch(base + p);
+    assert.strictEqual(res.headers.get('cache-control'), 'no-store', p);
+  }
+});

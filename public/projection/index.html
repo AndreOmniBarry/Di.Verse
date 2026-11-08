@@ -411,7 +411,11 @@
         try {
           var v = JSON.parse(x.responseText).version;
           if (!pageVersion) pageVersion = v;
-          else if (v && v !== pageVersion) location.reload();
+          else if (v && v !== pageVersion) {
+            // load the new page at a fresh address, so no old copy can answer
+            var q = location.search.replace(/([?&])v=[^&]*&?/, '$1').replace(/[?&]$/, '');
+            location.replace(location.pathname + q + (q ? '&' : '?') + 'v=' + encodeURIComponent(v));
+          }
         } catch (e) {}
       };
       x.send();

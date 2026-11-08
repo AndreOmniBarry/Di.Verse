@@ -224,7 +224,8 @@ Three caption modes, chosen with the mode button on the Operator page:
    Save, then restart Di.Verse (Ctrl + C, then `npm start`).
 4. **Check the link.** On the Mac open `http://localhost:3000/api/vmix`. It should say `"reachable": true`, `"mode": "automatic"` and name your camera as `live`.
 5. In vMix, keep the Di.Verse Web Browser input on **Overlay 1** all the time, with the URL ending `?overlay=1`.
-6. **Check the vMix screen itself.** With the vMix input refreshed, `http://localhost:3000/api/vmix` also lists `screens`: one should say `"where": "vMix …"` with its browser version. If anything on that screen goes wrong, the Operator page shows a "Screen problem on vMix…" message and Terminal prints a `[Screen]` line. Send that line to your helper.
+6. **After an update** the vMix input loads the new page by itself (from v1.6.1). If the Operator page ever says a screen is showing an **OLD Di.Verse page**, open the vMix input's settings and set its URL to the address it gives (it ends `&v=` and the version number). A new address always loads fresh. With `VMIX_URL` set, Di.Verse asks vMix to reload it automatically.
+7. **Check the vMix screen itself.** With the vMix input refreshed, `http://localhost:3000/api/vmix` also lists `screens`: one should say `"where": "vMix …"` with its browser version. If anything on that screen goes wrong, the Operator page shows a "Screen problem on vMix…" message and Terminal prints a `[Screen]` line. Send that line to your helper.
 
 From then on: pushing a verse in **Squeeze** mode makes vMix zoom the live camera down into the window at the top left (exactly inside Di.Verse's frame). **✕ Clear**, or showing the next verse in another mode, puts the camera back to full screen. Changing the Camera size while squeezed resizes it live.
 
