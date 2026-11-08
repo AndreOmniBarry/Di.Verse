@@ -191,6 +191,18 @@
 
 <script src="/projection/backgrounds.js"></script>
 <script>
+// Opened from another computer with ?token=… (OPERATOR_TOKEN): send it with
+// every request so the laptop accepts this page's controls
+(function() {
+  var token = new URLSearchParams(location.search).get('token');
+  if (!token) return;
+  var plainFetch = window.fetch;
+  window.fetch = function(url, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({}, opts.headers, { 'x-diverse-token': token });
+    return plainFetch(url, opts);
+  };
+})();
 // ===== State =====
 var displayMode = 'lower-third';
 var activeTranslation = 'KJV';
