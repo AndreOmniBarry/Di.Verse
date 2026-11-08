@@ -119,6 +119,11 @@
       <option value="glass">Style: liquid glass card</option>
       <option value="minimal">Style: text only</option>
     </select>
+    <select id="sizeSelect" title="Caption text size — Large or Extra large for big rooms; long verses split into pages instead of shrinking" onchange="applyBackground()">
+      <option value="normal">Text: normal</option>
+      <option value="large" selected>Text: large</option>
+      <option value="xl">Text: extra large (big room)</option>
+    </select>
     <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
     <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
     <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
@@ -258,9 +263,9 @@ function buildBackgroundList() {
 }
 
 function applyBackground() {
-  var bg = document.getElementById('bgSelect').value, frame = document.getElementById('frameSelect').value;
-  savePref('background', bg); savePref('frame', frame);
-  broadcast({ action: 'APPLY_BACKGROUND', background: bg, frame: frame });
+  var bg = document.getElementById('bgSelect').value, frame = document.getElementById('frameSelect').value, size = document.getElementById('sizeSelect').value;
+  savePref('background', bg); savePref('frame', frame); savePref('size', size);
+  broadcast({ action: 'APPLY_BACKGROUND', background: bg, frame: frame, size: size });
 }
 
 // Operator choices survive a page reload or restart (per laptop)
@@ -288,6 +293,9 @@ function connectWS() {
       if (st.background) {
         document.getElementById('bgSelect').value = st.background.background || 'theme';
         document.getElementById('frameSelect').value = st.background.frame || 'bar';
+        document.getElementById('sizeSelect').value = st.background.size || 'large';
+      } else {
+        applyBackground(); // nothing chosen yet on this laptop: send the defaults
       }
     }
     if (msg.action === 'TRANSLATION_CHANGE') setTranslation(msg.translation, true);
@@ -306,10 +314,12 @@ connectWS();
 
 buildBackgroundList();
 (function restorePrefs() {
-  var t = loadPref('theme'), bg = loadPref('background'), fr = loadPref('frame');
+  var t = loadPref('theme'), bg = loadPref('background'), fr = loadPref('frame'), sz = loadPref('size');
   if (t && THEMES[t]) { currentTheme = t; document.getElementById('themeSelect').value = t; }
-  if (bg) document.getElementById('bgSelect').value = bg;
-  if (fr) document.getElementById('frameSelect').value = fr;
+  // First run: the look that reads best over a camera in a big room
+  document.getElementById('bgSelect').value = bg || 'crystal-glass';
+  document.getElementById('frameSelect').value = fr || 'glass';
+  document.getElementById('sizeSelect').value = sz || 'large';
   if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
 })();
 

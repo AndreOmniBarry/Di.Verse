@@ -13,46 +13,59 @@
        vMix show only the verse box on top of the camera */
     html.overlay, html.overlay body { background: transparent; }
     html.overlay #idle, html.overlay #reconnect { display: none !important; }
+    body { font-family: "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif; }
     #lowerThird {
-      position: fixed; bottom: 0; left: 0; width: 100%; min-height: 32vh;
+      position: fixed; bottom: 0; left: 0; width: 100%;
       background: rgba(8,8,25,0.92); border-top: 3px solid #E94560;
       display: flex; flex-direction: column; justify-content: center;
-      padding: 20px 56px; opacity: 0; transform: translateY(8px);
+      padding: 2.4vh 4.5vw 2.8vh; opacity: 0; transform: translateY(8px);
       transition: opacity 0.3s ease, transform 0.3s ease;
       pointer-events: none; z-index: 10; max-height: 62vh; overflow: hidden;
     }
     #lowerThird.show { opacity: 1; transform: translateY(0); }
-    .lt-ref { font-size: 1.1rem; font-weight: bold; color: #F5C518; letter-spacing: 2px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; }
-    .badge { background: #E94560; color: white; font-size: 0.7rem; font-weight: bold; padding: 3px 10px; border-radius: 20px; letter-spacing: 1px; }
-    .lt-text { font-size: 1.9rem; color: #FFFFFF; line-height: 1.55; font-weight: bold; }
-    .lt-text.md { font-size: 1.55rem; }
-    .lt-text.sm { font-size: 1.25rem; }
+    /* Sizes are set from script in vh (share of screen height) — see SIZES */
+    .lt-ref { font-weight: 800; color: #F5C518; letter-spacing: 0.06em; margin-bottom: 0.9vh; display: flex; align-items: center; gap: 0.6em; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+    .badge { background: #E94560; color: white; font-size: 0.62em; font-weight: 800; padding: 0.25em 0.75em; border-radius: 1em; letter-spacing: 0.08em; }
+    .page-count { margin-left: auto; font-size: 0.7em; font-weight: 700; color: rgba(255,255,255,0.75); letter-spacing: 0.1em; }
+    .lt-text, .fs-text { white-space: pre-line; transition: opacity 0.26s ease; }
+    .lt-text { color: #FFFFFF; line-height: 1.32; font-weight: 700; }
+    .lt-text.turning, .fs-text.turning { opacity: 0; }
     #fullScreen {
       position: fixed; inset: 0; background: #1A1A2E; display: flex; flex-direction: column;
       align-items: center; justify-content: center; padding: 60px; text-align: center;
       opacity: 0; transition: opacity 0.3s ease; pointer-events: none; z-index: 10;
     }
     #fullScreen.show { opacity: 1; }
-    .fs-text { font-size: 2.2rem; font-weight: bold; color: #FFFFFF; line-height: 1.55; max-width: 82%; margin-bottom: 24px; }
-    .fs-text.md { font-size: 1.8rem; }
-    .fs-text.sm { font-size: 1.4rem; }
-    .fs-ref { font-size: 1.1rem; color: #E94560; font-weight: bold; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
+    .fs-text { font-weight: 700; color: #FFFFFF; line-height: 1.35; max-width: 86%; margin-bottom: 3vh; }
+    .fs-ref { width: 86%; color: #E94560; font-weight: bold; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
     /* Live/still backgrounds (backgrounds.js) sit under a soft darkening layer */
     .bg-canvas, .bg-dim { position: absolute; inset: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
     .bg-canvas { z-index: 0; }
     .bg-dim { z-index: 1; background: linear-gradient(0deg, rgba(0,0,0,0.38), rgba(0,0,0,0.16)); }
     #lowerThird > .lt-ref, #lowerThird > .lt-text, #fullScreen > .fs-text, #fullScreen > .fs-ref { position: relative; z-index: 2; }
-    .lt-text, .fs-text { text-shadow: 0 2px 10px rgba(0,0,0,0.35); }
+    /* Crisp edge + soft halo: readable over any camera picture */
+    .lt-text, .fs-text { text-shadow: 0 2px 3px rgba(0,0,0,0.65), 0 0 18px rgba(0,0,0,0.35); }
     /* Caption styles */
+    /* High-end glass caption: see-through tinted panel (the camera shows
+       through in vMix/OBS), bright top edge, inner glow, accent light on the
+       left. backdrop-filter adds real blur on the projector page. */
     html[data-frame="glass"] #lowerThird {
-      left: 3vw; right: 3vw; bottom: 4vh; width: auto; min-height: 26vh; overflow: hidden;
-      border-radius: 26px; border: 1px solid rgba(255,255,255,0.22); border-top: 1px solid rgba(255,255,255,0.5);
-      box-shadow: 0 18px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -18px 40px rgba(255,255,255,0.05);
-      -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
+      left: 4vw; right: 4vw; bottom: 4.5vh; width: auto; overflow: hidden;
+      padding: 2.4vh 3.6vw 2.8vh 4.4vw;
+      border-radius: 2.6vh; border: 1px solid rgba(255,255,255,0.16); border-top-color: rgba(255,255,255,0.55);
+      box-shadow: 0 2.2vh 6vh rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.6),
+                  inset 0 0 0 1px rgba(255,255,255,0.05), inset 0 -4vh 8vh rgba(140,190,255,0.07);
+      -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
     }
     html[data-frame="glass"] #lowerThird::after {
       content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: inherit;
-      background: linear-gradient(180deg, rgba(255,255,255,0.20), rgba(255,255,255,0.04) 38%, transparent 60%);
+      background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06) 26%, transparent 52%),
+                  radial-gradient(120% 90% at 0% 0%, rgba(255,255,255,0.10), transparent 55%);
+    }
+    html[data-frame="glass"] #lowerThird::before {
+      content: ''; position: absolute; left: 1.6vw; top: 22%; bottom: 22%; width: 0.5vh; z-index: 2; border-radius: 1vh;
+      background: linear-gradient(180deg, var(--accent, #E94560), rgba(255,255,255,0.85));
+      box-shadow: 0 0 1.6vh var(--accent, #E94560);
     }
     html[data-frame="minimal"] #lowerThird { background: transparent !important; border-top: none; }
     html[data-frame="minimal"] .lt-text { text-shadow: 0 2px 6px rgba(0,0,0,0.9), 0 0 24px rgba(0,0,0,0.7); }
@@ -66,38 +79,30 @@
   <div id="idle"><div class="logo">Di.Verse</div></div>
   <div id="lowerThird">
     <canvas class="bg-canvas"></canvas><div class="bg-dim"></div>
-    <div class="lt-ref"><span id="ltRef"></span><span class="badge" id="ltBadge">KJV</span></div>
+    <div class="lt-ref"><span id="ltRef"></span><span class="badge" id="ltBadge">KJV</span><span class="page-count" id="ltPage"></span></div>
     <div class="lt-text" id="ltText"></div>
   </div>
   <div id="fullScreen">
     <canvas class="bg-canvas"></canvas><div class="bg-dim"></div>
     <div class="fs-text" id="fsText"></div>
-    <div class="fs-ref"><span id="fsRef"></span><span class="badge" id="fsBadge">KJV</span></div>
+    <div class="fs-ref"><span id="fsRef"></span><span class="badge" id="fsBadge">KJV</span><span class="page-count" id="fsPage"></span></div>
   </div>
   <div id="reconnect">Reconnecting...</div>
 <script src="/projection/backgrounds.js"></script>
 <script>
   if (new URLSearchParams(location.search).has('overlay')) document.documentElement.classList.add('overlay');
   var reconnectTimer;
-  var baseLTSize = 1.9;
-  var baseFSSize = 2.2;
-
-  function sizeClass(text) {
-    if (text.length > 200) return 'sm';
-    if (text.length > 120) return 'md';
-    return '';
-  }
-
   // ── Backgrounds: 'theme' uses the colour theme; otherwise a still or live
   // background from backgrounds.js ──
   var BG = window.DiVerseBackgrounds;
   var currentBg = 'theme', currentTheme = null, renderers = {};
 
-  function applyBackground(id, frame) {
+  function applyBackground(id, frame, size) {
     currentBg = id || 'theme';
     document.documentElement.setAttribute('data-frame', frame || 'bar');
+    if (size) textSize = SIZES[size] ? size : 'large';
     paintBackgrounds();
-    fitToScreen();
+    applyFontSize();
   }
 
   function paintBackgrounds() {
@@ -134,84 +139,150 @@
     document.getElementById('fsRef').style.color = theme.ref;
     var badges = document.querySelectorAll('.badge');
     badges.forEach(function(b) { b.style.background = theme.accent; });
+    document.documentElement.style.setProperty('--accent', theme.accent);
   }
 
-  var fontDelta = 0; // operator's +/- setting, kept for every new verse
+  // ── Readable from the back of a big room ──
+  // Text is sized as a share of the screen height (vh), so it's equally big
+  // on a TV, a projector or a 1080p stream. Long verses are never shrunk:
+  // they're split into pages that fit (2 lines in the lower third at Large),
+  // shown in turn at reading pace with a "1/3" counter — the preacher's face
+  // stays visible above the caption.
+  var SIZES = {
+    normal: { lt: 3.8, ref: 2.4, fs: 5.2, ltLines: 3 },
+    large:  { lt: 4.8, ref: 2.8, fs: 6.2, ltLines: 2 },
+    xl:     { lt: 5.9, ref: 3.2, fs: 7.4, ltLines: 2 },
+  };
+  var textSize = 'large';
+  var fontDelta = 0; // operator's +/- buttons, kept for every new verse
+
+  function applySizes() {
+    var sz = SIZES[textSize] || SIZES.large, k = Math.max(0.6, 1 + fontDelta / 24);
+    document.getElementById('ltText').style.fontSize = (sz.lt * k) + 'vh';
+    document.getElementById('fsText').style.fontSize = (sz.fs * k) + 'vh';
+    document.querySelectorAll('.lt-ref, .fs-ref').forEach(function(el) { el.style.fontSize = (sz.ref * k) + 'vh'; });
+  }
 
   function applyFontSize(delta) {
     if (delta !== undefined) fontDelta = delta;
-    var ltEl = document.getElementById('ltText');
-    var fsEl = document.getElementById('fsText');
-    var sc = ltEl.className.includes('sm') ? 0.66 : ltEl.className.includes('md') ? 0.82 : 1;
-    var fsSc = fsEl.className.includes('sm') ? 0.64 : fsEl.className.includes('md') ? 0.82 : 1;
-    ltEl.style.fontSize = ((baseLTSize + fontDelta/16) * sc) + 'rem';
-    fsEl.style.fontSize = ((baseFSSize + fontDelta/16) * fsSc) + 'rem';
-    fitToScreen();
+    applySizes();
+    if (pager.text != null) showPaged(pager.box, pager.text); // re-split at the new size
   }
 
-  // Long passages (up to 10 verses) and long slides: shrink the text until
-  // its box fits on screen instead of running off the top
+  var pager = { box: null, text: null, pages: [], i: 0, timer: null };
+
+  function maxLinesFor(box) {
+    var sz = SIZES[textSize] || SIZES.large;
+    if (box === 'lowerThird') return sz.ltLines;
+    var el = document.getElementById('fsText');
+    var lh = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.35;
+    return Math.max(2, Math.floor(window.innerHeight * 0.62 / lh));
+  }
+
+  // Splits text into pages of at most maxLines lines at the current size,
+  // measuring with an invisible copy of the real text box
+  function paginate(el, text, maxLines) {
+    var probe = el.cloneNode(false);
+    probe.removeAttribute('id');
+    probe.style.cssText += ';position:absolute;visibility:hidden;left:0;top:0;width:' + el.clientWidth + 'px;';
+    el.parentNode.appendChild(probe);
+    probe.textContent = 'X';
+    var lineH = probe.getBoundingClientRect().height, limit = lineH * maxLines + 2;
+    var words = String(text).replace(/[ \t]+/g, ' ').trim().split(' ');
+    var pages = [], cur = [];
+    words.forEach(function(w) {
+      probe.textContent = cur.concat(w).join(' ');
+      if (cur.length && probe.getBoundingClientRect().height > limit) {
+        // Break where the sentence pauses (, ; : . ? !) if that's in the
+        // last part of the page, so each page reads as a whole phrase
+        var cut = cur.length;
+        for (var i = cur.length - 1; i >= Math.floor(cur.length * 0.55); i--) {
+          if (/[,;:.?!]["’”)]?$/.test(cur[i])) { cut = i + 1; break; }
+        }
+        pages.push(cur.slice(0, cut).join(' '));
+        cur = cur.slice(cut).concat(w);
+      } else cur.push(w);
+    });
+    if (cur.length) pages.push(cur.join(' '));
+    probe.remove();
+    return pages.length ? pages : [''];
+  }
+
+  function readingTime(page) {
+    var words = page.split(/\s+/).length;
+    return Math.min(12000, Math.max(4000, 1200 + words * 420)); // about 2.5 words a second
+  }
+
+  function showPaged(box, text) {
+    clearTimeout(pager.timer);
+    var el = document.getElementById(box === 'lowerThird' ? 'ltText' : 'fsText');
+    applySizes();
+    pager.box = box; pager.text = text; pager.i = 0;
+    pager.pages = paginate(el, text, maxLinesFor(box));
+    renderPage(false);
+  }
+
+  function renderPage(animate) {
+    var el = document.getElementById(pager.box === 'lowerThird' ? 'ltText' : 'fsText');
+    var counter = document.getElementById(pager.box === 'lowerThird' ? 'ltPage' : 'fsPage');
+    var page = pager.pages[pager.i];
+    var put = function() {
+      el.textContent = page;
+      counter.textContent = pager.pages.length > 1 ? (pager.i + 1) + ' / ' + pager.pages.length : '';
+      el.classList.remove('turning');
+      fitToScreen();
+    };
+    if (animate) { el.classList.add('turning'); setTimeout(put, 260); } else put();
+    if (pager.pages.length > 1) {
+      pager.timer = setTimeout(function() {
+        pager.i = (pager.i + 1) % pager.pages.length; // loops, so latecomers catch the start
+        renderPage(true);
+      }, readingTime(page));
+    }
+  }
+
+  // Last resort for a single page that still doesn't fit (e.g. one enormous
+  // word on a small window): shrink just that page
   function fitToScreen() {
-    // [box, text element, what to measure, max share of screen height]
-    [['lowerThird', 'ltText', 'box', 0.6], ['fullScreen', 'fsText', 'text', 0.72]].forEach(function(p) {
+    [['lowerThird', 'ltText', 'box', 0.5], ['fullScreen', 'fsText', 'text', 0.72]].forEach(function(p) {
       var box = document.getElementById(p[0]), el = document.getElementById(p[1]);
       if (!box.classList.contains('show')) return;
-      // The full-screen box always fills the screen, so measure its text there
       var measured = p[2] === 'box' ? box : el;
       var limit = window.innerHeight * p[3];
       var size = parseFloat(getComputedStyle(el).fontSize);
-      while (measured.scrollHeight > limit && size > 12) {
-        size *= 0.92;
-        el.style.fontSize = size + 'px';
-      }
+      while (measured.scrollHeight > limit && size > 12) { size *= 0.94; el.style.fontSize = size + 'px'; }
     });
   }
+
   window.addEventListener('resize', function() { applyFontSize(); });
 
   function showVerse(verse, theme, fontSize) {
     hide();
     applyTheme(theme);
-    var sc = sizeClass(verse.text);
-    if (verse.displayMode === 'full-screen') {
-      document.getElementById('fsText').textContent = verse.text;
-      document.getElementById('fsText').className = 'fs-text ' + sc;
-      document.getElementById('fsRef').textContent = verse.reference;
-      document.getElementById('fsBadge').textContent = verse.translation;
-      document.getElementById('fullScreen').classList.add('show');
-    } else {
-      document.getElementById('ltText').textContent = verse.text;
-      document.getElementById('ltText').className = 'lt-text ' + sc;
-      document.getElementById('ltRef').textContent = verse.reference;
-      document.getElementById('ltBadge').textContent = verse.translation;
-      document.getElementById('lowerThird').classList.add('show');
-    }
+    if (fontSize !== undefined) fontDelta = fontSize;
+    var full = verse.displayMode === 'full-screen', box = full ? 'fullScreen' : 'lowerThird';
+    document.getElementById(full ? 'fsRef' : 'ltRef').textContent = verse.reference;
+    document.getElementById(full ? 'fsBadge' : 'ltBadge').textContent = verse.translation;
+    document.getElementById(box).classList.add('show');
     paintBackgrounds(); // start the live effect now the box is visible
-    applyFontSize(fontSize);
+    showPaged(box, verse.text);
   }
 
   function showLyrics(lyrics, theme, fontSize) {
     hide();
     applyTheme(theme);
-    var label = lyrics.songTitle + '  ·  ' + (lyrics.section || '');
-    var badge = lyrics.slideNum + '/' + lyrics.totalSlides;
-    if (lyrics.displayMode === 'full-screen') {
-      document.getElementById('fsText').textContent = lyrics.content;
-      document.getElementById('fsText').className = 'fs-text ' + sizeClass(lyrics.content);
-      document.getElementById('fsRef').textContent = label;
-      document.getElementById('fsBadge').textContent = badge;
-      document.getElementById('fullScreen').classList.add('show');
-    } else {
-      document.getElementById('ltText').textContent = lyrics.content;
-      document.getElementById('ltText').className = 'lt-text ' + sizeClass(lyrics.content);
-      document.getElementById('ltRef').textContent = label;
-      document.getElementById('ltBadge').textContent = badge;
-      document.getElementById('lowerThird').classList.add('show');
-    }
-    paintBackgrounds(); // start the live effect now the box is visible
-    applyFontSize(fontSize);
+    if (fontSize !== undefined) fontDelta = fontSize;
+    var full = lyrics.displayMode === 'full-screen', box = full ? 'fullScreen' : 'lowerThird';
+    document.getElementById(full ? 'fsRef' : 'ltRef').textContent = lyrics.songTitle + (lyrics.section ? '  ·  ' + lyrics.section : '');
+    document.getElementById(full ? 'fsBadge' : 'ltBadge').textContent = lyrics.slideNum + '/' + lyrics.totalSlides;
+    document.getElementById(box).classList.add('show');
+    paintBackgrounds();
+    showPaged(box, lyrics.content);
   }
 
   function hide() {
+    clearTimeout(pager.timer);
+    pager.text = null;
     document.getElementById('lowerThird').classList.remove('show');
     document.getElementById('fullScreen').classList.remove('show');
     for (var k in renderers) renderers[k].stop(); // nothing on screen: no GPU work
@@ -227,7 +298,7 @@
       var msg = JSON.parse(e.data);
       if (msg.action === 'SHOW_VERSE')   showVerse(msg.verse, msg.theme, msg.fontSize);
       else if (msg.action === 'SHOW_LYRICS') showLyrics(msg.lyrics, msg.theme, msg.fontSize);
-      else if (msg.action === 'APPLY_BACKGROUND') applyBackground(msg.background, msg.frame);
+      else if (msg.action === 'APPLY_BACKGROUND') applyBackground(msg.background, msg.frame, msg.size);
       else if (msg.action === 'CLEAR')   hide();
       else if (msg.action === 'APPLY_THEME') applyTheme(msg.theme);
       else if (msg.action === 'FONT_SIZE')   applyFontSize(msg.delta);
