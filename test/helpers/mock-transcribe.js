@@ -5,6 +5,9 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status, head
 global.fetch = async (url, init) => {
   const u = String(url instanceof Request ? url.url : url);
   if (!u.includes('/audio/transcriptions')) return real(url, init);
+  const auth = (init && init.headers && (init.headers.Authorization || init.headers.authorization || (init.headers.get && init.headers.get('authorization')))) || '';
+  // MOCK_EXHAUSTED_KEY: that key answers 429 (limit reached)
+  if (process.env.MOCK_EXHAUSTED_KEY && String(auth).includes(process.env.MOCK_EXHAUSTED_KEY)) return json({ error: { message: 'limit' } }, 429);
   const mode = u.includes('groq.com') ? process.env.MOCK_GROQ : process.env.MOCK_OPENAI;
   if (mode !== 'ok') return json({ error: { message: 'mock failure', code: mode === '429q' ? 'insufficient_quota' : null } }, parseInt(mode));
   return json({ text: (u.includes('groq.com') ? 'groq' : 'openai') + ' heard John 3 16' });

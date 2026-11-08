@@ -88,3 +88,13 @@ test('no AI keys at all → parser-only, no error spam', async () => {
     assert.deepStrictEqual(d, { type: 'none' });
   } finally { p.kill(); }
 });
+
+test('backup Groq key: first key out of quota → second key carries on, same request', async () => {
+  const p = await boot(3927, { GROQ_API_KEY: 'gsk_main1111, gsk_backup2222', MOCK_GROQ: 'ok', MOCK_EXHAUSTED_KEY: 'gsk_main1111' });
+  try {
+    const r = await transcribe(3927);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.provider, 'groq');
+    assert.match(r.body.text, /groq heard/);
+  } finally { p.kill(); }
+});

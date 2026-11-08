@@ -16,6 +16,7 @@
 // publisher licence) before charging customers.
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
+const keys = require('./keys');
 
 const TIMEOUT_MS = 15000;
 const SEARCH_TIMEOUT_MS = 25000; // a web-search-grounded answer takes longer
@@ -89,10 +90,15 @@ function parseReply(raw) {
 }
 
 // ── Gemini ──
-async function geminiFetch(path, body, timeoutMs = TIMEOUT_MS) {
+// Backup Gemini keys (comma-separated) take over on 429/401/403 — services/keys.js
+function geminiFetch(path, body, timeoutMs = TIMEOUT_MS) {
+  return keys.withKey('GEMINI_API_KEY', key => geminiFetchWith(key, path, body, timeoutMs));
+}
+
+async function geminiFetchWith(key, path, body, timeoutMs) {
   const res = await fetch(GEMINI_BASE + path, {
     method: body ? 'POST' : 'GET',
-    headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY, 'Content-Type': 'application/json' },
+    headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -185,10 +191,10 @@ async function askGemini(book, chapter, verse, translation) {
 }
 
 // ── Groq (OpenAI-compatible) ──
-let groqClient = null;
-function groq() {
-  if (!groqClient) groqClient = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
-  return groqClient;
+const groqClients = new Map(); // one per key (backup keys: services/keys.js)
+function groq(key) {
+  if (!groqClients.has(key)) groqClients.set(key, new OpenAI({ apiKey: key, baseURL: 'https://api.groq.com/openai/v1' }));
+  return groqClients.get(key);
 }
 
 // groq/compound has built-in web search; otherwise large general models. Up to
@@ -197,7 +203,7 @@ function groq() {
 let groqCandidates = null;
 async function groqModelList() {
   if (groqCandidates) return groqCandidates;
-  const ids = ((await groq().models.list()).data || []).map(m => m.id);
+  const ids = ((await keys.withKey('GROQ_API_KEY', key => groq(key).models.list())).data || []).map(m => m.id);
   const prefs = ['groq/compound', 'compound-beta', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'moonshotai/kimi-k2-instruct', 'qwen/qwen3-32b'];
   const general = ids.filter(id => !/whisper|guard|tts|embed|orpheus|prompt|mini|8b|20b/i.test(id));
   groqCandidates = [...new Set([process.env.GROQ_MODEL, ...prefs.filter(p => ids.includes(p)), ...general].filter(Boolean))].slice(0, 2);
@@ -213,11 +219,11 @@ async function askGroq(book, chapter, verse, translation) {
   const candidates = await groqModelList();
   const results = await Promise.allSettled(candidates.map(async model => {
     const canSearch = /compound/.test(model);
-    const res = await groq().chat.completions.create({
+    const res = await keys.withKey('GROQ_API_KEY', key => groq(key).chat.completions.create({
       model,
       temperature: 0,
       messages: [{ role: 'user', content: prompt(book, chapter, verse, translation, canSearch) }],
-    }, { timeout: TIMEOUT_MS, maxRetries: 0 });
+    }, { timeout: TIMEOUT_MS, maxRetries: 0 }));
     const msg = (res.choices && res.choices[0] && res.choices[0].message) || {};
     const text = parseReply(msg.content);
     if (!text) {
@@ -397,4 +403,4 @@ function status() {
   return { available: isAvailable(), providers: Object.keys(c).filter(k => c[k]), errors: { ...lastError } };
 }
 
-module.exports = { getVerse, isAvailable, status, similarity, parseReply, TRANSLATION_NAMES, _reset: () => { geminiModel = null; groqModel = null; geminiCandidates = null; groqCandidates = null; groqClient = null; claudeClient = null; for (const k in downUntil) delete downUntil[k]; for (const k in slowUntil) delete slowUntil[k]; for (const k in lastError) delete lastError[k]; } };
+module.exports = { getVerse, isAvailable, status, similarity, parseReply, TRANSLATION_NAMES, _reset: () => { geminiModel = null; groqModel = null; geminiCandidates = null; groqCandidates = null; groqClients.clear(); claudeClient = null; keys._reset(); for (const k in downUntil) delete downUntil[k]; for (const k in slowUntil) delete slowUntil[k]; for (const k in lastError) delete lastError[k]; } };

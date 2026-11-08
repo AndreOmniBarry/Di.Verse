@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const OpenAI = require('openai');
 const { toFile } = require('openai');
+const keys = require('../services/keys');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -15,7 +16,8 @@ const os = require('os');
 const PROVIDERS = {
   groq: {
     label: 'Groq',
-    key: () => process.env.GROQ_API_KEY,
+    env: 'GROQ_API_KEY',
+    key: () => keys.list('GROQ_API_KEY').length > 0,
     baseURL: 'https://api.groq.com/openai/v1',
     model: () => process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
     // Groq bills every request as at least 10 s, so send longer chunks
@@ -24,7 +26,8 @@ const PROVIDERS = {
   },
   openai: {
     label: 'OpenAI',
-    key: () => process.env.OPENAI_API_KEY,
+    env: 'OPENAI_API_KEY',
+    key: () => keys.list('OPENAI_API_KEY').length > 0,
     baseURL: undefined,
     model: () => process.env.TRANSCRIBE_MODEL || 'whisper-1',
     chunk: { minSeconds: 2.5, maxSeconds: 8 },
@@ -34,12 +37,12 @@ const PROVIDERS = {
 
 // Created on first use so a missing key disables transcription instead of
 // crashing the whole server (manual search and projection must keep working).
-const clients = {};
-function getClient(name) {
-  const p = PROVIDERS[name];
-  if (!p.key()) return null;
-  if (!clients[name]) clients[name] = new OpenAI({ apiKey: p.key(), baseURL: p.baseURL });
-  return clients[name];
+// One client per key (a provider can have backup keys, see services/keys.js)
+const clients = new Map();
+function getClient(name, key) {
+  const id = name + ':' + key;
+  if (!clients.has(id)) clients.set(id, new OpenAI({ apiKey: key, baseURL: PROVIDERS[name].baseURL }));
+  return clients.get(id);
 }
 
 function providerOrder() {
@@ -100,13 +103,13 @@ router.post('/transcribe', async (req, res) => {
     let lastErr = null;
     for (const name of order) {
       try {
-        const response = await getClient(name).audio.transcriptions.create({
+        const response = await keys.withKey(PROVIDERS[name].env, async key => getClient(name, key).audio.transcriptions.create({
           file: await toFile(fileBuffer, 'audio.wav', { type: 'audio/wav' }),
           model: PROVIDERS[name].model(),
           response_format: 'json',
           temperature: 0,
           prompt: WHISPER_PROMPT,
-        }, { maxRetries: 0, timeout: 20000 });
+        }, { maxRetries: 0, timeout: 20000 }));
 
         const text = String((response && response.text) || '').trim();
         const cleaned = filterHallucinations(text);
