@@ -68,6 +68,12 @@ Analyse sermon transcription text and detect ONLY these things:
 SUPPORTED TRANSLATIONS: KJV (default), NKJV, AMP, AMPC, TPT, MSG, GNT, TLB, NIV, ESV, NLT,
 NASB, CSB, CEV, NCV, HCSB, ASV, WEB and all others. Default to KJV when no translation is mentioned.
 
+SPEECH-TO-TEXT MISHEARS BIBLE WORDS. Read through it: "sold" / "souled" may be "sowed", "wasp" /
+"wast" may be "waxed", "yeah" may be "yea" or "ye", "thy" may come out as "thigh", "hath" as "half",
+"begat" as "begged", names get respelled (Isaac as "Isaach", Elijah as "a lie Jah"). Preachers also
+repeat phrases while they preach ("Isaac sowed in that land, Isaac sowed in that land") — repetition
+is normal sermon speech, not garbage.
+
 CRITICAL — TEXT QUALITY GATE:
 - The transcription you receive may contain transcription errors, repeated words, fragments,
   or garbled noise from imperfect speech-to-text. If the text is incoherent, repetitive nonsense,
@@ -101,7 +107,7 @@ JSON SCHEMA — always return exactly this structure:
 }`;
 
 // ── Detect scripture from transcription ──
-async function detectScripture(transcriptionChunk, recentContext = '', activeTranslation = 'KJV') {
+async function detectScripture(transcriptionChunk, recentContext = '', activeTranslation = 'KJV', hints = []) {
   // Pre-filter: skip Claude call entirely on obviously garbled input — saves time and avoids false positives
   if (isGarbledText(transcriptionChunk)) {
     return { type: 'none' };
@@ -110,7 +116,7 @@ async function detectScripture(transcriptionChunk, recentContext = '', activeTra
   const userMessage = `ACTIVE TRANSLATION: ${activeTranslation}
 RECENT CONTEXT: ${recentContext}
 NEW TRANSCRIPTION: ${transcriptionChunk}
-
+${hints.length ? `\nLOCAL WORD SEARCH — KJV verses sharing the most telling words with what was said (a hint, not an answer; use one only if it really is what the preacher is quoting, paraphrasing or describing):\n${hints.join('\n')}\n` : ''}
 Analyse and return JSON only.`;
 
   const hasClaude = Boolean(process.env.ANTHROPIC_API_KEY);
@@ -190,9 +196,9 @@ function isGarbledText(text) {
   const numberCount = words.filter(w => /^\d+[,.]?$/.test(w)).length;
   if (numberCount > words.length * 0.5) return true;
 
-  // Excessive repetition of the same word
+  // The same word over and over (not a preacher repeating a phrase, which is normal)
   const uniqueRatio = new Set(words.map(w => w.toLowerCase())).size / words.length;
-  if (words.length > 6 && uniqueRatio < 0.4) return true;
+  if (words.length > 10 && uniqueRatio < 0.2) return true;
 
   return false;
 }

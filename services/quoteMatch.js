@@ -96,4 +96,4 @@ function match(text) {
     .map(([id, hits]) => ({ ...verses[id], hits, strong: !tied && hits === top && hits >= STRONG_HITS }));
 }
 
-module.exports = { match, warmUp, _reset: () => { verses = null; index = null; } };
+module.exports = { match, warmUp, words, _reset: () => { verses = null; index = null; } };

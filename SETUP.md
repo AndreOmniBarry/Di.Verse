@@ -178,7 +178,7 @@ When a verse is on screen:
 - **The preacher can drive it** while you listen: *"next verse"*, *"the following verse"*, *"take it back"*, *"previous verse"*, *"next chapter"*, *"verse 17"*, *"verses 17 to 19"*, *"chapter 5 verse 3"* (same book). The transcript shows each one, e.g. `[ "next verse" → Romans 8:29 ]`. With Auto-push off, they go to the queue instead.
 - **↑ / ↓** choose in the queue; **Space** pushes the chosen one.
 
-**Manual, any time:** type a reference in the top box and press **Enter**, e.g. `rom 8 28`, `jn 3:16-18`, `esther 8 9`, `ps 23`. Press **/** to jump to the box. It works whether or not listening is on. A translation that has to be looked up online shows KJV after 2.5 seconds and switches over when it arrives.
+**Manual, any time:** type a reference in the top box and press **Enter**, e.g. `rom 8 28`, `jn 3:16-18`, `esther 8 9`, `ps 23`. Or type **the words of a verse** (any wording): `i wish above all things that thou mayest prosper`, `the man Isaac sowed in the land`. A clear match goes on screen; if several are close, they go to the queue to pick from. Press **/** to jump to the box. It works whether or not listening is on. A translation that has to be looked up online shows KJV after 2.5 seconds and switches over when it arrives.
 
 The small label above the transcript says which engine is writing it: **Live captions ✓**, or **Whisper covering** when Chrome's captions stall (they are restarted automatically).
 

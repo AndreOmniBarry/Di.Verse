@@ -180,7 +180,7 @@
     <div class="search-panel">
       <div class="label">Manual Search <span style="text-transform:none;letter-spacing:0;color:var(--mid);">— works any time, listening or not</span></div>
       <div class="quick-row">
-        <input type="text" id="quickRef" placeholder="Type a reference, press Enter to show it — e.g. rom 8 28 · jn 3:16-18 · esther 8 9   ( / jumps here )" autocomplete="off" spellcheck="false">
+        <input type="text" id="quickRef" placeholder="A reference or the words of a verse, then Enter — rom 8 28 · jn 3:16-18 · i wish above all things that thou mayest prosper   ( / jumps here )" autocomplete="off" spellcheck="false">
         <button class="btn btn-accent" onclick="quickGo()">Show</button>
       </div>
       <div class="search-row">
@@ -491,7 +491,7 @@ async function manualSearch() {
 async function quickGo() {
   var box = document.getElementById('quickRef');
   var m = box.value.trim().match(/^([1-3]?\s*[a-z][a-z .]*?)\s*(\d{1,3})(?:\s*[:., v]\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?)?\s*$/i);
-  if (!m) { showAlert('Type a book, chapter and verse — e.g. rom 8 28 or jn 3:16-18'); return; }
+  if (!m) return phraseSearch(box);
   var url = '/api/verse?book=' + encodeURIComponent(m[1].replace(/\.$/, '').trim()) + '&chapter=' + m[2] + '&verse=' + (m[3] || 1) + (m[4] ? '&verseEnd=' + m[4] : '');
   var item = await fetchVerseFast(url, activeTranslation, function(late) {
     if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true);
@@ -501,6 +501,32 @@ async function quickGo() {
   addToQueue(item);
   await pushVerse(item);
   box.value = '';
+}
+
+// Not a reference: find the verse from its words (a quote, modern wording or
+// a paraphrase). A clear match goes on screen; otherwise the best few go to
+// the queue to choose from.
+async function phraseSearch(box) {
+  var q = box.value.trim();
+  if (q.split(/\s+/).length < 2) { showAlert('Type a reference (rom 8 28) or a few words of the verse.'); return; }
+  try {
+    var res = await fetch('/api/search?q=' + encodeURIComponent(q));
+    var data = await res.json();
+    if (!res.ok) { showAlert(data.error); return; }
+    if (!data.results.length) { showAlert('No verse found for "' + q + '" — try a few more of its words.'); return; }
+    // fetch in the chosen translation (quickly, KJV if it's slow)
+    var picks = data.best ? data.results.slice(0, 1) : data.results.slice(0, 3);
+    for (var i = picks.length - 1; i >= 0; i--) {
+      var r = picks[i];
+      var item = await fetchVerseFast('/api/verse?book=' + encodeURIComponent(r.book) + '&chapter=' + r.chapter + '&verse=' + r.verse, activeTranslation);
+      if (!item) continue;
+      item = Object.assign({}, item, { confidence: data.best ? 1 : 0.7, type: data.best ? 'manual' : 'implicit', note: data.best ? 'found from the words typed' : 'possible match — check before pushing' });
+      addToQueue(item);
+      if (data.best) await pushVerse(item);
+    }
+    if (!data.best) noteOnce('Not sure which verse — the closest ' + picks.length + ' are in the queue. Click one and push.');
+    box.value = '';
+  } catch (err) { showAlert('Search failed: ' + err.message); }
 }
 
 // ===== Songs =====

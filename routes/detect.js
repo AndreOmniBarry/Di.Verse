@@ -6,6 +6,8 @@ const { validateReference, normaliseBook } = require('../services/validation');
 const { getPassage } = require('../services/bibleDb');
 const quotes = require('../services/quoteMatch');
 const navigation = require('../services/navigation');
+const finder = require('../services/verseFinder');
+finder.warmUp();
 quotes.warmUp();
 
 const SCRIPTURE_CUE = /\b(verses?|chapters?|book of|bible|scriptures?|it is written|the word says|says|saith|said|psalms?|gospel|epistle|prophet|apostle|amplified|translation|version)\b/i;
@@ -114,6 +116,28 @@ router.post('/detect', async (req, res) => {
       return res.json({ type: 'implicit', candidates: quoted.map(q => ({ book: q.book, chapter: q.chapter, verse: q.verse, confidence: 0.7 })), source: 'quote' });
     }
 
+    // ── LAYER 1c: the verse being talked about, from its telling words —
+    // paraphrased, or misheard by speech-to-text ("Isaac sold in that land")
+    // — offline. Not on words still being spoken (they change).
+    let found = [];
+    if (!interim) {
+      const tail = String(context || '').split(/\s+/).slice(-15).join(' ');
+      found = finder.find((tail + ' ' + text).trim(), 5);
+      const verdict = finder.judge(found);
+      if (verdict === 'strong') {
+        const f = found[0];
+        const verseData = await getPassage(f.book, f.chapter, f.verse, undefined, quoteTranslation, { live: true });
+        if (verseData) {
+          console.log(`[Finder] ${verseData.reference} (${f.words} words, score ${f.score})`);
+          return res.json({ type: 'explicit', reference: { book: f.book, chapter: f.chapter, verse: f.verse, translation: quoteTranslation }, verseData, confidence: 0.9, source: 'finder' });
+        }
+      }
+      if (verdict === 'suggest' && !req.body.ai) {
+        const close = found.filter(f => f.score >= found[0].score * 0.85).slice(0, 2);
+        return res.json({ type: 'implicit', candidates: close.map(f => ({ book: f.book, chapter: f.chapter, verse: f.verse, confidence: Math.min(0.8, f.confidence) })), source: 'finder' });
+      }
+    }
+
     if (fast) return res.json({ type: 'none' });
 
     // ── LAYER 2 budget: free AI tiers have daily limits, and a long service
@@ -127,7 +151,13 @@ router.post('/detect', async (req, res) => {
     lastAiCheck = Date.now();
 
     // ── LAYER 2: Claude — implicit quotes, ambiguous speech, hard cases ──
-    const detection = await detectScripture(text, context, activeTranslation);
+    // The local word search's best guesses go along as hints: the AI then
+    // confirms a real verse instead of recalling one from memory
+    const hints = found.slice(0, 5).map(f => {
+      const row = finder.verseText(f.book, f.chapter, f.verse);
+      return row ? `${f.book} ${f.chapter}:${f.verse} — "${row}"` : null;
+    }).filter(Boolean);
+    const detection = await detectScripture(text, context, activeTranslation, hints);
 
     if (detection.type === 'explicit' && detection.reference) {
       const { book: rawBook, chapter, verse, translation } = detection.reference;
