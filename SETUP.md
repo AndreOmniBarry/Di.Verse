@@ -1,5 +1,12 @@
 # Di.Verse: Setup, Step by Step
 
+> **Updating an existing install?** Save the new ZIP to Downloads, double-click it, then in Terminal:
+> ```
+> cd ~/Downloads/Di.Verse-new
+> bash install.sh
+> ```
+> It keeps your keys, Bibles and songs, keeps the old version as `Desktop/Di.Verse-previous`, installs and starts. The Operator page shows the running version (e.g. `v1.4.0`) in the header.
+
 For a Mac (Windows notes are in brackets). It takes about 20 minutes the first time.
 
 ---
@@ -164,6 +171,17 @@ Changing `.env` always needs a restart: Ctrl+C in Terminal, then `npm start`.
 
 ---
 
+## Moving through a passage
+
+When a verse is on screen:
+- **Next verse ▶ / ◀ Prev verse** under "On Screen Now", or the **→ / ←** keys, or a presentation clicker (**Page Down / Page Up**). **Shift + → / ←** or **Ch ⏭ / ⏮ Ch** move a whole chapter. It carries on into the next chapter and book by itself.
+- **The preacher can drive it** while you listen: *"next verse"*, *"the following verse"*, *"take it back"*, *"previous verse"*, *"next chapter"*, *"verse 17"*, *"verses 17 to 19"*, *"chapter 5 verse 3"* (same book). The transcript shows each one, e.g. `[ "next verse" → Romans 8:29 ]`. With Auto-push off, they go to the queue instead.
+- **↑ / ↓** choose in the queue; **Space** pushes the chosen one.
+
+**Manual, any time:** type a reference in the top box and press **Enter**, e.g. `rom 8 28`, `jn 3:16-18`, `esther 8 9`, `ps 23`. Or type **the words of a verse** (any wording): `i wish above all things that thou mayest prosper`, `the man Isaac sowed in the land`. A clear match goes on screen; if several are close, they go to the queue to pick from. Press **/** to jump to the box. It works whether or not listening is on. A translation that has to be looked up online shows KJV after 2.5 seconds and switches over when it arrives.
+
+The small label above the transcript says which engine is writing it: **Live captions ✓**, or **Whisper covering** when Chrome's captions stall (they are restarted automatically).
+
 ## Livestream (OBS, vMix, Ecamm…)
 
 Add Di.Verse to the stream as a **browser source** with the overlay address. The page is transparent, so only the verse box shows over the camera:
@@ -194,3 +212,34 @@ Use **Lower-Third** mode for the stream (Full-Screen mode deliberately covers th
 - **Backup keys:** put several keys in one line, separated by commas: `GROQ_API_KEY=gsk_main,gsk_backup`. When a key hits its limit it rests for 10 minutes and the next one is used in the same moment; a rejected key rests for a day. Works for `GROQ_API_KEY`, `GEMINI_API_KEY` and `OPENAI_API_KEY`. Use keys you're entitled to, for example a colleague's own account with their agreement, or a cheap paid key as the last backup. Creating extra free accounts just to get around the limits breaks the providers' terms and can get all of them blocked.
 - `npm start` keeps Di.Verse running: if it ever stops, it restarts within a second and every screen comes back showing what it showed before. The Mac is kept awake while it runs.
 - Keep the Operator window **visible** (not minimised or covered by a full-screen app): Chrome slows down timers in hidden tabs.
+
+---
+
+## Squeeze-back: shrink the preacher, big scripture (vMix)
+
+Three caption modes, chosen with the mode button on the Operator page:
+- **Lower Third:** the verse across the bottom of the camera picture.
+- **Squeeze (UEFA in-game style):** the preacher shrinks to a small framed window at the **top left** (20% of the screen by default: the **Camera** picker also offers 25%, 33% and 46%) and the scripture fills the rest of the screen in a large glass panel.
+- **Full Screen:** scripture only, no preacher.
+
+**Every verse fits on one screen, in every mode, however long** (Esther 8:9, 90 words, included). There are never "1/3" pages. Full Screen and Squeeze use the largest text that fits: short verses come up huge, long ones as large as the space allows. The Lower Third keeps your chosen size for ordinary verses, and for a very long verse it grows upward with smaller type.
+
+**Automatic squeeze: vMix shrinks the camera for you, so you don't build any scene.** Set it up once:
+
+1. **Turn on vMix's remote control.** vMix: **Settings → Web Controller** → tick enabled (port **8088**) → OK. If Windows asks whether to allow vMix on the network, allow it on **Private** networks.
+2. **Find the vMix PC's address.** On Windows: Start → type `cmd` → Enter → type `ipconfig` → read the **IPv4 Address** (e.g. `192.168.0.120`).
+3. **Tell Di.Verse.** On the Di.Verse Mac: `open -e ~/Desktop/Di.Verse/.env` and add one line (your address):
+   ```
+   VMIX_URL=http://192.168.0.120:8088
+   ```
+   Save, then restart Di.Verse (Ctrl + C, then `npm start`).
+4. **Check the link.** On the Mac open `http://localhost:3000/api/vmix`. It should say `"reachable": true`, `"mode": "automatic"` and name your camera as `live`.
+5. In vMix, keep the Di.Verse Web Browser input on **Overlay 1** all the time, with the URL ending `?overlay=1`.
+6. **After an update** the vMix input loads the new page by itself (from v1.6.1). If the Operator page ever says a screen is showing an **OLD Di.Verse page**, open the vMix input's settings and set its URL to the address it gives (it ends `&v=` and the version number). A new address always loads fresh. With `VMIX_URL` set, Di.Verse asks vMix to reload it automatically.
+7. **Check the vMix screen itself.** With the vMix input refreshed, `http://localhost:3000/api/vmix` also lists `screens`: one should say `"where": "vMix …"` with its browser version. If anything on that screen goes wrong, the Operator page shows a "Screen problem on vMix…" message and Terminal prints a `[Screen]` line. Send that line to your helper.
+
+From then on: pushing a verse in **Squeeze** mode makes vMix zoom the live camera down into the window at the top left (exactly inside Di.Verse's frame). **✕ Clear**, or showing the next verse in another mode, puts the camera back to full screen. Changing the Camera size while squeezed resizes it live.
+
+*Alternative, a scene of your own:* if you'd rather build a vMix scene with the camera already shrunk, also add `VMIX_SQUEEZE_INPUT=<scene name>`; Di.Verse then fades to that scene and back instead (`VMIX_TRANSITION`, `VMIX_DURATION` set the transition).
+
+Without the vMix link (no `VMIX_URL`), Squeeze still draws the layout and the camera stays full size behind it.

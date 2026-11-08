@@ -5,6 +5,9 @@ const { detectScripture } = require('../services/claude');
 const { validateReference, normaliseBook } = require('../services/validation');
 const { getPassage } = require('../services/bibleDb');
 const quotes = require('../services/quoteMatch');
+const navigation = require('../services/navigation');
+const finder = require('../services/verseFinder');
+finder.warmUp();
 quotes.warmUp();
 
 const SCRIPTURE_CUE = /\b(verses?|chapters?|book of|bible|scriptures?|it is written|the word says|says|saith|said|psalms?|gospel|epistle|prophet|apostle|amplified|translation|version)\b/i;
@@ -14,15 +17,41 @@ let lastAiCheck = 0;
 router.post('/detect', async (req, res) => {
   // fast: parser + quote matching only (used on live words while the
   // preacher is still talking); the AI layer runs on finished sentences
-  const { text, context = '', activeTranslation = 'KJV', fast = false } = req.body;
+  // current: the verse on screen, for the preacher's cues ("next verse",
+  // "take it back", "verse 17"); interim: words still being spoken
+  const { text, context = '', activeTranslation = 'KJV', fast = false, current = null, interim = false } = req.body;
   if (!text || text.trim().length < 3) return res.json({ type: 'none' });
 
   try {
     // ── LAYER 1: Local parser — fast, offline, zero cost ──
     const parsed = parse(text, activeTranslation);
 
+    // ── LAYER 1a: the preacher moving through the passage on screen ──
+    if (!parsed && current && current.book) {
+      const command = navigation.cue(text);
+      // "verse 1…" while still speaking may become "verse 16": wait for the
+      // next word or the end of the sentence before jumping to a number
+      if (command && !(interim && command.kind === 'goto' && command.atEnd)) {
+        const target = navigation.resolve(command, { ...current, book: normaliseBook(current.book) || current.book });
+        if (target) {
+          const verseData = await getPassage(target.book, target.chapter, target.verse, target.verseEnd, current.translation || activeTranslation, { live: true });
+          if (verseData) {
+            console.log(`[Cue] ${command.kind === 'step' ? command.dir + ' ' + command.unit : 'verse ' + command.verse} → ${verseData.reference}`);
+            return res.json({ type: 'navigate', command: { kind: command.kind, dir: command.dir, unit: command.unit, verse: command.verse, chapter: command.chapter }, verseData, confidence: 0.95, source: 'cue' });
+          }
+        }
+      }
+    }
+
     // ── LAYER 1b: quoted KJV words — offline, a few milliseconds ──
-    const quoted = quotes.match(text);
+    let quoted = quotes.match(text);
+    // A quote that runs across the end of the last sentence into this one:
+    // match the two together, ignoring anything the last sentence matched alone
+    if (!quoted.length && context) {
+      const tail = String(context).split(/\s+/).slice(-25).join(' ');
+      const before = quotes.match(tail).map(q => q.book + q.chapter + ':' + q.verse);
+      quoted = quotes.match(tail + ' ' + text).filter(q => !before.includes(q.book + q.chapter + ':' + q.verse));
+    }
     const quoteTranslation = (parsed && parsed.translation) || activeTranslation;
 
     if (parsed) {
@@ -87,18 +116,48 @@ router.post('/detect', async (req, res) => {
       return res.json({ type: 'implicit', candidates: quoted.map(q => ({ book: q.book, chapter: q.chapter, verse: q.verse, confidence: 0.7 })), source: 'quote' });
     }
 
+    // ── LAYER 1c: the verse being talked about, from its telling words —
+    // paraphrased, or misheard by speech-to-text ("Isaac sold in that land")
+    // — offline. Not on words still being spoken (they change).
+    let found = [];
+    if (!interim) {
+      const tail = String(context || '').split(/\s+/).slice(-15).join(' ');
+      found = finder.find((tail + ' ' + text).trim(), 5);
+      const verdict = finder.judge(found);
+      if (verdict === 'strong') {
+        const f = found[0];
+        const verseData = await getPassage(f.book, f.chapter, f.verse, undefined, quoteTranslation, { live: true });
+        if (verseData) {
+          console.log(`[Finder] ${verseData.reference} (${f.words} words, score ${f.score})`);
+          return res.json({ type: 'explicit', reference: { book: f.book, chapter: f.chapter, verse: f.verse, translation: quoteTranslation }, verseData, confidence: 0.9, source: 'finder' });
+        }
+      }
+      if (verdict === 'suggest' && !req.body.ai) {
+        const close = found.filter(f => f.score >= found[0].score * 0.85).slice(0, 2);
+        return res.json({ type: 'implicit', candidates: close.map(f => ({ book: f.book, chapter: f.chapter, verse: f.verse, confidence: Math.min(0.8, f.confidence) })), source: 'finder' });
+      }
+    }
+
     if (fast) return res.json({ type: 'none' });
 
     // ── LAYER 2 budget: free AI tiers have daily limits, and a long service
     // has thousands of sentences. Only sentences that sound like they involve
     // scripture (or long ones that might paraphrase it) go to the AI, at most
     // one every few seconds; named references and quotes never need it.
-    if (!SCRIPTURE_CUE.test(text) && text.trim().split(/\s+/).length < 14) return res.json({ type: 'none' });
-    if (Date.now() - lastAiCheck < AI_MIN_GAP_MS) return res.json({ type: 'none' });
+    // ai: the operator page's rolling window, already paced to the free
+    // limits; anything else only when it sounds like scripture
+    if (!req.body.ai && !SCRIPTURE_CUE.test(text) && text.trim().split(/\s+/).length < 14) return res.json({ type: 'none' });
+    if (Date.now() - lastAiCheck < (req.body.ai ? 2000 : AI_MIN_GAP_MS)) return res.json({ type: 'none' });
     lastAiCheck = Date.now();
 
     // ── LAYER 2: Claude — implicit quotes, ambiguous speech, hard cases ──
-    const detection = await detectScripture(text, context, activeTranslation);
+    // The local word search's best guesses go along as hints: the AI then
+    // confirms a real verse instead of recalling one from memory
+    const hints = found.slice(0, 5).map(f => {
+      const row = finder.verseText(f.book, f.chapter, f.verse);
+      return row ? `${f.book} ${f.chapter}:${f.verse} — "${row}"` : null;
+    }).filter(Boolean);
+    const detection = await detectScripture(text, context, activeTranslation, hints);
 
     if (detection.type === 'explicit' && detection.reference) {
       const { book: rawBook, chapter, verse, translation } = detection.reference;

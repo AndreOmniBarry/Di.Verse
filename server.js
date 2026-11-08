@@ -37,7 +37,17 @@ for (const page of ['/operator', '/admin']) {
     : res.status(403).send('<p style="font-family:sans-serif">The operator and admin pages only open on the Di.Verse laptop. Use <a href="/projection">/projection</a> or <a href="/preacher">/preacher</a> on this device.</p>'));
 }
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Pages and scripts are always re-checked, so a browser (or vMix's browser
+// input) never keeps running an old copy after an update
+app.use(express.static(path.join(__dirname, 'public'), {
+  // Never kept in a browser cache (vMix's built-in browser held on to old
+  // copies): every load gets the version that is installed
+  setHeaders: (res, file) => { if (/\.(html|js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-store'); },
+}));
+
+// Which version is running — shown on the Operator page
+const VERSION = require('./package.json').version;
+app.get('/api/version', (req, res) => res.json({ version: VERSION }));
 
 // ── Routes ──
 app.use('/api', require('./routes/bible'));
@@ -45,6 +55,24 @@ app.use('/api', require('./routes/songs'));
 app.use('/api', require('./routes/transcribe'));
 app.use('/api', require('./routes/detect'));
 app.use('/api', require('./routes/push'));
+
+// vMix link check (SETUP.md): is it reachable, and what inputs does it have?
+app.get('/api/vmix', async (req, res) => {
+  const v = vmixService();
+  const screens = connectedScreens();
+  if (!v.configured()) return res.json({ configured: false, help: 'Set VMIX_URL=http://<vmix-pc-ip>:8088 in .env', screens });
+  try {
+    const st = await v.state();
+    const want = process.env.VMIX_SQUEEZE_INPUT;
+    const live = st.inputs.find(i => i.number === st.active);
+    res.json({ configured: true, reachable: true, mode: v.sceneMode() ? 'scene' : 'automatic',
+      live: live ? live.number + ' ' + live.title : st.active, inputs: st.inputs,
+      ...(want ? { squeezeInputFound: st.inputs.some(i => i.title === want || i.number === want) } : {}), screens });
+  } catch (err) {
+    res.json({ configured: true, reachable: false, error: err.message, screens });
+  }
+});
+function vmixService() { return require('./services/vmix'); }
 
 // Any route error answers in JSON instead of hanging the request
 app.use('/api', (err, req, res, next) => {
@@ -54,11 +82,15 @@ app.use('/api', (err, req, res, next) => {
 
 // ── Views ──
 app.get('/', (req, res) => res.redirect('/operator'));
-app.get('/operator', (req, res) => res.sendFile(path.join(__dirname, 'public/operator/index.html')));
-app.get('/projection', (req, res) => res.sendFile(path.join(__dirname, 'public/projection/index.html')));
-app.get('/preacher', (req, res) => res.sendFile(path.join(__dirname, 'public/preacher/index.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public/admin/index.html')));
-app.get('/about', (req, res) => res.sendFile(path.join(__dirname, 'public/about/index.html')));
+function page(res, name) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', name, 'index.html'));
+}
+app.get('/operator', (req, res) => page(res, 'operator'));
+app.get('/projection', (req, res) => page(res, 'projection'));
+app.get('/preacher', (req, res) => page(res, 'preacher'));
+app.get('/admin', (req, res) => page(res, 'admin'));
+app.get('/about', (req, res) => page(res, 'about'));
 
 // ── Screen state ──
 // What is on screen right now (verse/lyrics, theme, background, font size).
@@ -105,8 +137,41 @@ wss.on('connection', (ws, req) => {
   ws.on('pong', () => { ws.isAlive = true; });
   clients.add(ws);
   console.log(`[WS] Client connected: ${type} (total: ${clients.size})`);
-  if (type === 'operator') ws.send(JSON.stringify({ action: 'STATE', state: screenState }));
-  else replayScreen(ws);
+  if (type === 'operator') {
+    ws.send(JSON.stringify({ action: 'STATE', state: screenState }));
+    for (const c of clients) if (c.stale) ws.send(JSON.stringify({ action: 'NOTICE', message: staleMessage(c) }));
+  } else replayScreen(ws);
+  // Every current projection page introduces itself straight away. One that
+  // doesn't is an old copy still open (e.g. in vMix): say so, and if vMix is
+  // linked, have vMix reload it
+  if (type === 'projection') {
+    ws.ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+    setTimeout(() => {
+      if (ws.info || ws.readyState !== 1) return;
+      ws.stale = true;
+      console.warn(`[Screen] ${ws.ip} is showing an OLD Di.Verse page — refresh it (in vMix: change the input's URL to http://${IP}:${PORT}/projection?overlay=1&v=${VERSION})`);
+      alertOperator({ action: 'NOTICE', message: staleMessage(ws) });
+      reloadVmixScreens('an old page was found');
+    }, parseInt(process.env.DIVERSE_STALE_MS) || 6000).unref();
+  }
+
+  // Projection pages (the projector, vMix's Web Browser input) say which
+  // browser they run in and report their own errors, so a problem inside
+  // vMix shows up in this Terminal and on the Operator page
+  ws.on('message', (data) => {
+    if (type !== 'projection' || data.length > 4000) return;
+    let msg;
+    try { msg = JSON.parse(data); } catch (e) { return; }
+    if (msg.action === 'CLIENT_INFO') {
+      ws.info = describeScreen(msg, req);
+      console.log(`[Screen] ${ws.info.where}: ${ws.info.browser}, ${ws.info.size}${ws.info.overlay ? ', overlay' : ''}${ws.info.webgl ? '' : ', no WebGL'}`);
+    } else if (msg.action === 'CLIENT_ERROR' && typeof msg.message === 'string') {
+      const where = ws.info ? `${ws.info.where} (${ws.info.browser})` : 'projection page';
+      console.error(`[Screen] Error on ${where}: ${msg.message}`);
+      ws.errors = (ws.errors || 0) + 1;
+      if (ws.errors <= 3) alertOperator({ action: 'NOTICE', message: `Screen problem on ${where}: ${msg.message.slice(0, 160)}` });
+    }
+  });
 
   ws.on('close', () => {
     clients.delete(ws);
@@ -128,8 +193,48 @@ setInterval(() => {
   });
 }, 30000).unref();
 
+function describeScreen(msg, req) {
+  const ua = String(msg.ua || '');
+  const chrome = (ua.match(/Chrome\/(\d+)/) || [])[1];
+  const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  const local = ip === '127.0.0.1' || ip === '::1';
+  return {
+    where: (/vMix/i.test(ua) ? 'vMix' : msg.overlay ? 'overlay' : 'projector') + (local ? ' on this Mac' : ` at ${ip}`),
+    browser: chrome ? `Chrome ${chrome}` : (ua.slice(0, 60) || 'unknown browser'),
+    size: `${parseInt(msg.width) || 0}×${parseInt(msg.height) || 0}`,
+    overlay: Boolean(msg.overlay),
+    webgl: Boolean(msg.webgl),
+    chrome: chrome ? parseInt(chrome) : null,
+  };
+}
+
+function staleMessage(ws) {
+  const local = ws.ip === '127.0.0.1' || ws.ip === '::1';
+  return `A screen ${local ? 'on this Mac' : 'at ' + ws.ip} is still showing an OLD Di.Verse page (old layouts, "1/6" pages). ` +
+    (local ? 'Press Cmd + R in that tab.' : `In vMix, open the Di.Verse input's settings and set its URL to http://${IP}:${PORT}/projection?overlay=1&v=${VERSION}`);
+}
+
+// Tell vMix to reload its Di.Verse Web Browser inputs (needs VMIX_URL).
+// At most once a minute.
+let lastVmixReload = 0;
+function reloadVmixScreens(why) {
+  const v = require('./services/vmix');
+  if (!v.configured() || Date.now() - lastVmixReload < 60000) return;
+  lastVmixReload = Date.now();
+  v.reloadBrowsers([IP, `:${PORT}`, '/projection']).then(done => {
+    if (done.length) console.log(`[vMix] Reloaded ${done.join(', ')} (${why})`);
+  }).catch(err => console.error('[vMix] reload failed:', err.message));
+}
+
+function connectedScreens() {
+  return [...clients].filter(c => c.clientType === 'projection' && c.info).map(c => ({ ...c.info, errors: c.errors || 0 }));
+}
+
+const vmix = require('./services/vmix');
+
 function broadcast(payload) {
   rememberScreen(payload);
+  vmix.onScreen(payload, message => alertOperator({ action: 'NOTICE', message }), () => screenState);
   const message = JSON.stringify(payload);
   clients.forEach(client => {
     if (client.readyState === 1 && client.clientType !== 'operator') {
@@ -171,7 +276,7 @@ const IP = getLocalIP();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('\n========================================');
-  console.log('  Di.Verse — The Word, on cue.');
+  console.log('  Di.Verse — The Word, on cue.   v' + VERSION);
   console.log('========================================\n');
   console.log(`  Operator:   http://localhost:${PORT}/operator`);
   console.log(`  Projection: http://${IP}:${PORT}/projection`);
@@ -182,9 +287,17 @@ server.listen(PORT, '0.0.0.0', () => {
 
   // Tests and headless runs set DIVERSE_NO_BROWSER so no Chrome tabs pop up
   if (process.env.DIVERSE_NO_BROWSER) return;
-  const { exec } = require('child_process');
-  const cmd = process.platform === 'darwin'
-    ? `open -a "Google Chrome" http://localhost:${PORT}/operator`
-    : `start chrome http://localhost:${PORT}/operator`;
-  exec(cmd);
+  // An Operator tab still open from before reconnects (and reloads itself
+  // to this version) within a few seconds; open a new one only if none does
+  setTimeout(() => {
+    if ([...clients].some(c => c.clientType === 'operator' && c.readyState === 1)) {
+      console.log('  Operator page already open in Chrome — it has reconnected.\n');
+      return;
+    }
+    const { exec } = require('child_process');
+    const cmd = process.platform === 'darwin'
+      ? `open -a "Google Chrome" http://localhost:${PORT}/operator`
+      : `start chrome http://localhost:${PORT}/operator`;
+    exec(cmd);
+  }, 4000);
 });

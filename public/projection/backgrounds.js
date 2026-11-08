@@ -39,6 +39,11 @@
     { id: 'radial-ocean', name: 'Ocean Glow', css: 'radial-gradient(120% 160% at 20% 100%, rgba(14,165,233,0.85), rgba(2,24,48,0.96) 60%)' },
     { id: 'radial-gold', name: 'Golden Glow', css: 'radial-gradient(120% 160% at 15% 100%, rgba(234,179,8,0.7), rgba(20,14,2,0.96) 60%)' },
     { id: 'radial-purple', name: 'Violet Glow', css: 'radial-gradient(120% 160% at 85% 100%, rgba(168,85,247,0.75), rgba(17,8,40,0.96) 60%)' },
+    { id: 'crystal-glass', name: 'Crystal Glass (see-through, best over camera)', css: 'linear-gradient(180deg, rgba(30,40,70,0.50), rgba(8,12,28,0.70))', glass: true },
+    { id: 'ocean-glass', name: 'Ocean Glass (see-through)', css: 'linear-gradient(180deg, rgba(14,90,140,0.50), rgba(2,24,48,0.74))', glass: true },
+    { id: 'royal-glass', name: 'Royal Glass (see-through)', css: 'linear-gradient(180deg, rgba(76,50,160,0.48), rgba(18,10,48,0.74))', glass: true },
+    { id: 'gold-glass', name: 'Gold Glass (see-through)', css: 'linear-gradient(180deg, rgba(150,110,30,0.45), rgba(28,20,4,0.75))', glass: true },
+    { id: 'emerald-glass', name: 'Emerald Glass (see-through)', css: 'linear-gradient(180deg, rgba(16,120,90,0.45), rgba(2,36,26,0.75))', glass: true },
     { id: 'frost', name: 'Frosted Glass', css: 'rgba(255,255,255,0.14)', glass: true },
     { id: 'smoke', name: 'Smoked Glass', css: 'rgba(0,0,0,0.38)', glass: true },
     { id: 'clear', name: 'No Background (text only)', css: 'transparent', clear: true },
@@ -315,6 +320,13 @@
     },
     // CSS stand-in for a live effect (shown if WebGL is unavailable)
     fallbackCss: function (live) { var p = P[live.pal]; return 'linear-gradient(100deg, ' + rgb(p[0]) + ', ' + rgb(p[1]) + ')'; },
+    // Slowly drifting CSS version of a live effect (vMix: no WebGL needed)
+    driftCss: function (live, seeThrough) {
+      // a little darker than the palette, so white scripture stays crisp
+      var p = P[live.pal], k = seeThrough ? 0.86 : 1;
+      var c = function (v, d) { return 'rgba(' + v.map(function (x) { return Math.round(x * 255 * d); }).join(',') + ',' + k + ')'; };
+      return 'linear-gradient(100deg, ' + c(p[0], 1) + ', ' + c(p[1], 0.8) + ' 35%, ' + c(p[0], 0.9) + ' 55%, ' + c(p[1], 0.8) + ' 75%, ' + c(p[0], 1) + ')';
+    },
     Renderer: Renderer,
     _fx: FX,
   };
