@@ -79,9 +79,9 @@
     #squeeze { position: fixed; inset: 0; opacity: 0; transition: opacity 0.45s ease; pointer-events: none; z-index: 11; }
     #squeeze.show { opacity: 1; }
     .sq-bg { position: absolute; inset: 0; background: #070a14; }
-    .sq-window { position: absolute; left: 3vw; top: 6vh; width: 46vw; height: 46vh; z-index: 2; border-radius: 0.6vh;
+    .sq-window { position: absolute; left: 3vw; top: 5vh; width: calc(var(--cam, 0.25) * 100vw); height: calc(var(--cam, 0.25) * 100vh); z-index: 2; border-radius: 0.6vh;
       box-shadow: 0 0 0 0.35vh rgba(255,255,255,0.8), 0 0 0 0.9vh rgba(255,255,255,0.08), 0 1.5vh 5vh rgba(0,0,0,0.55); }
-    .sq-panel { position: absolute; left: 52vw; right: 3vw; top: 6vh; bottom: 6vh; z-index: 3; overflow: hidden;
+    .sq-panel { position: absolute; left: calc(3vw + var(--cam, 0.25) * 100vw + 3vw); right: 3vw; top: 5vh; bottom: 5vh; z-index: 3; overflow: hidden;
       display: flex; flex-direction: column; justify-content: center; padding: 3vh 2.2vw;
       border-radius: 2vh; background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
       border: 1px solid rgba(255,255,255,0.14); border-top-color: rgba(255,255,255,0.45);
@@ -92,8 +92,13 @@
       text-shadow: 0 2px 3px rgba(0,0,0,0.6), 0 0 18px rgba(0,0,0,0.3); }
     .sq-text.turning { opacity: 0; }
     .sq-page { margin-top: 2vh; font-size: 2.2vh; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 0.1em; min-height: 2.6vh; }
-    .sq-ref { position: absolute; left: 3vw; width: 46vw; top: 55vh; bottom: 6vh; flex-wrap: wrap; align-content: center; z-index: 3; display: flex; align-items: center; gap: 0.6em;
+    .sq-ref { position: absolute; left: 3vw; width: calc(var(--cam, 0.25) * 100vw); top: calc(5vh + var(--cam, 0.25) * 100vh + 3vh); bottom: 5vh; flex-wrap: wrap; align-content: center; z-index: 3; display: flex; align-items: center; gap: 0.6em;
       font-weight: 800; color: #F5C518; letter-spacing: 0.04em; text-shadow: 0 2px 4px rgba(0,0,0,0.6); }
+    /* Small camera window (TV-friendly, up to a third of the screen): the
+       reference sits beside the camera and the scripture runs the full width
+       underneath in very large type */
+    html[data-sq="stack"] .sq-ref { left: calc(3vw + var(--cam) * 100vw + 2.5vw); right: 3vw; width: auto; top: 5vh; bottom: auto; height: calc(var(--cam) * 100vh); }
+    html[data-sq="stack"] .sq-panel { left: 3vw; right: 3vw; top: calc(5vh + var(--cam) * 100vh + 2.5vh); bottom: 4vh; justify-content: flex-start; padding-top: 3.5vh; }
     #reconnect { position: fixed; bottom: 10px; right: 14px; font-size: 0.62rem; color: rgba(255,255,255,0.2); display: none; z-index: 20; }
   </style>
 </head>
@@ -127,10 +132,23 @@
   var BG = window.DiVerseBackgrounds;
   var currentBg = 'theme', currentTheme = null, renderers = {};
 
-  function applyBackground(id, frame, size) {
+  // Squeeze camera window: a share of the screen (0.20–0.46). Up to a third
+  // uses the stacked layout (scripture full width underneath)
+  var camShare = 0.25;
+  function camLayout() { return camShare <= 0.34 ? 'stack' : 'side'; }
+  function applyCamera(percent) {
+    var v = Math.min(0.5, Math.max(0.15, (parseFloat(percent) || 25) / 100));
+    camShare = v;
+    document.documentElement.style.setProperty('--cam', String(v));
+    document.documentElement.setAttribute('data-sq', camLayout());
+  }
+  applyCamera(25);
+
+  function applyBackground(id, frame, size, camera) {
     currentBg = id || 'theme';
     document.documentElement.setAttribute('data-frame', frame || 'bar');
     if (size) textSize = SIZES[size] ? size : 'large';
+    if (camera) applyCamera(camera);
     paintBackgrounds();
     applyFontSize();
   }
@@ -185,9 +203,10 @@
   // shown in turn at reading pace with a "1/3" counter — the preacher's face
   // stays visible above the caption.
   var SIZES = {
-    normal: { lt: 3.8, ref: 2.4, fs: 5.2, sq: 5.0, ltLines: 3 },
-    large:  { lt: 4.8, ref: 2.8, fs: 6.2, sq: 6.0, ltLines: 2 },
-    xl:     { lt: 5.9, ref: 3.2, fs: 7.4, sq: 7.0, ltLines: 2 },
+    // sq: side-by-side squeeze; sqs: small camera with full-width scripture
+    normal: { lt: 3.8, ref: 2.4, fs: 5.2, sq: 5.0, sqs: 6.0, ltLines: 3 },
+    large:  { lt: 4.8, ref: 2.8, fs: 6.2, sq: 6.0, sqs: 7.2, ltLines: 2 },
+    xl:     { lt: 5.9, ref: 3.2, fs: 7.4, sq: 7.0, sqs: 8.4, ltLines: 2 },
   };
   var textSize = 'large';
   var fontDelta = 0; // operator's +/- buttons, kept for every new verse
@@ -196,9 +215,9 @@
     var sz = SIZES[textSize] || SIZES.large, k = Math.max(0.6, 1 + fontDelta / 24);
     document.getElementById('ltText').style.fontSize = (sz.lt * k) + 'vh';
     document.getElementById('fsText').style.fontSize = (sz.fs * k) + 'vh';
-    document.getElementById('sqText').style.fontSize = (sz.sq * k) + 'vh';
+    document.getElementById('sqText').style.fontSize = ((camLayout() === 'stack' ? sz.sqs : sz.sq) * k) + 'vh';
     document.querySelectorAll('.lt-ref, .fs-ref').forEach(function(el) { el.style.fontSize = (sz.ref * k) + 'vh'; });
-    document.querySelector('.sq-ref').style.fontSize = (sz.ref * 1.6 * k) + 'vh';
+    document.querySelector('.sq-ref').style.fontSize = (sz.ref * (camLayout() === 'stack' ? 2 : 1.6) * k) + 'vh';
   }
 
   function applyFontSize(delta) {
@@ -220,8 +239,15 @@
     if (box === 'lowerThird') return sz.ltLines;
     var el = document.getElementById(BOXES[box].text);
     var lh = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.35;
-    var room = box === 'squeeze' ? (window.innerHeight * 0.88 - 6 * window.innerHeight / 100 - 60) : window.innerHeight * 0.62;
-    return Math.max(2, Math.floor(room / lh));
+    return Math.max(2, Math.floor(textRoom(box) / lh));
+  }
+
+  // Height (px) available for scripture text in Squeeze / Full screen
+  function textRoom(box) {
+    if (box !== 'squeeze') return window.innerHeight * 0.62;
+    // measure the actual panel: its size depends on the camera window
+    var panel = document.querySelector('.sq-panel'), cs = getComputedStyle(panel);
+    return panel.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - document.getElementById('sqPage').offsetHeight - window.innerHeight * 0.03;
   }
 
   // The squeeze background has a hole where the camera window is, so the
@@ -282,6 +308,7 @@
       el.textContent = page;
       counter.textContent = pager.pages.length > 1 ? (pager.i + 1) + ' / ' + pager.pages.length : '';
       el.classList.remove('turning');
+      if (pager.pages.length === 1) growToFill(pager.box);
       fitToScreen();
     };
     if (animate) { el.classList.add('turning'); setTimeout(put, 260); } else put();
@@ -290,6 +317,21 @@
         pager.i = (pager.i + 1) % pager.pages.length; // loops, so latecomers catch the start
         renderPage(true);
       }, readingTime(page));
+    }
+  }
+
+  // A short verse in Squeeze / Full screen grows until it fills its panel
+  // (up to a sensible maximum), so on a TV it's as big as it can be
+  function growToFill(box) {
+    if (box === 'lowerThird') return;
+    var el = document.getElementById(BOXES[box].text);
+    var size = parseFloat(getComputedStyle(el).fontSize), max = window.innerHeight * (box === 'squeeze' ? 0.115 : 0.12);
+    var room = textRoom(box);
+    var fits = function() { return el.scrollHeight <= room * 0.95; };
+    while (size < max) {
+      el.style.fontSize = (size * 1.06) + 'px';
+      if (!fits()) { el.style.fontSize = size + 'px'; break; }
+      size *= 1.06;
     }
   }
 
@@ -355,7 +397,7 @@
       var msg = JSON.parse(e.data);
       if (msg.action === 'SHOW_VERSE')   showVerse(msg.verse, msg.theme, msg.fontSize);
       else if (msg.action === 'SHOW_LYRICS') showLyrics(msg.lyrics, msg.theme, msg.fontSize);
-      else if (msg.action === 'APPLY_BACKGROUND') applyBackground(msg.background, msg.frame, msg.size);
+      else if (msg.action === 'APPLY_BACKGROUND') applyBackground(msg.background, msg.frame, msg.size, msg.camera);
       else if (msg.action === 'CLEAR')   hide();
       else if (msg.action === 'APPLY_THEME') applyTheme(msg.theme);
       else if (msg.action === 'FONT_SIZE')   applyFontSize(msg.delta);

@@ -125,6 +125,12 @@
       <option value="xl">Text: extra large (big room)</option>
     </select>
     <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
+    <select id="cameraSelect" title="Squeeze mode: how big the preacher's camera window is. Smaller = bigger scripture. Set the vMix camera layer to the same size." onchange="applyBackground()">
+      <option value="20">Camera: 20% (biggest text)</option>
+      <option value="25" selected>Camera: 25% (TV)</option>
+      <option value="33">Camera: 33%</option>
+      <option value="46">Camera: 46% (side by side)</option>
+    </select>
     <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
     <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
     <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off (recommended): Whisper only listens when Chrome's live captions aren't working, so Groq's free limit lasts all day. On: Whisper double-checks everything too (uses about 4–5 hours of free Groq a day).">
@@ -134,6 +140,7 @@
       <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
     </label>
     <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
+    <span id="versionBadge" class="ws-badge" title="Di.Verse version running on this laptop">v…</span>
     <a href="/about" style="font-size:0.7rem;color:var(--mid);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
   </div>
 </header>
@@ -264,8 +271,9 @@ function buildBackgroundList() {
 
 function applyBackground() {
   var bg = document.getElementById('bgSelect').value, frame = document.getElementById('frameSelect').value, size = document.getElementById('sizeSelect').value;
-  savePref('background', bg); savePref('frame', frame); savePref('size', size);
-  broadcast({ action: 'APPLY_BACKGROUND', background: bg, frame: frame, size: size });
+  var camera = document.getElementById('cameraSelect').value;
+  savePref('background', bg); savePref('frame', frame); savePref('size', size); savePref('camera', camera);
+  broadcast({ action: 'APPLY_BACKGROUND', background: bg, frame: frame, size: size, camera: camera });
 }
 
 // Operator choices survive a page reload or restart (per laptop)
@@ -279,6 +287,7 @@ var wsReconnectTimer = null;
 function connectWS() {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '?type=operator');
   ws.onopen = function() {
+    checkVersion();
     document.getElementById('wsStatus').textContent = 'WS: ok';
     document.getElementById('wsStatus').className = 'ws-badge';
     clearTimeout(wsReconnectTimer);
@@ -294,6 +303,7 @@ function connectWS() {
         document.getElementById('bgSelect').value = st.background.background || 'theme';
         document.getElementById('frameSelect').value = st.background.frame || 'bar';
         document.getElementById('sizeSelect').value = st.background.size || 'large';
+        document.getElementById('cameraSelect').value = st.background.camera || '25';
       } else {
         applyBackground(); // nothing chosen yet on this laptop: send the defaults
       }
@@ -313,6 +323,18 @@ function connectWS() {
 }
 connectWS();
 
+// Version check: shows which Di.Verse is running, and warns if this page
+// was loaded from an older one (e.g. the tab stayed open through an update)
+var pageVersion = null;
+function checkVersion() {
+  fetch('/api/version').then(function(r) { return r.json(); }).then(function(v) {
+    document.getElementById('versionBadge').textContent = 'v' + v.version;
+    if (!pageVersion) pageVersion = v.version;
+    else if (v.version !== pageVersion) showAlert('Di.Verse was updated to v' + v.version + ' — press Cmd + R to reload this page.');
+  }).catch(function() {});
+}
+checkVersion();
+
 buildBackgroundList();
 (function restorePrefs() {
   var t = loadPref('theme'), bg = loadPref('background'), fr = loadPref('frame'), sz = loadPref('size');
@@ -321,6 +343,7 @@ buildBackgroundList();
   document.getElementById('bgSelect').value = bg || 'crystal-glass';
   document.getElementById('frameSelect').value = fr || 'glass';
   document.getElementById('sizeSelect').value = sz || 'large';
+  document.getElementById('cameraSelect').value = loadPref('camera') || '25';
   if (loadPref('mode')) setMode(loadPref('mode'));
   if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
 })();
@@ -386,7 +409,7 @@ loadTranslations();
 // → Full-screen. Squeeze switches vMix automatically when VMIX_URL is set.
 var MODES = [
   ['lower-third', '◧ Lower-Third'],
-  ['squeeze', '◰ Squeeze (camera shrinks)'],
+  ['squeeze', '◰ Squeeze (camera small, big text)'],
   ['full-screen', '⬜ Full-Screen'],
 ];
 function toggleMode() {
