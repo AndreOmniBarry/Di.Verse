@@ -99,6 +99,9 @@
        underneath in very large type */
     html[data-sq="stack"] .sq-ref { left: calc(3vw + var(--cam) * 100vw + 2.5vw); right: 3vw; width: auto; top: 5vh; bottom: auto; height: calc(var(--cam) * 100vh); }
     html[data-sq="stack"] .sq-panel { left: 3vw; right: 3vw; top: calc(5vh + var(--cam) * 100vh + 2.5vh); bottom: 4vh; justify-content: flex-start; padding-top: 3.5vh; }
+    /* On the plain projector page (no vMix behind it) say what the window is for */
+    html:not(.overlay) .sq-window::after { content: 'Camera shows here in vMix'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.25); font-size: 2vh; letter-spacing: 0.1em; text-transform: uppercase; }
     #reconnect { position: fixed; bottom: 10px; right: 14px; font-size: 0.62rem; color: rgba(255,255,255,0.2); display: none; z-index: 20; }
   </style>
 </head>
@@ -216,7 +219,8 @@
     document.getElementById('ltText').style.fontSize = (sz.lt * k) + 'vh';
     document.getElementById('fsText').style.fontSize = (sz.fs * k) + 'vh';
     document.getElementById('sqText').style.fontSize = ((camLayout() === 'stack' ? sz.sqs : sz.sq) * k) + 'vh';
-    document.querySelectorAll('.lt-ref, .fs-ref').forEach(function(el) { el.style.fontSize = (sz.ref * k) + 'vh'; });
+    document.querySelector('.lt-ref').style.fontSize = (sz.ref * k) + 'vh';
+    document.querySelector('.fs-ref').style.fontSize = (sz.ref * 1.5 * k) + 'vh';
     document.querySelector('.sq-ref').style.fontSize = (sz.ref * (camLayout() === 'stack' ? 2 : 1.6) * k) + 'vh';
   }
 
