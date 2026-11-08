@@ -74,14 +74,14 @@
     html[data-light] .lt-text, html[data-light] .fs-text { color: #14142B !important; text-shadow: none; }
     html[data-light] #ltRef, html[data-light] #fsRef { color: #1F3A8A !important; }
     /* ── Squeeze-back (camera window + large scripture panel) ──
-       Window: 58% of the screen, top-left, 16:9. In vMix the camera layer is
-       sized to fill it (see SETUP.md). */
+       Window: 46% of the screen, top-left, 16:9 — the scripture panel gets
+       the rest. In vMix the camera layer is sized to fill it (SETUP.md). */
     #squeeze { position: fixed; inset: 0; opacity: 0; transition: opacity 0.45s ease; pointer-events: none; z-index: 11; }
     #squeeze.show { opacity: 1; }
     .sq-bg { position: absolute; inset: 0; background: #070a14; }
-    .sq-window { position: absolute; left: 3vw; top: 6vh; width: 58vw; height: 58vh; z-index: 2; border-radius: 0.6vh;
+    .sq-window { position: absolute; left: 3vw; top: 6vh; width: 46vw; height: 46vh; z-index: 2; border-radius: 0.6vh;
       box-shadow: 0 0 0 0.35vh rgba(255,255,255,0.8), 0 0 0 0.9vh rgba(255,255,255,0.08), 0 1.5vh 5vh rgba(0,0,0,0.55); }
-    .sq-panel { position: absolute; left: 63vw; right: 3vw; top: 6vh; bottom: 6vh; z-index: 3; overflow: hidden;
+    .sq-panel { position: absolute; left: 52vw; right: 3vw; top: 6vh; bottom: 6vh; z-index: 3; overflow: hidden;
       display: flex; flex-direction: column; justify-content: center; padding: 3vh 2.2vw;
       border-radius: 2vh; background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
       border: 1px solid rgba(255,255,255,0.14); border-top-color: rgba(255,255,255,0.45);
@@ -92,7 +92,7 @@
       text-shadow: 0 2px 3px rgba(0,0,0,0.6), 0 0 18px rgba(0,0,0,0.3); }
     .sq-text.turning { opacity: 0; }
     .sq-page { margin-top: 2vh; font-size: 2.2vh; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 0.1em; min-height: 2.6vh; }
-    .sq-ref { position: absolute; left: 3vw; width: 58vw; top: 67vh; bottom: 6vh; z-index: 3; display: flex; align-items: center; gap: 0.6em;
+    .sq-ref { position: absolute; left: 3vw; width: 46vw; top: 55vh; bottom: 6vh; flex-wrap: wrap; align-content: center; z-index: 3; display: flex; align-items: center; gap: 0.6em;
       font-weight: 800; color: #F5C518; letter-spacing: 0.04em; text-shadow: 0 2px 4px rgba(0,0,0,0.6); }
     #reconnect { position: fixed; bottom: 10px; right: 14px; font-size: 0.62rem; color: rgba(255,255,255,0.2); display: none; z-index: 20; }
   </style>
@@ -185,9 +185,9 @@
   // shown in turn at reading pace with a "1/3" counter — the preacher's face
   // stays visible above the caption.
   var SIZES = {
-    normal: { lt: 3.8, ref: 2.4, fs: 5.2, sq: 4.4, ltLines: 3 },
-    large:  { lt: 4.8, ref: 2.8, fs: 6.2, sq: 5.2, ltLines: 2 },
-    xl:     { lt: 5.9, ref: 3.2, fs: 7.4, sq: 6.2, ltLines: 2 },
+    normal: { lt: 3.8, ref: 2.4, fs: 5.2, sq: 5.0, ltLines: 3 },
+    large:  { lt: 4.8, ref: 2.8, fs: 6.2, sq: 6.0, ltLines: 2 },
+    xl:     { lt: 5.9, ref: 3.2, fs: 7.4, sq: 7.0, ltLines: 2 },
   };
   var textSize = 'large';
   var fontDelta = 0; // operator's +/- buttons, kept for every new verse

@@ -201,14 +201,14 @@ Use **Lower-Third** mode for the stream (Full-Screen mode deliberately covers th
 
 Three caption modes, chosen with the mode button on the Operator page:
 - **Lower-Third:** verse across the bottom of the camera picture.
-- **Squeeze (camera shrinks):** the camera picture shrinks into a framed window (58% of the screen, top left), the verse gets a tall panel on the right in big type, and the reference sits large under the camera. Best for big rooms.
+- **Squeeze (camera shrinks):** the camera picture shrinks into a framed window (46% of the screen, top left), the verse gets a tall panel on the right in big type, and the reference sits large under the camera. Best for big rooms.
 - **Full-Screen:** the verse covers the whole picture.
 
 Squeeze needs a scene in vMix that has the camera shrunk into Di.Verse's window. Set it up once:
 
 1. **Create the scene.** In vMix: **Add Input → Colour** (black) → OK. Right-click it → **Rename** → `Di.Verse Squeeze`.
 2. **Put the camera in it.** Open that input's settings (cog) → **Layers** (called **MultiView** in older vMix) → Layer 1 → choose your camera input.
-3. **Size and place the camera.** Edit Layer 1's position. Set the size (zoom) to **58%** and move it to the **top left**, so it sits exactly inside Di.Verse's white window frame. Use the frame as your guide: put the Operator in **Squeeze** mode and push any verse first, and keep overlay 1 (Di.Verse) on, so you can see the frame while you adjust.
+3. **Size and place the camera.** Edit Layer 1's position. Set the size (zoom) to **46%** and move it to the **top left**, so it sits exactly inside Di.Verse's white window frame. Use the frame as your guide: put the Operator in **Squeeze** mode and push any verse first, and keep overlay 1 (Di.Verse) on, so you can see the frame while you adjust.
 4. **Turn on vMix's remote control.** vMix: **Settings → Web Controller** → tick enabled (port **8088**). If Windows asks whether to allow vMix on the network, allow it on **Private** networks.
 5. **Tell Di.Verse where vMix is.** On the Di.Verse Mac, open `.env` and add (with the vMix PC's own address; in Windows run `ipconfig` and read the IPv4 address):
    ```
