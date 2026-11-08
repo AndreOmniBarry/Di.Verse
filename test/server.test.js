@@ -108,3 +108,177 @@ test('a screen that reconnects gets the current picture back', async () => {
   assert.deepStrictEqual(got.map(m => m.action), ['APPLY_BACKGROUND', 'SHOW_VERSE']);
   assert.strictEqual(got[1].verse.reference, 'Psalms 23:1');
 });
+
+test('a screen reports its browser and errors; the operator is told', async () => {
+  const op = new WebSocket(`ws://localhost:${PORT}?type=operator`);
+  const notices = [];
+  op.on('message', m => { const msg = JSON.parse(m); if (msg.action === 'NOTICE') notices.push(msg.message); });
+  await new Promise(r => op.on('open', r));
+  const scr = new WebSocket(`ws://localhost:${PORT}?type=projection&overlay=1`);
+  await new Promise(r => scr.on('open', r));
+  scr.send(JSON.stringify({ action: 'CLIENT_INFO', ua: 'Mozilla/5.0 (Windows NT 10.0) Chrome/75.0.3770.100 vMix/24', width: 1280, height: 720, overlay: true, webgl: false }));
+  scr.send(JSON.stringify({ action: 'CLIENT_ERROR', message: 'layout: test failure' }));
+  await new Promise(r => setTimeout(r, 300));
+  const info = await (await fetch(base + '/api/vmix')).json();
+  scr.close(); op.close();
+  const screen = info.screens.find(s => s.where.startsWith('vMix'));
+  assert.ok(screen, JSON.stringify(info.screens));
+  assert.strictEqual(screen.browser, 'Chrome 75');
+  assert.strictEqual(screen.size, '1280×720');
+  assert.strictEqual(screen.errors, 1);
+  assert.ok(notices.some(n => /vMix.*Chrome 75.*layout: test failure/.test(n)), notices.join(' | '));
+});
+
+test('an operator cannot send screen reports (projection pages only)', async () => {
+  const op = new WebSocket(`ws://localhost:${PORT}?type=operator`);
+  await new Promise(r => op.on('open', r));
+  op.send(JSON.stringify({ action: 'CLIENT_INFO', ua: 'Chrome/99', width: 1, height: 1 }));
+  await new Promise(r => setTimeout(r, 200));
+  const info = await (await fetch(base + '/api/vmix')).json();
+  op.close();
+  assert.ok(!info.screens.some(s => s.browser === 'Chrome 99'));
+});
+
+test('squeeze mode switches vMix to the squeeze scene and back to the camera that was live', async () => {
+  // Stand-in for vMix's web API on another port
+  const http = require('http');
+  const calls = [];
+  const fake = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    if (u.searchParams.get('Function')) calls.push(u.searchParams.get('Function') + ' ' + u.searchParams.get('Input'));
+    res.end('<vmix><inputs><input key="a" number="1" type="Capture" title="Camera 1"/><input key="b" number="3" type="Capture" title="Camera 3"/><input key="c" number="5" type="Colour" title="Di.Verse Squeeze"/></inputs><active>3</active></vmix>');
+  }).listen(3931);
+  const { spawn } = require('child_process');
+  const srv = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env: { ...process.env, PORT: '3932', OPENAI_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', ANTHROPIC_API_KEY: '', DIVERSE_NO_BROWSER: '1',
+    DIVERSE_STATE_FILE: require('path').join(require('os').tmpdir(), 'diverse-vmix-state-' + process.pid + '.json'), VMIX_URL: 'http://localhost:3931', VMIX_SQUEEZE_INPUT: 'Di.Verse Squeeze' }, stdio: 'pipe' });
+  try {
+    for (let i = 0; i < 50; i++) { try { await fetch('http://localhost:3932/api/songs/search'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
+    const check = await (await fetch('http://localhost:3932/api/vmix')).json();
+    assert.strictEqual(check.reachable, true);
+    assert.strictEqual(check.squeezeInputFound, true);
+    const push = body => fetch('http://localhost:3932/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    await push({ action: 'SHOW_VERSE', verse: { reference: 'John 3:16', text: 'x', translation: 'KJV', displayMode: 'squeeze' } });
+    await push({ action: 'SHOW_VERSE', verse: { reference: 'John 3:17', text: 'y', translation: 'KJV', displayMode: 'squeeze' } });
+    await push({ action: 'CLEAR' });
+    await new Promise(r => setTimeout(r, 400));
+    assert.deepStrictEqual(calls, ['Fade Di.Verse Squeeze', 'Fade 3']); // one switch in, back to Camera 3
+  } finally { srv.kill(); fake.close(); }
+});
+
+test('automatic squeeze: vMix zooms the live camera into the window, then puts it back', async () => {
+  const http = require('http');
+  const calls = [];
+  const fake = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    const fn = u.searchParams.get('Function');
+    if (fn) calls.push(`${fn} ${u.searchParams.get('Input')}${u.searchParams.has('Value') ? ' ' + u.searchParams.get('Value') : ''}`);
+    res.end('<vmix><inputs><input key="a" number="1" type="Capture" title="Blackmagic Design"/><input key="b" number="2" type="Browser" title="Browser 192.168.0.133"/></inputs><active>1</active></vmix>');
+  }).listen(3933);
+  const { spawn } = require('child_process');
+  const srv = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env: { ...process.env, PORT: '3934', OPENAI_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', ANTHROPIC_API_KEY: '', DIVERSE_NO_BROWSER: '1',
+    DIVERSE_STATE_FILE: require('path').join(require('os').tmpdir(), 'diverse-vmix-auto-' + process.pid + '.json'), VMIX_URL: 'http://localhost:3933', VMIX_SQUEEZE_INPUT: '' }, stdio: 'pipe' });
+  try {
+    for (let i = 0; i < 50; i++) { try { await fetch('http://localhost:3934/api/songs/search'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
+    const check = await (await fetch('http://localhost:3934/api/vmix')).json();
+    assert.strictEqual(check.mode, 'automatic');
+    assert.strictEqual(check.live, '1 Blackmagic Design');
+    const push = body => fetch('http://localhost:3934/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    await push({ action: 'APPLY_BACKGROUND', background: 'theme', frame: 'glass', size: 'large', camera: '46' });
+    await push({ action: 'SHOW_VERSE', verse: { reference: 'Jeremiah 27:13', text: 'x', translation: 'KJV', displayMode: 'squeeze' } });
+    await new Promise(r => setTimeout(r, 300));
+    // camera 46% → left edge at 3%, top edge at 5% of the frame
+    assert.deepStrictEqual(calls, ['SetZoom 1 0.46', 'SetPanX 1 -0.48', 'SetPanY 1 0.44']);
+    calls.length = 0;
+    await push({ action: 'APPLY_BACKGROUND', background: 'theme', frame: 'glass', size: 'large', camera: '25' }); // resized while up
+    await push({ action: 'CLEAR' });
+    await new Promise(r => setTimeout(r, 300));
+    assert.deepStrictEqual(calls, ['SetZoom 1 0.25', 'SetPanX 1 -0.69', 'SetPanY 1 0.65', 'SetZoom 1 1', 'SetPanX 1 0', 'SetPanY 1 0']);
+  } finally { srv.kill(); fake.close(); }
+});
+
+test('an old page left open in vMix is reported, and vMix is told to reload it', async () => {
+  const http = require('http');
+  const calls = [];
+  const fake = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    const fn = u.searchParams.get('Function');
+    if (fn) calls.push(`${fn} ${u.searchParams.get('Input')}`);
+    res.end('<vmix><inputs><input key="a" number="1" type="Capture" title="Camera"/>' +
+      '<input key="b" number="2" type="Browser" title="Browser 192.168.0.133">http://192.168.0.133:3936/projection?overlay=1</input>' +
+      '<input key="c" number="3" type="Browser" title="Browser news">https://example.com/</input></inputs><active>1</active></vmix>');
+  }).listen(3935);
+  const srv = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env: { ...process.env, PORT: '3936', OPENAI_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', ANTHROPIC_API_KEY: '', DIVERSE_NO_BROWSER: '1', DIVERSE_STALE_MS: '300',
+    DIVERSE_STATE_FILE: path.join(require('os').tmpdir(), 'diverse-vmix-stale-' + process.pid + '.json'), VMIX_URL: 'http://localhost:3935', VMIX_SQUEEZE_INPUT: '' }, stdio: 'pipe' });
+  try {
+    for (let i = 0; i < 50; i++) { try { await fetch('http://localhost:3936/api/songs/search'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
+    const op = new WebSocket('ws://localhost:3936?type=operator');
+    const notices = [];
+    op.on('message', m => { const msg = JSON.parse(m); if (msg.action === 'NOTICE') notices.push(msg.message); });
+    await new Promise(r => op.on('open', r));
+    const fresh = new WebSocket('ws://localhost:3936?type=projection&overlay=1'); // a current page introduces itself
+    await new Promise(r => fresh.on('open', r));
+    fresh.send(JSON.stringify({ action: 'CLIENT_INFO', ua: 'Chrome/120', width: 1280, height: 720, overlay: true }));
+    const old = new WebSocket('ws://localhost:3936?type=projection'); // an old page doesn't
+    await new Promise(r => old.on('open', r));
+    await new Promise(r => setTimeout(r, 900));
+    old.close(); fresh.close(); op.close();
+    assert.strictEqual(notices.filter(n => /OLD Di\.Verse page/.test(n)).length, 1, notices.join(' | '));
+    assert.deepStrictEqual(calls, ['BrowserReload 2']);
+  } finally { srv.kill(); fake.close(); }
+});
+
+test('pages are never cached (vMix kept old copies)', async () => {
+  for (const p of ['/projection', '/operator', '/projection/backgrounds.js']) {
+    const res = await fetch(base + p);
+    assert.strictEqual(res.headers.get('cache-control'), 'no-store', p);
+  }
+});
+
+test('next / previous verse endpoint', async () => {
+  const get = async q => { const r = await fetch(base + '/api/verse/step?' + q); return [r.status, await r.json()]; };
+  let [st, v] = await get('book=Romans&chapter=8&verse=39&dir=next');
+  assert.strictEqual(st, 200); assert.strictEqual(v.reference, 'Romans 9:1');
+  [st, v] = await get('book=rom&chapter=8&verse=28&verseEnd=30&dir=next');
+  assert.strictEqual(v.reference, 'Romans 8:31');
+  [st, v] = await get('book=Esther&chapter=8&verse=9&dir=prev&unit=chapter');
+  assert.strictEqual(v.reference, 'Esther 7:1');
+  [st, v] = await get('book=Genesis&chapter=1&verse=1&dir=prev');
+  assert.strictEqual(st, 404);
+});
+
+test('the preacher says "next verse" / "verse 17" while a verse is on screen', async () => {
+  const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+  const current = { book: 'Romans', chapter: 8, verse: 28, translation: 'KJV' };
+  let d = await detect({ text: 'alright church let us go to the next verse', current, fast: true });
+  assert.strictEqual(d.type, 'navigate'); assert.strictEqual(d.verseData.reference, 'Romans 8:29');
+  d = await detect({ text: 'take it back', current, fast: true });
+  assert.strictEqual(d.verseData.reference, 'Romans 8:27');
+  d = await detect({ text: 'look at verse 31', current, fast: true });
+  assert.strictEqual(d.verseData.reference, 'Romans 8:31');
+  // still being spoken: "verse 3" may become "verse 31", so wait
+  d = await detect({ text: 'look at verse 3', current, fast: true, interim: true });
+  assert.notStrictEqual(d.type, 'navigate');
+  // nothing on screen: no cue
+  d = await detect({ text: 'the next verse says', fast: true });
+  assert.notStrictEqual(d.type, 'navigate');
+  // a named book is a normal reference, not a cue
+  d = await detect({ text: 'turn to John 3 verse 16', current, fast: true });
+  assert.strictEqual(d.type, 'explicit'); assert.strictEqual(d.verseData.reference, 'John 3:16');
+});
+
+test('manual box: words of a verse find it', async () => {
+  let r = await (await fetch(base + '/api/search?q=' + encodeURIComponent('i wish above all things that thou mayest prosper'))).json();
+  assert.strictEqual(r.best, '3 John 1:2');
+  r = await (await fetch(base + '/api/search?q=' + encodeURIComponent('the man Isaac sowed in the land'))).json();
+  assert.strictEqual(r.best, 'Genesis 26:12');
+  assert.ok(r.results[0].text.startsWith('Then Isaac sowed'));
+});
+
+test('a misheard paraphrase in the sermon is shown', async () => {
+  const d = await fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'then Isaac souled in that land and received in the same year an hundredfold', fast: true }) }).then(r => r.json());
+  assert.strictEqual(d.type, 'explicit'); assert.ok(['quote', 'finder'].includes(d.source)); assert.strictEqual(d.verseData.reference, 'Genesis 26:12');
+  const s = await fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'the man Isaac sowed in the land', fast: true }) }).then(r => r.json());
+  assert.strictEqual(s.type, 'implicit'); assert.strictEqual(s.candidates[0].book + ' ' + s.candidates[0].chapter + ':' + s.candidates[0].verse, 'Genesis 26:12');
+});

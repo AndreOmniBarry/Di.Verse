@@ -17,12 +17,30 @@ const WEAK_HITS = 4;       // ≈ 7 words: suggest, operator decides
 let verses = null;  // [{ book, chapter, verse }]
 let index = null;   // phrase -> array of verse ids
 
+// Old and new wording meet in the middle: "which strengtheneth me" and
+// "who strengthens me" both become "who strengthen me". Archaic words are
+// mapped to modern ones and endings are trimmed, on the Bible text and on
+// what was said alike.
+const MODERN = {
+  thou: 'you', thee: 'you', ye: 'you', thy: 'your', thine: 'your', unto: 'to', art: 'are',
+  hath: 'has', hast: 'have', doth: 'does', dost: 'do', shalt: 'shall', wilt: 'will', saith: 'says',
+  spake: 'spoke', which: 'who', whosoever: 'whoever', amongst: 'among', yea: 'yes', nay: 'no',
+  shew: 'show', shewed: 'showed', wherefore: 'therefore', thereof: 'of', mine: 'my', whom: 'who',
+};
+function stem(w) {
+  if (w.length > 4) {
+    const m = w.match(/^(.{3,}?)(eth|est|ing|ed|es|s)$/);
+    if (m) w = m[1];
+  }
+  return w.length > 3 ? w.replace(/e$/, '') : w;
+}
 function words(text) {
   return String(text).toLowerCase()
     .replace(/[’']/g, '')
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(w => stem(MODERN[w] || w));
 }
 
 function phrases(ws) {
@@ -78,4 +96,4 @@ function match(text) {
     .map(([id, hits]) => ({ ...verses[id], hits, strong: !tied && hits === top && hits >= STRONG_HITS }));
 }
 
-module.exports = { match, warmUp, _reset: () => { verses = null; index = null; } };
+module.exports = { match, warmUp, words, _reset: () => { verses = null; index = null; } };
