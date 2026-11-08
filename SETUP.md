@@ -161,3 +161,17 @@ Changing `.env` always needs a restart: Ctrl+C in Terminal, then `npm start`.
 - **Quoted verses:** when the preacher quotes about 8 words of a KJV verse without naming it ("I wish above all things that thou mayest prosper"), it's recognised instantly from the Bible stored on the laptop and shown. About 6–7 words gives an orange suggestion to confirm.
 - **Misheard numbers:** if the reference heard ("1st John 1:2") and the words quoted (3 John 1:2) differ only by the number in front of the book, the quoted verse is shown.
 - **Other translations (TPT, NKJV, AMP…):** AI wording is shown **only** when two independent AI sources give the same words, or when it was found by a web search. Otherwise KJV is shown with a note saying why. Made-up wording never reaches the screen. Use `npm run prefetch` before the service so sermon verses are ready and instant.
+
+---
+
+## Livestream (OBS, vMix, Ecamm…)
+
+Add Di.Verse to the stream as a **browser source** with the overlay address. The page is transparent, so only the verse box shows over the camera:
+
+- Streaming software on the **same laptop** as Di.Verse: `http://localhost:3000/projection?overlay=1`
+- Streaming software on **another computer** on the same network: `http://<laptop-ip>:3000/projection?overlay=1` (the IP is printed in Terminal when Di.Verse starts)
+
+**OBS:** Sources → **+** → **Browser** → paste the URL, set Width **1920** and Height **1080**, leave "Custom CSS" as it is, then OK. Put the source above your camera in the list.
+**vMix:** Add Input → **Web Browser** → paste the URL, 1920×1080.
+
+Use **Lower-Third** mode for the stream (Full-Screen mode deliberately covers the whole picture). The projector and the stream can run at the same time: the projector uses `/projection` (solid background) and the stream uses `/projection?overlay=1`. Both follow every push, clear, theme and font change.
