@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Di.Verse — Bibles</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { --brand: #1A1A2E; --accent: #E94560; --green: #2BB68A; --mid: #4A4A6A; --surface: #22223A; --surface2: #2A2A45; --text: #CCCCDD; --white: #FFFFFF; }
+  body { background: var(--brand); color: var(--text); font-family: Arial, sans-serif; min-height: 100vh; }
+  header { background: var(--surface); border-bottom: 2px solid var(--accent); padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 1.1rem; color: var(--white); letter-spacing: 2px; }
+  header h1 span { color: var(--accent); }
+  header a { color: var(--text); font-size: 0.8rem; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 20px 60px; }
+  h2 { font-size: 0.72rem; letter-spacing: 2px; text-transform: uppercase; color: var(--mid); margin: 26px 0 10px; }
+  p.lead { font-size: 0.85rem; line-height: 1.5; color: #aab; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  td, th { padding: 9px 8px; border-bottom: 1px solid var(--surface2); text-align: left; vertical-align: middle; }
+  th { font-size: 0.65rem; letter-spacing: 1px; text-transform: uppercase; color: var(--mid); font-weight: normal; }
+  td.code { font-weight: bold; color: var(--white); width: 90px; }
+  .tag { font-size: 0.7rem; padding: 2px 7px; border-radius: 8px; background: var(--surface2); color: #99a; white-space: nowrap; }
+  .tag.full { background: rgba(43,182,138,0.15); color: var(--green); }
+  .btn { padding: 6px 12px; border: none; border-radius: 4px; font-size: 0.78rem; font-weight: bold; cursor: pointer; }
+  .btn-accent { background: var(--accent); color: #fff; }
+  .btn-dim { background: var(--surface2); color: var(--text); border: 1px solid var(--mid); }
+  .btn:disabled { opacity: 0.5; cursor: wait; }
+  .card { background: var(--surface); border: 1px solid var(--surface2); border-radius: 8px; padding: 18px; }
+  label { display: block; font-size: 0.72rem; color: #99a; margin: 10px 0 4px; }
+  input, textarea { width: 100%; background: var(--brand); border: 1px solid var(--mid); color: var(--white); padding: 8px 10px; border-radius: 4px; font-size: 0.85rem; font-family: inherit; }
+  .row { display: flex; }
+  .row > div { flex: 1; margin-right: 12px; }
+  .row > div:last-child { margin-right: 0; }
+  #msg { margin-top: 14px; font-size: 0.85rem; line-height: 1.5; white-space: pre-line; }
+  .ok { color: var(--green); } .err { color: #ff7a8a; }
+  .small { font-size: 0.75rem; color: #889; line-height: 1.5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Di<span>.</span>Verse <span style="color:var(--mid);font-size:0.7rem;font-weight:normal;">BIBLES</span></h1>
+  <div><a href="/admin">← Songs</a> &nbsp; · &nbsp; <a href="/operator">Operator</a></div>
+</header>
+<main>
+  <p class="lead">Translations stored on this computer show instantly and work without internet. Free translations download in about a second each. Copyrighted ones (NKJV, AMP, TPT, GNT…) can be imported from a file you're licensed to use.</p>
+
+  <h2>On this computer</h2>
+  <table><thead><tr><th>Code</th><th>Translation</th><th>Covers</th><th>From</th><th></th></tr></thead><tbody id="installed"></tbody></table>
+
+  <h2>Free to add</h2>
+  <table><tbody id="free"></tbody></table>
+  <p class="small" style="margin-top:8px;">From bible.helloao.org: public domain or openly licensed, commercial use allowed, no credit line needed. Checked again before each download.</p>
+
+  <h2>Import a licensed file</h2>
+  <div class="card">
+    <div class="small">JSON, USFM (one file per book is fine — select them all), OSIS XML or Zefania XML. Only import a translation you're allowed to display; where it came from is recorded with it.</div>
+    <label>File(s)</label><input type="file" id="file" multiple accept=".json,.usfm,.sfm,.xml,.osis,.txt">
+    <div class="row">
+      <div><label>Code</label><input id="code" placeholder="NKJV" maxlength="12"></div>
+      <div style="flex:3"><label>Full name</label><input id="name" placeholder="New King James Version"></div>
+    </div>
+    <label>Where it comes from and on what terms</label>
+    <textarea id="obtained" rows="2" placeholder="e.g. Licensed from the publisher for church display — permission letter of 12 Nov 2026"></textarea>
+    <div style="margin-top:12px;"><button class="btn btn-accent" id="importBtn" onclick="doImport()">Import</button></div>
+  </div>
+  <div id="msg"></div>
+</main>
+<script>
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function say(text, ok) { var m = document.getElementById('msg'); m.className = ok ? 'ok' : 'err'; m.textContent = text; }
+  function from(src) { return /^helloao:/.test(src) ? 'bible.helloao.org (free)' : /^import:/.test(src) ? 'Imported file (' + src.slice(7) + ')' : src || 'npm run seed'; }
+
+  async function load() {
+    var d = await (await fetch('/api/library')).json();
+    var seeded = [['KJV', 'King James Version'], ['ASV', 'American Standard Version (1901)'], ['YLT', "Young's Literal Translation"], ['BBE', 'Bible in Basic English']]
+      .filter(function(s) { return !d.installed.some(function(m) { return m.code === s[0]; }); });
+    document.getElementById('installed').innerHTML =
+      seeded.map(function(s) { return '<tr><td class="code">' + s[0] + '</td><td>' + s[1] + '</td><td><span class="tag full">Full Bible</span></td><td class="small">Built in</td><td></td></tr>'; }).join('') +
+      d.installed.map(function(m) {
+        return '<tr><td class="code">' + esc(m.code) + '</td><td>' + esc(m.name) + (m.licence && /^import:/.test(m.source) ? '<div class="small">' + esc(m.licence) + '</div>' : '') + '</td>' +
+          '<td><span class="tag' + (m.coverage === 'Full Bible' ? ' full' : '') + '">' + esc(m.coverage) + '</span>' + (m.missing && m.coverage === 'Full Bible' ? ' <span class="small">' + m.missing + ' verses not in this text</span>' : '') + '</td>' +
+          '<td class="small">' + esc(from(m.source)) + '</td>' +
+          '<td style="text-align:right"><button class="btn btn-dim" onclick="removeT(\'' + esc(m.code) + '\')">Remove</button></td></tr>';
+      }).join('');
+    var free = d.free.filter(function(f) { return !f.installed; });
+    document.getElementById('free').innerHTML = free.length ? free.map(function(f) {
+      return '<tr><td class="code">' + f.code + '</td><td>' + esc(f.name) + '<div class="small">' + esc(f.note) + '</div></td><td style="text-align:right"><button class="btn btn-accent" onclick="install(this,\'' + f.code + '\')">Add</button></td></tr>';
+    }).join('') : '<tr><td class="small">All free translations are installed.</td></tr>';
+  }
+
+  async function install(btn, code) {
+    btn.disabled = true; btn.textContent = 'Downloading…';
+    try {
+      var r = await fetch('/api/library/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) });
+      var d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      say('✓ ' + d.name + ' added — ' + d.coverage + ', ' + d.verses.toLocaleString() + ' verses. It is in the Operator\'s Bible list now.', true);
+    } catch (err) { say('✗ ' + err.message); }
+    load();
+  }
+
+  async function removeT(code) {
+    if (!confirm('Remove ' + code + ' from this computer?')) return;
+    var r = await fetch('/api/library/' + encodeURIComponent(code), { method: 'DELETE' });
+    var d = await r.json();
+    say(r.ok ? 'Removed ' + code + '.' : '✗ ' + d.error, r.ok);
+    load();
+  }
+
+  async function doImport() {
+    var files = document.getElementById('file').files;
+    if (!files.length) return say('Choose the file(s) first.');
+    var btn = document.getElementById('importBtn');
+    btn.disabled = true; btn.textContent = 'Importing…';
+    try {
+      // several USFM books → one upload
+      var parts = [];
+      for (var i = 0; i < files.length; i++) parts.push(await files[i].text());
+      var body = parts.join('\n');
+      var q = new URLSearchParams({ code: document.getElementById('code').value, name: document.getElementById('name').value,
+        obtained: document.getElementById('obtained').value, filename: files[0].name });
+      var r = await fetch('/api/library/import?' + q, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: body });
+      var d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      say('✓ ' + d.code + ' imported (' + d.format + '): ' + d.coverage + ', ' + d.verses.toLocaleString() + ' verses' +
+        (d.missingBooks.length && d.missingBooks.length < 66 ? '\nBooks not in the file: ' + d.missingBooks.join(', ') : '') +
+        (d.missing && d.missingBooks.length === 0 ? '\n' + d.missing + ' verses of the usual layout are not in this text.' : ''), true);
+    } catch (err) { say('✗ ' + err.message); }
+    btn.disabled = false; btn.textContent = 'Import';
+    load();
+  }
+  load();
+</script>
+</body>
+</html>

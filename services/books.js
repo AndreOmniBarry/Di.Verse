@@ -1,0 +1,33 @@
+// The 66 books: Di.Verse's names, their order, and the standard USFM / OSIS
+// codes other Bible files use (bible.helloao.org, Paratext, SWORD...).
+const BOOKS = [
+  ['Genesis', 'GEN', 'Gen'], ['Exodus', 'EXO', 'Exod'], ['Leviticus', 'LEV', 'Lev'], ['Numbers', 'NUM', 'Num'],
+  ['Deuteronomy', 'DEU', 'Deut'], ['Joshua', 'JOS', 'Josh'], ['Judges', 'JDG', 'Judg'], ['Ruth', 'RUT', 'Ruth'],
+  ['1 Samuel', '1SA', '1Sam'], ['2 Samuel', '2SA', '2Sam'], ['1 Kings', '1KI', '1Kgs'], ['2 Kings', '2KI', '2Kgs'],
+  ['1 Chronicles', '1CH', '1Chr'], ['2 Chronicles', '2CH', '2Chr'], ['Ezra', 'EZR', 'Ezra'], ['Nehemiah', 'NEH', 'Neh'],
+  ['Esther', 'EST', 'Esth'], ['Job', 'JOB', 'Job'], ['Psalms', 'PSA', 'Ps'], ['Proverbs', 'PRO', 'Prov'],
+  ['Ecclesiastes', 'ECC', 'Eccl'], ['Song of Solomon', 'SNG', 'Song'], ['Isaiah', 'ISA', 'Isa'], ['Jeremiah', 'JER', 'Jer'],
+  ['Lamentations', 'LAM', 'Lam'], ['Ezekiel', 'EZK', 'Ezek'], ['Daniel', 'DAN', 'Dan'], ['Hosea', 'HOS', 'Hos'],
+  ['Joel', 'JOL', 'Joel'], ['Amos', 'AMO', 'Amos'], ['Obadiah', 'OBA', 'Obad'], ['Jonah', 'JON', 'Jonah'],
+  ['Micah', 'MIC', 'Mic'], ['Nahum', 'NAM', 'Nah'], ['Habakkuk', 'HAB', 'Hab'], ['Zephaniah', 'ZEP', 'Zeph'],
+  ['Haggai', 'HAG', 'Hag'], ['Zechariah', 'ZEC', 'Zech'], ['Malachi', 'MAL', 'Mal'],
+  ['Matthew', 'MAT', 'Matt'], ['Mark', 'MRK', 'Mark'], ['Luke', 'LUK', 'Luke'], ['John', 'JHN', 'John'],
+  ['Acts', 'ACT', 'Acts'], ['Romans', 'ROM', 'Rom'], ['1 Corinthians', '1CO', '1Cor'], ['2 Corinthians', '2CO', '2Cor'],
+  ['Galatians', 'GAL', 'Gal'], ['Ephesians', 'EPH', 'Eph'], ['Philippians', 'PHP', 'Phil'], ['Colossians', 'COL', 'Col'],
+  ['1 Thessalonians', '1TH', '1Thess'], ['2 Thessalonians', '2TH', '2Thess'], ['1 Timothy', '1TI', '1Tim'], ['2 Timothy', '2TI', '2Tim'],
+  ['Titus', 'TIT', 'Titus'], ['Philemon', 'PHM', 'Phlm'], ['Hebrews', 'HEB', 'Heb'], ['James', 'JAS', 'Jas'],
+  ['1 Peter', '1PE', '1Pet'], ['2 Peter', '2PE', '2Pet'], ['1 John', '1JN', '1John'], ['2 John', '2JN', '2John'],
+  ['3 John', '3JN', '3John'], ['Jude', 'JUD', 'Jude'], ['Revelation', 'REV', 'Rev'],
+].map(([name, usfm, osis], i) => ({ name, num: i + 1, usfm, osis }));
+
+const byCode = new Map();
+for (const b of BOOKS) for (const k of [b.name, b.usfm, b.osis]) byCode.set(k.toLowerCase(), b);
+// a few spellings other files use
+for (const [k, n] of [['psalm', 'Psalms'], ['song of songs', 'Song of Solomon'], ['canticles', 'Song of Solomon'], ['revelations', 'Revelation'],
+  ['ezk', 'Ezekiel'], ['jol', 'Joel'], ['nam', 'Nahum'], ['mrk', 'Mark']]) byCode.set(k, byCode.get(n.toLowerCase()));
+
+// "JHN", "John", "john", "1JN", "1John", "1 John" → the book; null if unknown
+function findBook(code) { return code == null ? null : byCode.get(String(code).trim().toLowerCase()) || null; }
+
+const OT = BOOKS.slice(0, 39), NT = BOOKS.slice(39);
+module.exports = { BOOKS, OT, NT, findBook };
