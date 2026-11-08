@@ -308,6 +308,18 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// Opened from another computer with ?token=… (OPERATOR_TOKEN): send it with
+// every request so the laptop accepts this page's controls
+(function() {
+  var token = new URLSearchParams(location.search).get('token');
+  if (!token) return;
+  var plainFetch = window.fetch;
+  window.fetch = function(url, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({}, opts.headers, { 'x-diverse-token': token });
+    return plainFetch(url, opts);
+  };
+})();
   let songs = [];
   let activeSongId = null;
   let slides = [];
@@ -374,11 +386,11 @@
       <div class="form-row">
         <div class="form-group">
           <div class="form-label">Song Title *</div>
-          <input type="text" id="fTitle" placeholder="e.g. Amazing Grace" value="${song?.title || ''}">
+          <input type="text" id="fTitle" placeholder="e.g. Amazing Grace" value="${esc(song?.title)}">
         </div>
         <div class="form-group">
           <div class="form-label">Artist / Author</div>
-          <input type="text" id="fArtist" placeholder="e.g. John Newton" value="${song?.artist || ''}">
+          <input type="text" id="fArtist" placeholder="e.g. John Newton" value="${esc(song?.artist)}">
         </div>
       </div>
 
@@ -394,11 +406,20 @@
         </div>
         <div class="form-group">
           <div class="form-label">Tags (comma separated)</div>
-          <input type="text" id="fTags" placeholder="e.g. worship, praise, offering" value="${song?.tags || ''}">
+          <input type="text" id="fTags" placeholder="e.g. worship, praise, offering" value="${esc(song?.tags)}">
         </div>
       </div>
 
       <div class="slides-section">
+        <div class="label" style="margin-bottom:8px;">Paste a whole song</div>
+        <textarea id="pasteLyrics" placeholder="Paste the lyrics here.&#10;Blank line = new verse or chorus.&#10;A line like [Chorus], Verse 2: or Bridge names that section." style="min-height:110px;"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin:8px 0 18px;">
+          <select id="linesPerSlide" style="width:auto;">
+            <option value="2">2 lines per slide (best for lower third / livestream)</option>
+            <option value="4">4 lines per slide (projector)</option>
+          </select>
+          <button class="btn" onclick="splitPasted()">Split into slides</button>
+        </div>
         <div class="label" style="margin-bottom:12px;">Lyrics Slides</div>
         <div id="slidesContainer">
           ${renderSlides()}
@@ -425,24 +446,63 @@
           <span class="slide-num">SLIDE ${i + 1}</span>
           <div style="display:flex;gap:6px;align-items:center;">
             <input type="text" placeholder="Section (e.g. Chorus)"
-              value="${slide.section || ''}"
+              value="${esc(slide.section)}"
               id="section-${i}"
               style="width:140px;padding:4px 8px;font-size:0.75rem;">
             <button class="btn btn-danger" style="padding:4px 8px;font-size:0.72rem;"
               onclick="removeSlide(${i})">✕</button>
           </div>
         </div>
-        <textarea id="content-${i}" placeholder="Slide lyrics here...">${slide.content || ''}</textarea>
+        <textarea id="content-${i}" placeholder="Slide lyrics here...">${esc(slide.content)}</textarea>
       </div>
     `).join('');
   }
 
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // Keep what's typed in the slide boxes before the list is redrawn
+  // (adding or removing a slide used to wipe unsaved edits)
+  function syncSlides() {
+    slides = slides.map((sl, i) => ({
+      ...sl,
+      section: document.getElementById(`section-${i}`)?.value ?? sl.section,
+      content: document.getElementById(`content-${i}`)?.value ?? sl.content,
+    }));
+  }
+
+  // "[Chorus]", "Chorus:", "Verse 2", "Pre-Chorus", "Bridge" ... on a line by itself
+  const SECTION_LINE = /^\s*[\[(]?\s*((verse|chorus|pre-?chorus|bridge|refrain|tag|intro|outro|ending|vamp|interlude)\b[^\])\n]*?)\s*[\])]?\s*:?\s*$/i;
+
+  function splitPasted() {
+    const text = document.getElementById('pasteLyrics').value.replace(/\r/g, '').trim();
+    if (!text) { showToast('Paste some lyrics first', true); return; }
+    const per = parseInt(document.getElementById('linesPerSlide').value) || 2;
+    const out = [];
+    let section = '';
+    for (const block of text.split(/\n\s*\n/)) {
+      let lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length && SECTION_LINE.test(lines[0])) { section = lines[0].replace(SECTION_LINE, '$1').trim(); lines = lines.slice(1); }
+      for (let i = 0; i < lines.length; i += per) {
+        out.push({ section, content: lines.slice(i, i + per).join('\n') });
+      }
+    }
+    syncSlides();
+    slides = slides.filter(sl => (sl.content || '').trim()).concat(out).map((sl, i) => ({ ...sl, slide_num: i + 1 }));
+    document.getElementById('slidesContainer').innerHTML = renderSlides();
+    document.getElementById('pasteLyrics').value = '';
+    showToast(out.length + ' slides added — check them, then Save');
+  }
+
   function addSlide() {
+    syncSlides();
     slides.push({ section: '', content: '', slide_num: slides.length + 1 });
     document.getElementById('slidesContainer').innerHTML = renderSlides();
   }
 
   function removeSlide(i) {
+    syncSlides();
     slides.splice(i, 1);
     document.getElementById('slidesContainer').innerHTML = renderSlides();
   }
@@ -477,14 +537,13 @@
         songId = data.id;
       }
 
-      // Add slides
-      for (const slide of collectedSlides) {
-        await fetch(`/api/songs/${songId}/slides`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(slide)
-        });
-      }
+      // Replace details + slides in one call (re-posting each slide duplicated them on every save)
+      const res = await fetch(`/api/songs/${songId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title_, artist, language, tags, slides: collectedSlides })
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || 'Error saving song', true); return; }
 
       showToast(isNewSong ? 'Song created!' : 'Changes saved!');
       await loadSongs(document.getElementById('searchInput').value);

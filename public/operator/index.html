@@ -39,13 +39,14 @@
     .ws-badge { font-size: 0.58rem; color: var(--mid); background: var(--surface2); padding: 2px 6px; border-radius: 3px; }
     .ws-badge.bad { color: #E74C3C; border: 1px solid #E74C3C; }
     main { display: grid; grid-template-columns: 1fr 340px; overflow: hidden; }
-    .left { display: grid; grid-template-rows: 1fr 160px; border-right: 1px solid var(--surface2); overflow: hidden; }
+    .left { display: grid; grid-template-rows: 1fr 250px; border-right: 1px solid var(--surface2); overflow: hidden; }
     .transcription-panel { padding: 16px; overflow-y: auto; }
     .label { font-size: 0.62rem; letter-spacing: 2px; color: var(--mid); text-transform: uppercase; margin-bottom: 10px; }
     #transcriptionFeed { font-size: 0.88rem; line-height: 1.8; color: #8888AA; }
     #transcriptionFeed .hit { color: var(--accent); font-weight: bold; background: rgba(233,69,96,0.1); padding: 1px 4px; border-radius: 3px; }
     #transcriptionFeed .sys { color: #555577; font-style: italic; }
     #transcriptionFeed .err { color: #E74C3C; }
+    #transcriptionFeed .interim { color: #CCCCDD; opacity: 0.6; font-style: italic; }
     .search-panel { padding: 14px 16px; background: var(--surface); border-top: 1px solid var(--surface2); }
     .search-row { display: flex; gap: 8px; margin-top: 8px; }
     input[type="text"], input[type="number"] { background: var(--brand); border: 1px solid var(--mid); color: var(--white); padding: 8px 10px; border-radius: 4px; font-size: 0.82rem; outline: none; transition: border-color 0.2s; }
@@ -64,6 +65,7 @@
     .queue-item:hover { border-color: var(--accent); }
     .queue-item.selected { border-color: var(--accent); background: rgba(233,69,96,0.07); }
     .queue-item.implicit { border-left: 3px solid #F39C12; }
+    .queue-item.unverified { border-left: 3px solid #E74C3C; }
     .queue-item .q-ref { font-size: 0.72rem; color: var(--accent); font-weight: bold; }
     .queue-item .q-trans { font-size: 0.65rem; color: #666; margin-left: 6px; }
     .queue-item .q-text { font-size: 0.8rem; color: var(--text); margin-top: 3px; line-height: 1.4; }
@@ -80,6 +82,11 @@
     .api-status { font-size: 0.6rem; padding: 2px 6px; border-radius: 3px; }
     .api-status.ok { background: rgba(46,204,113,0.15); color: #2ECC71; }
     .api-status.fail { background: rgba(231,76,60,0.15); color: #E74C3C; animation: pulse 1s infinite; }
+    .songs-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 8px; height: 120px; }
+    .song-list, .slide-list { overflow-y: auto; background: var(--brand); border: 1px solid var(--surface2); border-radius: 4px; padding: 4px; }
+    .song-list div, .slide-list div { font-size: 0.75rem; padding: 5px 6px; border-radius: 3px; cursor: pointer; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .song-list div:hover, .slide-list div:hover { background: var(--surface2); color: var(--white); }
+    .song-list div.active, .slide-list div.active { background: rgba(233,69,96,0.15); color: var(--white); }
     .api-status.offline { background: rgba(243,156,18,0.15); color: #F39C12; }
   </style>
 </head>
@@ -92,24 +99,8 @@
     <span class="api-status ok" id="apiStatus">API: ok</span>
     <div class="status-dot" id="dot"></div>
     <span class="listening-label" id="listenLabel">Not listening</span>
-    <select id="translationSelect">
-      <optgroup label="── Primary ──">
-        <option value="KJV">KJV</option><option value="NKJV">NKJV</option>
-        <option value="AMP">AMP</option><option value="AMPC">AMPC</option>
-        <option value="TPT">TPT</option><option value="MSG">MSG</option>
-        <option value="GNT">GNT</option><option value="TLB">TLB</option>
-      </optgroup>
-      <optgroup label="── Popular ──">
-        <option value="NIV">NIV</option><option value="ESV">ESV</option>
-        <option value="NLT">NLT</option><option value="NASB">NASB</option>
-        <option value="CSB">CSB</option><option value="CEV">CEV</option>
-        <option value="NCV">NCV</option><option value="HCSB">HCSB</option>
-      </optgroup>
-      <optgroup label="── Study ──">
-        <option value="ASV">ASV</option><option value="WEB">WEB</option>
-        <option value="YLT">YLT</option><option value="DARBY">DARBY</option>
-        <option value="RSV">RSV</option><option value="NRSV">NRSV</option>
-      </optgroup>
+    <select id="translationSelect" title="Translations you have. Greyed ones need a licence — hover for why.">
+      <option value="KJV">KJV</option>
     </select>
     <select id="themeSelect" onchange="applyTheme(this.value)">
       <option value="dark-navy">Dark Navy</option>
@@ -120,9 +111,23 @@
       <option value="forest-green">Forest Green</option>
       <option value="cinematic">Cinematic</option>
     </select>
+    <select id="bgSelect" title="Caption background — still colours/gradients or live effects" onchange="applyBackground()">
+      <option value="theme">Background: theme colour</option>
+    </select>
+    <select id="frameSelect" title="Caption style" onchange="applyBackground()">
+      <option value="bar">Style: full bar</option>
+      <option value="glass">Style: liquid glass card</option>
+      <option value="minimal">Style: text only</option>
+    </select>
     <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
     <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
     <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
+    <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off (recommended): Whisper only listens when Chrome's live captions aren't working, so Groq's free limit lasts all day. On: Whisper double-checks everything too (uses about 4–5 hours of free Groq a day).">
+      <input type="checkbox" id="whisperToggle" onchange="whisperAlways = this.checked; savePref('whisperAlways', this.checked ? '1' : '')"> Whisper double-check
+    </label>
+    <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Push confident explicit references straight to the screen">
+      <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
+    </label>
     <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
     <a href="/about" style="font-size:0.7rem;color:var(--mid);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
   </div>
@@ -145,10 +150,23 @@
       <div class="search-row">
         <input type="text" id="bookInput" placeholder="Book — e.g. John" style="flex:2;">
         <input type="number" id="chapterInput" placeholder="Ch" style="flex:0.7;min-width:52px;">
-        <input type="number" id="verseInput" placeholder="Vs" style="flex:0.7;min-width:52px;">
+        <input type="text" id="verseInput" placeholder="Vs (16 or 16-18)" inputmode="numeric" style="flex:1;min-width:70px;">
         <button class="btn btn-dim" onclick="manualSearch()">Find</button>
       </div>
       <div class="hint">← → = prev/next queue · Space = push · Esc = clear · M = mode · +/- = font</div>
+      <div class="label" style="margin-top:12px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;">
+        <span>Songs <span style="text-transform:none;letter-spacing:0;">— click a slide · ↑/↓ or clicker to move · <a href="/admin" style="color:var(--mid);">manage songs</a></span></span>
+        <label style="text-transform:none;letter-spacing:0;font-size:0.72rem;color:var(--text);cursor:pointer;" title="Listen to the worship leader and move to the right slide automatically">
+          <input type="checkbox" id="followToggle" onchange="setFollow(this.checked)"> Follow the singer
+        </label>
+      </div>
+      <div class="songs-row">
+        <div style="display:flex;flex-direction:column;gap:6px;min-height:0;">
+          <input type="text" id="songSearch" placeholder="Search songs..." oninput="searchSongs(this.value)">
+          <div class="song-list" id="songList" style="flex:1;"></div>
+        </div>
+        <div class="slide-list" id="slideList"><div style="color:#445;cursor:default;">Pick a song</div></div>
+      </div>
     </div>
   </div>
 
@@ -171,7 +189,20 @@
   </div>
 </main>
 
+<script src="/projection/backgrounds.js"></script>
 <script>
+// Opened from another computer with ?token=… (OPERATOR_TOKEN): send it with
+// every request so the laptop accepts this page's controls
+(function() {
+  var token = new URLSearchParams(location.search).get('token');
+  if (!token) return;
+  var plainFetch = window.fetch;
+  window.fetch = function(url, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({}, opts.headers, { 'x-diverse-token': token });
+    return plainFetch(url, opts);
+  };
+})();
 // ===== State =====
 var displayMode = 'lower-third';
 var activeTranslation = 'KJV';
@@ -189,6 +220,8 @@ var lastHeartbeat = Date.now();
 var currentFontSize = 0; // relative offset in px sent to projection
 var apiFailCount = 0;
 var isOffline = false;
+var autoPush = true;
+var whisperAlways = false; // see "Whisper double-check" 
 
 // ===== Themes =====
 var THEMES = {
@@ -204,15 +237,42 @@ var currentTheme = 'dark-navy';
 
 function applyTheme(name) {
   currentTheme = name;
+  savePref('theme', name);
   broadcast({ action: 'APPLY_THEME', theme: THEMES[name] });
 }
+
+// ===== Caption backgrounds (catalogue shared with the projection page) =====
+function buildBackgroundList() {
+  var sel = document.getElementById('bgSelect');
+  if (!window.DiVerseBackgrounds) return;
+  [['Still — colours & gradients', DiVerseBackgrounds.STILL], ['Live effects', DiVerseBackgrounds.LIVE]].forEach(function(group) {
+    var og = document.createElement('optgroup');
+    og.label = group[0];
+    group[1].forEach(function(bg) {
+      var o = document.createElement('option');
+      o.value = bg.id; o.textContent = bg.name;
+      og.appendChild(o);
+    });
+    sel.appendChild(og);
+  });
+}
+
+function applyBackground() {
+  var bg = document.getElementById('bgSelect').value, frame = document.getElementById('frameSelect').value;
+  savePref('background', bg); savePref('frame', frame);
+  broadcast({ action: 'APPLY_BACKGROUND', background: bg, frame: frame });
+}
+
+// Operator choices survive a page reload or restart (per laptop)
+function savePref(k, v) { try { localStorage.setItem('diverse.' + k, v); } catch (e) {} }
+function loadPref(k) { try { return localStorage.getItem('diverse.' + k); } catch (e) { return null; } }
 
 // ===== WebSocket =====
 var ws = null;
 var wsReconnectTimer = null;
 
 function connectWS() {
-  ws = new WebSocket('ws://' + location.host + '?type=operator');
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '?type=operator');
   ws.onopen = function() {
     document.getElementById('wsStatus').textContent = 'WS: ok';
     document.getElementById('wsStatus').className = 'ws-badge';
@@ -221,10 +281,18 @@ function connectWS() {
   ws.onmessage = function(e) {
     var msg = JSON.parse(e.data);
     if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message);
-    if (msg.action === 'TRANSLATION_CHANGE') {
-      activeTranslation = msg.translation;
-      document.getElementById('translationSelect').value = msg.translation;
-      appendTranscription('[ Translation: ' + msg.translation + ' ]', false, true);
+    // On (re)connect: what the screens are showing now, e.g. after a restart
+    if (msg.action === 'STATE' && msg.state) {
+      var st = msg.state;
+      if (st.screen && st.screen.action === 'SHOW_VERSE') { currentVerse = st.screen.verse; renderNowPlaying(); }
+      if (st.background) {
+        document.getElementById('bgSelect').value = st.background.background || 'theme';
+        document.getElementById('frameSelect').value = st.background.frame || 'bar';
+      }
+    }
+    if (msg.action === 'TRANSLATION_CHANGE') setTranslation(msg.translation, true);
+    if (msg.action === 'LATE_VERSE' && msg.verse) {
+      addToQueue(Object.assign({}, msg.verse, { confidence: 0.9, type: 'explicit', note: msg.verse.note + ' (confirmed after a delay)' }));
     }
   };
   ws.onclose = function() {
@@ -236,6 +304,15 @@ function connectWS() {
 }
 connectWS();
 
+buildBackgroundList();
+(function restorePrefs() {
+  var t = loadPref('theme'), bg = loadPref('background'), fr = loadPref('frame');
+  if (t && THEMES[t]) { currentTheme = t; document.getElementById('themeSelect').value = t; }
+  if (bg) document.getElementById('bgSelect').value = bg;
+  if (fr) document.getElementById('frameSelect').value = fr;
+  if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
+})();
+
 function broadcast(payload) {
   return fetch('/api/push', {
     method: 'POST',
@@ -244,9 +321,54 @@ function broadcast(payload) {
   });
 }
 
+// ===== Translations =====
+// Built from /api/translations so the list only offers what really works
+var translations = {};
+
+async function loadTranslations() {
+  try {
+    var list = await (await fetch('/api/translations')).json();
+    var sel = document.getElementById('translationSelect');
+    sel.innerHTML = '';
+    var groups = { local: 'Stored on this computer', apibible: 'Licensed (API.Bible)', ai: 'AI beta — cross-checked' };
+    Object.keys(groups).forEach(function(provider) {
+      var og = document.createElement('optgroup');
+      og.label = groups[provider];
+      list.filter(function(t) { return t.provider === provider; })
+        .sort(function(a, b) { return (b.available - a.available) || a.code.localeCompare(b.code); })
+        .forEach(function(t) {
+          translations[t.code] = t;
+          var o = document.createElement('option');
+          o.value = t.code;
+          o.textContent = t.code + (t.available ? '' : ' (unavailable)');
+          o.title = t.name + (t.reason ? ' — ' + t.reason : '');
+          o.disabled = !t.available;
+          og.appendChild(o);
+        });
+      if (og.children.length) sel.appendChild(og);
+    });
+    sel.value = translations[activeTranslation] && translations[activeTranslation].available ? activeTranslation : 'KJV';
+    activeTranslation = sel.value;
+  } catch (e) { showAlert('Could not load translation list.'); }
+}
+
+// Spoken requests ("in the Amplified") land here too
+function setTranslation(code, fromSpeech) {
+  if (fromSpeech && code === activeTranslation) return; // heard again while still being said
+  var t = translations[code];
+  if (t && !t.available) {
+    showAlert(code + ' requested but unavailable: ' + t.reason + '. Staying on ' + activeTranslation + '.');
+    return;
+  }
+  activeTranslation = code;
+  document.getElementById('translationSelect').value = code;
+  if (fromSpeech) appendTranscription('[ Translation: ' + code + ' ]', false, true);
+}
+
 document.getElementById('translationSelect').addEventListener('change', function(e) {
-  activeTranslation = e.target.value;
+  setTranslation(e.target.value, false);
 });
+loadTranslations();
 
 function toggleMode() {
   displayMode = displayMode === 'lower-third' ? 'full-screen' : 'lower-third';
@@ -262,24 +384,165 @@ function adjustFont(delta) {
 async function manualSearch() {
   var book = document.getElementById('bookInput').value.trim();
   var chapter = parseInt(document.getElementById('chapterInput').value);
-  var verse = parseInt(document.getElementById('verseInput').value);
-  if (!book || !chapter || !verse) { showAlert('Please enter a book, chapter, and verse.'); return; }
+  // "16" or a range "16-18"
+  var vs = document.getElementById('verseInput').value.match(/^\s*(\d+)\s*(?:[-–]\s*(\d+))?\s*$/);
+  var verse = vs && parseInt(vs[1]);
+  var verseEnd = vs && vs[2] ? parseInt(vs[2]) : null;
+  if (!book || !chapter || !verse) { showAlert('Please enter a book, chapter, and verse (e.g. 16 or 16-18).'); return; }
   try {
-    var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + '&translation=' + activeTranslation);
+    var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + (verseEnd ? '&verseEnd=' + verseEnd : '') + '&translation=' + activeTranslation + '&manual=1');
     var data = await res.json();
     if (!res.ok) { showAlert(data.error); return; }
+    if (data.fallback) showAlert(data.requestedTranslation + ' unavailable: ' + data.fallbackReason + ' — showing KJV where needed.');
     addToQueue(Object.assign({}, data, { confidence: 1.0, type: 'manual' }));
   } catch (err) { showAlert('Could not reach server.'); }
 }
 
+// ===== Songs =====
+var activeSong = null, activeSlides = [], activeSlideIdx = -1, songSearchTimer = null;
+
+function searchSongs(q) {
+  clearTimeout(songSearchTimer);
+  songSearchTimer = setTimeout(async function() {
+    try {
+      var res = await fetch('/api/songs/search?q=' + encodeURIComponent(q || ''));
+      var songs = await res.json();
+      var el = document.getElementById('songList');
+      el.innerHTML = '';
+      if (!songs.length) { el.innerHTML = '<div style="color:#445;cursor:default;">No songs — add them in Admin</div>'; return; }
+      songs.forEach(function(song) {
+        var d = document.createElement('div');
+        d.textContent = song.title + (song.artist ? ' — ' + song.artist : '');
+        if (activeSong && activeSong.id === song.id) d.className = 'active';
+        d.onclick = function() { openSong(song); };
+        el.appendChild(d);
+      });
+    } catch (e) { showAlert('Could not load songs.'); }
+  }, 150);
+}
+
+async function openSong(song) {
+  activeSong = song; activeSlideIdx = -1;
+  var res = await fetch('/api/songs/' + song.id + '/slides');
+  activeSlides = await res.json();
+  prepareFollow();
+  searchSongs(document.getElementById('songSearch').value);
+  renderSlides();
+}
+
+// ===== Follow the singer =====
+// Live captions hear the worship leader; each slide's words are compared
+// with the last few words sung, and the screen moves to the slide being
+// sung. When the last line of a slide is sung, the next slide goes up
+// straight away, so the words are there before the singer needs them.
+// Only nearby slides (and any chorus/bridge, which can come back at any time)
+// are considered, so a phrase repeated elsewhere in the song can't jump ahead.
+var followSinger = false, followCache = [], lastFollowMove = 0, advancedFrom = -1;
+
+function lyricWords(t) {
+  return String(t).toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+}
+function wordPairs(ws) {
+  var set = {}; for (var i = 0; i < ws.length - 1; i++) set[ws[i] + ' ' + ws[i + 1]] = true; return set;
+}
+function prepareFollow() {
+  followCache = activeSlides.map(function(sl) {
+    var lines = String(sl.content).split('\n').filter(function(l) { return l.trim(); });
+    return {
+      all: wordPairs(lyricWords(sl.content)),
+      tail: wordPairs(lyricWords(lines[lines.length - 1] || '').slice(-5)),
+      repeats: /chorus|bridge|refrain|tag|vamp/i.test(sl.section || ''),
+    };
+  });
+  advancedFrom = -1;
+}
+function setFollow(on) {
+  followSinger = on;
+  document.getElementById('followToggle').checked = on;
+  if (on && !activeSong) showAlert('Pick a song first, then turn on Follow the singer.');
+}
+
+function followLyrics(heard) {
+  if (!followSinger || !activeSong || !followCache.length) return;
+  var sung = lyricWords(heard).slice(-10);
+  if (sung.length < 3) return;
+  var pairs = Object.keys(wordPairs(sung));
+  function hits(set) { var n = 0; pairs.forEach(function(p) { if (set[p]) n++; }); return n; }
+  var cur = activeSlideIdx;
+
+  // Last line of the current slide is being sung: put the next one up now
+  if (cur >= 0 && cur < followCache.length - 1 && (advancedFrom !== cur || Date.now() - lastFollowMove > 8000)) {
+    var tailSize = Object.keys(followCache[cur].tail).length;
+    if (tailSize && hits(followCache[cur].tail) >= Math.min(2, tailSize)) {
+      advancedFrom = cur;
+      lastFollowMove = Date.now();
+      pushSlide(cur + 1);
+      return;
+    }
+  }
+
+  // Otherwise: which slide is being sung right now?
+  if (Date.now() - lastFollowMove < 1500) return; // no flicking back and forth
+  var best = -1, bestHits = 0;
+  followCache.forEach(function(c, i) {
+    var near = cur < 0 ? i <= 1 : (i >= cur && i <= cur + 2);
+    if (!near && !c.repeats && i !== 0) return;
+    var h = hits(c.all);
+    if (h > bestHits) { best = i; bestHits = h; }
+  });
+  if (best >= 0 && best !== cur && bestHits >= 3 && bestHits / pairs.length >= 0.5) {
+    lastFollowMove = Date.now();
+    pushSlide(best);
+  }
+}
+
+function renderSlides() {
+  var el = document.getElementById('slideList');
+  el.innerHTML = '';
+  if (!activeSlides.length) { el.innerHTML = '<div style="color:#445;cursor:default;">This song has no slides</div>'; return; }
+  activeSlides.forEach(function(slide, i) {
+    var d = document.createElement('div');
+    d.textContent = (i + 1) + '. ' + (slide.section ? '[' + slide.section + '] ' : '') + slide.content.replace(/\s+/g, ' ');
+    if (i === activeSlideIdx) d.className = 'active';
+    d.onclick = function() { pushSlide(i); };
+    el.appendChild(d);
+  });
+}
+
+async function pushSlide(i) {
+  var slide = activeSlides[i];
+  if (!slide) return;
+  try {
+    var res = await broadcast({
+      action: 'SHOW_LYRICS',
+      lyrics: { songTitle: activeSong.title, section: slide.section || '', content: slide.content, slideNum: i + 1, totalSlides: activeSlides.length, displayMode: displayMode },
+      theme: THEMES[currentTheme],
+      fontSize: currentFontSize
+    });
+    if (!res.ok) throw new Error('Push HTTP ' + res.status);
+    activeSlideIdx = i;
+    renderSlides();
+    currentVerse = { reference: activeSong.title + (slide.section ? ' · ' + slide.section : ''), translation: (i + 1) + '/' + activeSlides.length, text: slide.content };
+    renderNowPlaying();
+  } catch (err) { showAlert('Push failed: ' + err.message); }
+}
+searchSongs('');
+
 // ===== Queue =====
+// Live captions and Whisper both hear the same reference; the same verse is
+// queued once per 30 s (manual searches always go through)
+var recentlyQueued = {};
 function addToQueue(item) {
-  var isDuplicate = queue.length > 0 && queue[0].reference === item.reference && queue[0].translation === item.translation;
-  if (isDuplicate) return;
+  var key = item.reference + '|' + item.translation;
+  if (item.type !== 'manual' && recentlyQueued[key] && Date.now() - recentlyQueued[key] < 30000) return false;
+  recentlyQueued[key] = Date.now();
+  // forget old entries so a long service doesn't grow this forever
+  for (var k in recentlyQueued) if (Date.now() - recentlyQueued[k] > 60000) delete recentlyQueued[k];
   queue.unshift(item);
   queue = queue.slice(0, 10);
   selectedIndex = 0;
   renderQueue();
+  return true;
 }
 
 function renderQueue() {
@@ -293,11 +556,14 @@ function renderQueue() {
   el.innerHTML = queue.slice(0, 8).map(function(item, i) {
     var meta = item.type === 'manual' ? 'Manual' :
       item.type === 'implicit' ? 'Implicit — confirm before pushing' :
-      (item.source === 'parser' ? 'Parser' : 'Claude') + ' · ' + Math.round((item.confidence||0)*100) + '%';
-    return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + '" onclick="selectItem(' + i + ')">' +
-      '<div class="q-ref">' + item.reference + ' <span class="q-trans">' + item.translation + '</span></div>' +
-      '<div class="q-text">' + item.text.slice(0,180) + (item.text.length>180?'...':'') + '</div>' +
-      '<div class="q-meta">' + meta + '</div></div>';
+      ({ parser: 'Said', quote: 'Quoted' }[item.source] || 'AI') + ' · ' + Math.round((item.confidence||0)*100) + '%';
+    if (item.fallback) meta += ' · ' + item.requestedTranslation + ' unavailable (' + (item.fallbackReason || 'no text') + '), showing KJV';
+    if (item.copyright) meta += ' · ' + item.copyright;
+    if (item.note) meta += ' · ' + item.note;
+    return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + (item.verification==='unverified'?' unverified':'') + '" onclick="selectItem(' + i + ')">' +
+      '<div class="q-ref">' + escapeHTML(item.reference) + ' <span class="q-trans">' + escapeHTML(item.translation) + '</span></div>' +
+      '<div class="q-text">' + escapeHTML(item.text.slice(0,180)) + (item.text.length>180?'...':'') + '</div>' +
+      '<div class="q-meta">' + escapeHTML(meta) + '</div></div>';
   }).join('');
 }
 
@@ -317,6 +583,7 @@ function queuePrev() {
 
 // ===== Push =====
 async function pushVerse(item) {
+  if (followSinger) { setFollow(false); noteOnce('Follow the singer paused while a verse is on screen — tick it again for the next song.'); }
   try {
     var res = await broadcast({
       action: 'SHOW_VERSE',
@@ -343,15 +610,87 @@ async function pushSelected() {
 function renderNowPlaying() {
   var el = document.getElementById('nowPlaying');
   if (!currentVerse) { el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>'; return; }
-  el.innerHTML = '<div class="verse-card"><div class="ref">' + currentVerse.reference +
-    ' <span class="trans">' + currentVerse.translation + '</span></div>' +
-    '<div class="txt">' + currentVerse.text + '</div></div>';
+  el.innerHTML = '<div class="verse-card"><div class="ref">' + escapeHTML(currentVerse.reference) +
+    ' <span class="trans">' + escapeHTML(currentVerse.translation) + '</span></div>' +
+    '<div class="txt">' + escapeHTML(currentVerse.text) + '</div></div>';
 }
 
 async function clearScreen() {
   try { await broadcast({ action: 'CLEAR' }); } catch(e) {}
   currentVerse = null;
   renderNowPlaying();
+}
+
+// ===== Detection handling =====
+// Top-level so sendPCMToWhisper can reach it (it used to be nested inside
+// startListening, so every detection threw "handleDetection is not defined").
+async function handleDetection(detection) {
+  if (!detection) return;
+  if (detection.error) reportProblem('AI detection unavailable: ' + detection.error);
+  if (detection.warning) noteOnce(detection.warning);
+  if (detection.type === 'none') return;
+  console.log('[Detection]', detection.type, detection.verseData ? detection.verseData.reference : '');
+
+  if (detection.type === 'explicit' && detection.verseData) {
+    var v = detection.verseData;
+    var item = Object.assign({}, v, { confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source || v.source, textSource: v.source });
+    // Queued once even though live captions and Whisper both hear it
+    if (addToQueue(item)) {
+      appendTranscription(v.reference, true);
+      if (v.fallback) appendTranscription('[ ' + v.requestedTranslation + ' not shown: ' + v.fallbackReason + ' — KJV instead ]', false, false, true);
+      // Unconfirmed AI wording waits for the operator to read it first.
+      // Book, chapter and verse are validated, so "John 3 16" (85%) goes up too.
+      if (item.verification === 'unverified') appendTranscription('[ ' + v.reference + ' ' + v.translation + ': AI wording unconfirmed — check before pushing ]', false, false, true);
+      // During worship, songs quote scripture all the time: keep those in
+      // the queue instead of covering the lyrics
+      else if (followSinger && activeSong && detection.source === 'quote') appendTranscription('[ ' + v.reference + ' quoted in the song — in the queue ]', false, true);
+      else if (autoPush && (item.confidence || 0) >= 0.85) await pushVerse(item);
+    }
+  }
+
+  // Suggestions: implicit quotes, or the verse whose words were quoted when the
+  // spoken reference pointed somewhere else
+  if (detection.candidates && detection.candidates.length > 0) {
+    for (var i = 0; i < Math.min(2, detection.candidates.length); i++) {
+      var c = detection.candidates[i];
+      try {
+        var res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
+        if (res.ok) {
+          var vd = await res.json();
+          addToQueue(Object.assign({}, vd, { confidence: c.confidence || 0.65, type: 'implicit' }));
+        }
+      } catch(e) {}
+    }
+  }
+
+  if (detection.type === 'translation_change' && detection.new_translation) setTranslation(detection.new_translation, true);
+
+  if (detection.type === 'validation_error') showAlert(detection.message);
+}
+
+// Same problem (dead key, no credit) arrives every few seconds while
+// listening — show it once a minute, not on every chunk
+var lastProblem = '', lastProblemAt = 0;
+function reportProblem(message) {
+  setApiStatus('fail', message);
+  if (message === lastProblem && Date.now() - lastProblemAt < 60000) return;
+  lastProblem = message; lastProblemAt = Date.now();
+  showAlert(message);
+  appendTranscription('[ ' + message + ' ]', false, false, true);
+}
+
+// Informational alert (e.g. backup provider in use), at most once a minute
+var lastNote = '', lastNoteAt = 0;
+function noteOnce(message) {
+  if (message === lastNote && Date.now() - lastNoteAt < 60000) return;
+  lastNote = message; lastNoteAt = Date.now();
+  showAlert(message);
+}
+
+function escapeHTML(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
 }
 
 // ===== Alerts =====
@@ -369,14 +708,16 @@ function showAlert(message) {
 }
 
 // ===== API Status =====
-function setApiStatus(state) {
+function setApiStatus(state, message) {
   var el = document.getElementById('apiStatus');
+  el.title = message || '';
   if (state === 'ok') { apiFailCount = 0; el.className = 'api-status ok'; el.textContent = 'API: ok'; }
   else if (state === 'fail') {
     apiFailCount++;
     el.className = 'api-status fail';
     el.textContent = 'API: error (' + apiFailCount + ')';
-    if (apiFailCount >= 3) { el.textContent = 'API: unreachable — check internet'; }
+    if (message) el.textContent = 'API: ' + (message.length > 48 ? message.slice(0, 48) + '…' : message);
+    else if (apiFailCount >= 3) el.textContent = 'API: unreachable — check internet';
   } else if (state === 'offline') {
     el.className = 'api-status offline';
     el.textContent = 'OFFLINE — manual only';
@@ -390,12 +731,7 @@ function setApiStatus(state) {
   var audioCtx = null;
   var workletNode = null;
   var sourceNode = null;
-  var pcmBuffer = [];
-  var SAMPLE_RATE = 16000;
-  var TARGET_SAMPLES = 4096; // send every 4096 samples regardless of rate
-  var sessionId = 0;
-  var watchdogTimer = null;
-  var lastHeartbeat = Date.now();
+  var transcribeChain = Promise.resolve(); // one request at a time keeps text in spoken order
 
   async function toggleListening() {
     if (isListening) { stopListening(); } else { await startListening(); }
@@ -409,87 +745,51 @@ function setApiStatus(state) {
       audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          sampleRate: SAMPLE_RATE,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
         }
       });
 
-      // Create AudioContext at 16kHz for Whisper compatibility
+      // Native rate; the worklet downsamples to 16 kHz itself
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      SAMPLE_RATE = audioCtx.sampleRate;
 
       // Load PCM worklet
       await audioCtx.audioWorklet.addModule('/worklets/pcm-processor.js');
 
       sourceNode = audioCtx.createMediaStreamSource(audioStream);
 
-      // VAD analyser
-      var analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.8;
-      var vadData = new Uint8Array(analyser.frequencyBinCount);
-      sourceNode.connect(analyser);
-
-      // PCM worklet node
-      workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
+      // Chunk length depends on the transcription provider (see /api/transcribe/config)
+      var tconf = { chunk: {} };
+      try { tconf = await (await fetch('/api/transcribe/config')).json(); } catch (e) {}
+      if (!tconf.provider) reportProblem('No transcription key in .env — set GROQ_API_KEY (free) or OPENAI_API_KEY');
+      workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor', { processorOptions: tconf.chunk || {} });
 
       workletNode.port.onmessage = function(e) {
         if (sessionId !== mySession) return;
-        var pcm = new Int16Array(e.data.pcm);
+        lastHeartbeat = Date.now(); // audio is flowing
 
-        // VAD — measure energy
-        analyser.getByteFrequencyData(vadData);
-        var energy = 0;
-        for (var i = 0; i < vadData.length; i++) energy += vadData[i];
-        energy = energy / vadData.length;
-        var pct = Math.min(100, Math.round(energy / 20 * 100));
-        document.getElementById('vadFill').style.width = pct + '%';
-        document.getElementById('vadLabel').textContent = 'VAD: ' + Math.round(energy) + (energy > 2 ? ' SPEECH' : ' silence');
-
-        // Only send to Whisper if energy indicates speech
-        if (energy >= 0) {
-          lastHeartbeat = Date.now();
-          sendPCMToWhisper(pcm, mySession);
+        // Level meter
+        if (e.data.level !== undefined) {
+          var pct = Math.min(100, Math.round(e.data.level / 0.1 * 100));
+          document.getElementById('vadFill').style.width = pct + '%';
+          document.getElementById('vadLabel').textContent = 'VAD: ' + (e.data.speech ? 'SPEECH' : 'silence');
+          return;
         }
+
+        // A finished utterance (silence is already filtered out in the worklet)
+        // Standby: while Chrome's live captions are working, Whisper (Groq) isn't
+        // used, so its free daily limit lasts all day; it takes over the moment
+        // captions stop. Tick "Whisper double-check" to run both.
+        if (!whisperAlways && captionsHealthy()) return;
+        var pcm = new Int16Array(e.data.pcm);
+        var rate = e.data.sampleRate;
+        transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(pcm, rate, mySession); });
       };
-      async function handleDetection(detection) {
-    if (!detection || detection.type === 'none') return;
-    console.log('[Detection]', detection.type, detection.verseData ? detection.verseData.reference : '');
-
-    if (detection.type === 'explicit' && detection.verseData) {
-      var v = detection.verseData;
-      appendTranscription(v.reference, true);
-      var item = { reference: v.reference, translation: v.translation, text: v.text, confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source };
-      await pushVerse(item);
-      addToQueue(item);
-    }
-
-    if (detection.type === 'implicit' && detection.candidates && detection.candidates.length > 0) {
-      for (var i = 0; i < Math.min(2, detection.candidates.length); i++) {
-        var c = detection.candidates[i];
-        try {
-          var res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
-          if (res.ok) {
-            var vd = await res.json();
-            addToQueue({ reference: vd.reference, translation: vd.translation, text: vd.text, confidence: c.confidence || 0.65, type: 'implicit' });
-          }
-        } catch(e) {}
-      }
-    }
-
-    if (detection.type === 'translation_change' && detection.new_translation) {
-      activeTranslation = detection.new_translation;
-      document.getElementById('translationSelect').value = detection.new_translation;
-      appendTranscription('[ Translation: ' + detection.new_translation + ' ]', false, true);
-    }
-
-    if (detection.type === 'validation_error') showAlert(detection.message);
-  }
 
       sourceNode.connect(workletNode);
       workletNode.connect(audioCtx.destination);
+      startCaptions(mySession);
 
       isListening = true;
       updateListeningUI('active');
@@ -537,6 +837,7 @@ function setApiStatus(state) {
   function stopListening() {
     isListening = false;
     sessionId++;
+    stopCaptions();
     if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
     if (workletNode) { try { workletNode.disconnect(); } catch(e) {} workletNode = null; }
     if (sourceNode) { try { sourceNode.disconnect(); } catch(e) {} sourceNode = null; }
@@ -550,7 +851,7 @@ function setApiStatus(state) {
     document.getElementById('vadLabel').textContent = 'VAD: ready';
   }
 
-  async function sendPCMToWhisper(pcmInt16, mySession) {
+  async function sendPCMToWhisper(pcmInt16, rate, mySession) {
     try {
       // Convert Int16Array to base64
       var uint8 = new Uint8Array(pcmInt16.buffer);
@@ -564,51 +865,165 @@ var base64 = btoa(binary);
       var transcribeRes = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audio: base64, sampleRate: audioCtx ? audioCtx.sampleRate : 48000 })
+        body: JSON.stringify({ audio: base64, sampleRate: rate })
       });
 
       if (sessionId !== mySession) return;
+      var result = await transcribeRes.json().catch(function() { return {}; });
       if (!transcribeRes.ok) {
-        setApiStatus('fail');
+        reportProblem(result.error || ('Transcription failed (HTTP ' + transcribeRes.status + ')'));
         return;
       }
 
-      var result = await transcribeRes.json();
       var text = result.text;
-      lastHeartbeat = Date.now();
       setApiStatus('ok');
+      if (result.warning) noteOnce(result.warning);
 
       if (!text || text.trim().length < 3) return;
 
+      // While Chrome's live captions are working they lead (they're seconds
+      // faster); Whisper then quietly double-checks for references they missed
+      if (captionsHealthy()) {
+        detectScripture(text, '', activeTranslation, mySession, true);
+        return;
+      }
+
       appendTranscription(text);
+      followLyrics(text);
       transcriptionContext.push(text);
       if (transcriptionContext.length > 3) transcriptionContext.shift();
 
-      var detectRes = await fetch('/api/detect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text,
-          context: transcriptionContext.slice(0, -1).join(' '),
-          activeTranslation: activeTranslation
-        })
-      });
-
-      if (sessionId !== mySession) return;
-      if (!detectRes.ok) { setApiStatus('fail'); return; }
-
-      var detection = await detectRes.json();
-      await handleDetection(detection);
-      setApiStatus('ok');
+      // Detection runs alongside: a slow verse lookup must never hold up the
+      // transcription of what the preacher says next
+      detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession);
 
     } catch(err) {
-      console.error('[Audio Error]', err.message);
+      console.error('[Audio Error]', err);
       if (err.message.includes('fetch') || err.message.includes('network')) {
         setApiStatus('offline');
       } else {
         setApiStatus('fail');
       }
     }
+  }
+
+  async function detectScripture(text, context, translation, mySession, fast) {
+    try {
+      var detectRes = await fetch('/api/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, context: context, activeTranslation: translation, fast: !!fast })
+      });
+      if (sessionId !== mySession) return;
+      if (!detectRes.ok) { setApiStatus('fail'); return; }
+      var detection = await detectRes.json();
+      if (!detection.error) setApiStatus('ok');
+      await handleDetection(detection);
+    } catch (err) {
+      console.error('[Detect Error]', err);
+      setApiStatus(String(err.message).includes('fetch') ? 'offline' : 'fail');
+    }
+  }
+
+  // ===== Live captions (Chrome speech recognition) =====
+  // Words arrive while the preacher is still speaking, so a reference is
+  // found about a second after it's said. Whisper (Groq) keeps running as the
+  // backup and takes over if captions stop working.
+  var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var recognition = null;
+  var captionLang = 'en-NG';
+  var captionsLastResult = 0;
+  var interimTimer = null;
+  var lastFastText = '';
+
+  function captionsHealthy() {
+    return !!recognition && Date.now() - captionsLastResult < 20000;
+  }
+
+  function startCaptions(mySession) {
+    if (!SpeechRec) return; // not Chrome: Whisper does everything
+    var rec = new SpeechRec();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = captionLang;
+    rec.onresult = function(e) {
+      if (sessionId !== mySession) return;
+      captionsLastResult = Date.now();
+      var interim = '';
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        var t = e.results[i][0].transcript.trim();
+        if (!t) continue;
+        if (e.results[i].isFinal) onCaptionFinal(t, mySession);
+        else interim += t + ' ';
+      }
+      interim = interim.trim();
+      showInterim(interim);
+      if (interim) followLyrics(interim); // lyrics follow the singer word by word
+      // Check the words so far once they've been steady briefly (the
+      // recogniser revises them as it hears more: "verse 1" → "verse 16")
+      clearTimeout(interimTimer);
+      if (interim) interimTimer = setTimeout(function() {
+        if (interim === lastFastText) return;
+        lastFastText = interim;
+        detectScripture(interim, '', activeTranslation, mySession, true);
+      }, 500);
+    };
+    rec.onerror = function(e) {
+      if (e.error === 'language-not-supported' && captionLang !== 'en-US') { captionLang = 'en-US'; return; }
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        recognition = null;
+        noteOnce('Chrome live captions are blocked — using Whisper only (a few seconds slower)');
+      }
+      if (e.error === 'network') noteOnce('Chrome live captions lost their connection — Whisper is covering');
+    };
+    rec.onend = function() {
+      // Chrome ends recognition after a pause or a network blip: keep it going
+      if (sessionId === mySession && isListening && recognition === rec) {
+        setTimeout(function() {
+          if (sessionId !== mySession || recognition !== rec) return;
+          rec.lang = captionLang;
+          try { rec.start(); } catch (err) {}
+        }, 250);
+      }
+    };
+    recognition = rec;
+    try { rec.start(); } catch (err) {}
+  }
+
+  function stopCaptions() {
+    clearTimeout(interimTimer);
+    var rec = recognition;
+    recognition = null;
+    if (rec) { try { rec.abort(); } catch (err) {} }
+    showInterim('');
+  }
+
+  function onCaptionFinal(text, mySession) {
+    followLyrics(text);
+    showInterim('');
+    clearTimeout(interimTimer);
+    appendTranscription(text);
+    transcriptionContext.push(text);
+    if (transcriptionContext.length > 3) transcriptionContext.shift();
+    lastFastText = '';
+    // Finished sentence: parser + quotes + (for longer sentences) AI
+    var words = text.split(/\s+/).length;
+    detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession, words < 8);
+  }
+
+  function showInterim(text) {
+    var feed = document.getElementById('transcriptionFeed');
+    var el = document.getElementById('interimLine');
+    if (!text) { if (el) el.remove(); return; }
+    if (!el) {
+      if (feed.querySelector('.sys') && feed.children.length === 1) feed.innerHTML = '';
+      el = document.createElement('span');
+      el.id = 'interimLine';
+      el.className = 'interim';
+      feed.appendChild(el);
+    }
+    el.textContent = text;
+    feed.scrollTop = feed.scrollHeight;
   }
 
   function updateListeningUI(state) {
@@ -629,19 +1044,25 @@ var base64 = btoa(binary);
     if (isSystem) span.className = 'sys';
     if (isError) span.className = 'err';
     span.textContent = text + ' ';
-    feed.appendChild(span);
+    var interimEl = document.getElementById('interimLine');
+    if (interimEl) feed.insertBefore(span, interimEl); else feed.appendChild(span);
     feed.scrollTop = feed.scrollHeight;
     while (feed.children.length > 400) feed.removeChild(feed.firstChild);
   }
 
   document.addEventListener('keydown', function(e) {
     var tag = e.target.tagName;
-    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    // Typing in a box: leave keys alone. Checkboxes keep focus after a click,
+    // so they must not swallow the clicker / arrow keys.
+    if ((tag === 'INPUT' && e.target.type !== 'checkbox') || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.code === 'Space')      { e.preventDefault(); pushSelected(); }
     if (e.code === 'Escape')     { clearScreen(); }
     if (e.code === 'KeyM')       { toggleMode(); }
     if (e.code === 'ArrowRight') { e.preventDefault(); queueNext(); }
     if (e.code === 'ArrowLeft')  { e.preventDefault(); queuePrev(); }
+    // Slides: arrow keys, or a presentation clicker (sends Page Up / Page Down)
+    if (activeSong && (e.code === 'ArrowDown' || e.code === 'PageDown')) { e.preventDefault(); pushSlide(Math.min(activeSlideIdx + 1, activeSlides.length - 1)); }
+    if (activeSong && (e.code === 'ArrowUp' || e.code === 'PageUp')) { e.preventDefault(); pushSlide(Math.max(activeSlideIdx - 1, 0)); }
     if (e.key === '+' || e.key === '=') { adjustFont(2); }
     if (e.key === '-')           { adjustFont(-2); }
   });
