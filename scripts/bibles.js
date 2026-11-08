@@ -5,7 +5,7 @@
 //   npm run bibles -- add all            every free translation
 //   npm run bibles -- remove BSB
 //   npm run bibles -- import FILE --code NKJV --name "New King James Version" --obtained "how you're licensed"
-require('dotenv').config({ path: require('path').join(__dirname, '../.env'), quiet: true });
+require('dotenv').config({ path: require('../services/paths').ENV_FILE, quiet: true });
 const fs = require('fs');
 const library = require('../services/library');
 const { importFile } = require('../services/importer');

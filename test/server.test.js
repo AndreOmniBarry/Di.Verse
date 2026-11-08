@@ -282,3 +282,26 @@ test('a misheard paraphrase in the sermon is shown', async () => {
     body: JSON.stringify({ text: 'the man Isaac sowed in the land', fast: true }) }).then(r => r.json());
   assert.strictEqual(s.type, 'implicit'); assert.strictEqual(s.candidates[0].book + ' ' + s.candidates[0].chapter + ':' + s.candidates[0].verse, 'Genesis 26:12');
 });
+
+test('packaged app: data lives in its own folder; settings save keys without ever sending them back', async () => {
+  const os = require('os'), fs = require('fs');
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'diverse-data-'));
+  const srv = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env: { ...process.env, PORT: '3938', DIVERSE_DATA: data,
+    DIVERSE_BUNDLED_DB: path.join(__dirname, '../db/bible.db'), DIVERSE_NO_BROWSER: '1', DIVERSE_STATE_FILE: '', GROQ_API_KEY: '', OPENAI_API_KEY: '', GEMINI_API_KEY: '', ANTHROPIC_API_KEY: '', APIBIBLE_KEY: '', VMIX_URL: '' }, stdio: 'pipe' });
+  try {
+    for (let i = 0; i < 80; i++) { try { await fetch('http://localhost:3938/api/version'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
+    assert.ok(fs.existsSync(path.join(data, 'db', 'bible.db')), 'Bibles copied on first run');
+    assert.ok(fs.existsSync(path.join(data, '.env')), '.env created');
+    const v = await (await fetch('http://localhost:3938/api/verse?book=John&chapter=3&verse=16')).json();
+    assert.match(v.text, /^For God so loved/);
+    const secret = 'gsk_test_1234567890abcdefWXYZ';
+    let r = await fetch('http://localhost:3938/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ GROQ_API_KEY: secret, VMIX_URL: 'http://192.168.0.120:8088' }) });
+    assert.strictEqual(r.status, 200);
+    assert.match(fs.readFileSync(path.join(data, '.env'), 'utf8'), new RegExp('^GROQ_API_KEY=' + secret + '$', 'm'));
+    const shown = await (await fetch('http://localhost:3938/api/setup')).text();
+    assert.ok(!shown.includes(secret.slice(0, 20)), 'the key itself is never sent back');
+    assert.match(shown, /…WXYZ/); assert.match(shown, /192\.168\.0\.120:8088/);
+    r = await fetch('http://localhost:3938/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ GROQ_API_KEY: 'a\nINJECTED=1' }) });
+    assert.strictEqual(r.status, 400);
+  } finally { srv.kill(); fs.rmSync(data, { recursive: true, force: true }); }
+});

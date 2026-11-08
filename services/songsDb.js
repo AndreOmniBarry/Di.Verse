@@ -1,7 +1,7 @@
 const sqlite = require('./sqlite');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, '../db/songs.db');
+const DB_PATH = require('./paths').SONGS_DB;
 let db;
 
 function getDb() {

@@ -1,4 +1,5 @@
-require('dotenv').config({ quiet: true }); // the only place .env is loaded for the app
+const paths = require('./services/paths');
+require('dotenv').config({ path: paths.ENV_FILE, quiet: true }); // the only place .env is loaded for the app
 const express = require('express');
 const http = require('http');
 const { WebSocketServer } = require('ws');
@@ -32,7 +33,7 @@ app.use('/api', (req, res, next) => {
   if (req.method === 'GET' || isOperator(req)) return next();
   res.status(403).json({ error: 'Only the operator laptop can control Di.Verse' });
 });
-for (const page of ['/operator', '/admin']) {
+for (const page of ['/operator', '/admin', '/setup']) {
   app.use(page, (req, res, next) => isOperator(req) ? next()
     : res.status(403).send('<p style="font-family:sans-serif">The operator and admin pages only open on the Di.Verse laptop. Use <a href="/projection">/projection</a> or <a href="/preacher">/preacher</a> on this device.</p>'));
 }
@@ -44,6 +45,46 @@ app.use(express.static(path.join(__dirname, 'public'), {
   // copies): every load gets the version that is installed
   setHeaders: (res, file) => { if (/\.(html|js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-store'); },
 }));
+
+// ── Settings: keys and the vMix link, kept in .env (operator laptop only) ──
+// Values are never sent back to the browser, only whether each is set.
+const SETTINGS = ['GROQ_API_KEY', 'GEMINI_API_KEY', 'APIBIBLE_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'VMIX_URL'];
+const mask = v => !v ? null : v.split(',').map(k => k.trim()).filter(Boolean).map(k => k.length > 12 ? '…' + k.slice(-4) : 'set').join(', ');
+app.get('/api/setup', (req, res) => {
+  if (!isOperator(req)) return res.status(403).json({ error: 'Operator laptop only' });
+  res.json({ settings: Object.fromEntries(SETTINGS.map(k => [k, k === 'VMIX_URL' ? (process.env[k] || null) : mask(process.env[k])])),
+    dataFolder: paths.DATA, packaged: paths.packaged, supervised: Boolean(process.env.DIVERSE_SUPERVISED) });
+});
+app.post('/api/setup', (req, res) => {
+  const changes = {};
+  for (const k of SETTINGS) {
+    if (!(k in (req.body || {}))) continue;
+    const v = String(req.body[k] == null ? '' : req.body[k]).trim();
+    if (/[\r\n]/.test(v) || v.length > 2000) return res.status(400).json({ error: k + ': one line, please' });
+    changes[k] = v;
+  }
+  if (!Object.keys(changes).length) return res.status(400).json({ error: 'Nothing to save' });
+  let text = '';
+  try { text = fs.readFileSync(paths.ENV_FILE, 'utf8'); } catch (e) {}
+  const lines = text.split(/\r?\n/);
+  for (const [k, v] of Object.entries(changes)) {
+    const i = lines.findIndex(l => new RegExp('^\\s*' + k + '\\s*=').test(l));
+    if (i >= 0) lines[i] = k + '=' + v; else lines.push(k + '=' + v);
+    process.env[k] = v;
+  }
+  fs.writeFileSync(paths.ENV_FILE, lines.join('\n').replace(/\n*$/, '\n'));
+  console.log('[Setup] Saved ' + Object.keys(changes).join(', '));
+  const restart = Boolean(process.env.DIVERSE_SUPERVISED);
+  res.json({ saved: Object.keys(changes), restarting: restart });
+  // a fresh start picks every setting up everywhere; the pages reconnect
+  if (restart) setTimeout(() => process.exit(65), 300);
+});
+// "Stop Di.Verse" (the packaged app has no Terminal window to close)
+app.post('/api/shutdown', (req, res) => {
+  console.log('[Di.Verse] Stopped from the Settings page');
+  res.json({ stopping: true });
+  setTimeout(() => process.exit(process.env.DIVERSE_SUPERVISED ? 64 : 0), 300);
+});
 
 // Which version is running — shown on the Operator page
 const VERSION = require('./package.json').version;
@@ -99,7 +140,7 @@ app.get('/about', (req, res) => page(res, 'about'));
 // that drops out — or a server restart — comes straight back to the same
 // picture. Saved to disk; a saved verse older than 30 minutes isn't restored
 // at startup (so next week doesn't open on last week's verse).
-const STATE_FILE = process.env.DIVERSE_STATE_FILE || path.join(__dirname, 'db', 'screen-state.json');
+const STATE_FILE = paths.STATE_FILE;
 let screenState = {};
 try {
   screenState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));

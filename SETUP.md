@@ -1,6 +1,33 @@
 # Di.Verse: Setup, Step by Step
 
-> **Updating an existing install?** Save the new ZIP to Downloads, double-click it, then in Terminal:
+## The easy way: install the app (Mac or Windows)
+
+No Terminal, no Node.js, no `npm`. Each app carries everything it needs, plus KJV, ASV, YLT, BBE, BSB and WEB.
+
+**Mac:** unzip `Di.Verse-<version>-mac.zip` and drag **Di.Verse.app** into Applications.
+1. The first time only, double-click it. macOS says it "cannot verify the developer", because Di.Verse isn't registered with Apple. Click **Done**.
+2. Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to "Di.Verse was blocked", then confirm. On older macOS, right-click the app → **Open** instead.
+3. Chrome opens the Operator page. Click **Settings** (top right) and paste your free Groq and Gemini keys.
+
+If you used the Terminal version before, its keys, Bibles and songs in `Desktop/Di.Verse` are brought across automatically on the first launch.
+
+**Windows:**
+1. Right-click the zip → **Properties** → tick **Unblock** if it's there → **Extract All**.
+2. In the extracted folder, double-click **Install Di.Verse.cmd**. If Windows warns, click **More info → Run anyway**.
+3. Di.Verse appears on the Desktop and in the Start menu and opens in Chrome. Click **Settings** for your keys.
+4. If Windows Firewall asks about "node", allow it on **Private** networks, so vMix and projectors can connect.
+
+**Every day:** open Di.Verse from Applications, the Dock, the Desktop or the Start menu. It runs in the background; **Settings → Stop Di.Verse** stops it.
+
+**Updating:** replace the app (Mac) or run the new installer (Windows). Your keys, Bibles and songs live outside the app, in `~/Library/Application Support/Di.Verse` (Mac) or `%APPDATA%\Di.Verse` (Windows), so they're never touched.
+
+**Building the apps** (for whoever prepares a release): `npm run build:apps` writes both zips to `dist/`.
+
+---
+
+## The Terminal way (developers, or if you prefer)
+
+> **Updating an existing Terminal install?** Save the new ZIP to Downloads, double-click it, then in Terminal:
 > ```
 > cd ~/Downloads/Di.Verse-new
 > bash install.sh

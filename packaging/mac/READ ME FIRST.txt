@@ -1,0 +1,25 @@
+Di.Verse for Mac
+================
+
+1. Drag Di.Verse.app into your Applications folder.
+
+2. Open it the first time (only once):
+   Double-click Di.Verse. macOS says it "cannot verify the developer"
+   (Di.Verse isn't registered with Apple yet). Click Done, then:
+     System Settings → Privacy & Security → scroll down →
+     "Di.Verse was blocked…" → Open Anyway → enter your password.
+   (Older macOS: right-click Di.Verse → Open → Open.)
+   If it still won't open, run this once in Terminal:
+     xattr -dr com.apple.quarantine /Applications/Di.Verse.app
+
+3. The Operator page opens in Google Chrome (needed for the fastest,
+   live-caption listening). Click Settings (top right) and paste your free
+   Groq and Gemini keys. Already used the Terminal version? Your keys,
+   Bibles and songs from Desktop/Di.Verse are brought across automatically.
+
+From then on: open Di.Verse from Applications or the Dock. It runs in the
+background; Settings → Stop Di.Verse stops it.
+
+Your keys, Bibles and songs: ~/Library/Application Support/Di.Verse
+(kept when you install a newer version: just replace the app).
+vMix: http://<this Mac's IP>:3000/projection?overlay=1
