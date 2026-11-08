@@ -295,12 +295,28 @@
     return Math.min(12000, Math.max(4000, 1200 + words * 420)); // about 2.5 words a second
   }
 
+  // The whole verse goes up at once whenever it can: if it doesn't fit at the
+  // chosen size, the lower third first allows one more line, then the text
+  // shrinks a little at a time down to a readable floor. Only something really
+  // long (e.g. a 10-verse range) still has to change page — quietly, no counter.
   function showPaged(box, text) {
     clearTimeout(pager.timer);
     var el = document.getElementById(BOXES[box].text);
     applySizes();
     pager.box = box; pager.text = text; pager.i = 0;
-    pager.pages = paginate(el, text, maxLinesFor(box));
+    var base = parseFloat(getComputedStyle(el).fontSize), size = base;
+    var floor = base * (box === 'lowerThird' ? 0.72 : 0.6);
+    var lines = maxLinesFor(box);
+    var extraLine = box === 'lowerThird' ? 1 : 0;
+    var pages = paginate(el, text, lines);
+    if (pages.length > 1 && extraLine) { lines += extraLine; pages = paginate(el, text, lines); }
+    while (pages.length > 1 && size * 0.94 >= floor) {
+      size *= 0.94;
+      el.style.fontSize = size + 'px';
+      if (box !== 'lowerThird') lines = maxLinesFor(box); // more lines fit as the text gets smaller
+      pages = paginate(el, text, lines);
+    }
+    pager.pages = pages;
     renderPage(false);
   }
 
@@ -310,7 +326,7 @@
     var page = pager.pages[pager.i];
     var put = function() {
       el.textContent = page;
-      counter.textContent = pager.pages.length > 1 ? (pager.i + 1) + ' / ' + pager.pages.length : '';
+      counter.textContent = ''; // no "1 / 2" counters on screen
       el.classList.remove('turning');
       if (pager.pages.length === 1) growToFill(pager.box);
       fitToScreen();
