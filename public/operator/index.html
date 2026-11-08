@@ -311,7 +311,7 @@ function connectWS() {
     // On (re)connect: what the screens are showing now, e.g. after a restart
     if (msg.action === 'STATE' && msg.state) {
       var st = msg.state;
-      if (st.screen && st.screen.action === 'SHOW_VERSE') { currentVerse = st.screen.verse; renderNowPlaying(); }
+      if (st.screen && st.screen.action === 'SHOW_VERSE') { currentVerse = st.screen.verse; onScreen = { type: 'verse', item: st.screen.verse }; renderNowPlaying(); }
       if (st.background) {
         document.getElementById('bgSelect').value = st.background.background || 'theme';
         document.getElementById('frameSelect').value = st.background.frame || 'bar';
@@ -415,13 +415,18 @@ var MODES = [
 ];
 function toggleMode() {
   var i = MODES.findIndex(function(m) { return m[0] === displayMode; });
-  setMode(MODES[(i + 1) % MODES.length][0]);
+  setMode(MODES[(i + 1) % MODES.length][0], true);
 }
-function setMode(mode) {
+// fromOperator: re-show what's on screen in the new mode straight away
+// (it used to apply only to the next push, so the screen seemed not to change)
+function setMode(mode, fromOperator) {
   var m = MODES.find(function(x) { return x[0] === mode; }) || MODES[0];
   displayMode = m[0];
   document.getElementById('modeBtn').textContent = m[1];
   savePref('mode', displayMode);
+  if (!fromOperator || !onScreen) return;
+  if (onScreen.type === 'verse') pushVerse(onScreen.item, true);
+  else if (onScreen.type === 'slide') pushSlide(onScreen.index);
 }
 
 function adjustFont(delta) {
@@ -581,6 +586,7 @@ async function pushSlide(i) {
     });
     if (!res.ok) throw new Error('Push HTTP ' + res.status);
     activeSlideIdx = i;
+    onScreen = { type: 'slide', index: i };
     renderSlides();
     currentVerse = { reference: activeSong.title + (slide.section ? ' · ' + slide.section : ''), translation: (i + 1) + '/' + activeSlides.length, text: slide.content };
     renderNowPlaying();
@@ -642,8 +648,11 @@ function queuePrev() {
 }
 
 // ===== Push =====
-async function pushVerse(item) {
-  if (followSinger) { setFollow(false); noteOnce('Follow the singer paused while a verse is on screen — tick it again for the next song.'); }
+// What the screens show right now, so a mode change can re-show it
+var onScreen = null; // { type: 'verse', item } | { type: 'slide', index }
+
+async function pushVerse(item, sameVerse) {
+  if (followSinger && !sameVerse) { setFollow(false); noteOnce('Follow the singer paused while a verse is on screen — tick it again for the next song.'); }
   try {
     var res = await broadcast({
       action: 'SHOW_VERSE',
@@ -653,6 +662,7 @@ async function pushVerse(item) {
     });
     if (!res.ok) throw new Error('Push HTTP ' + res.status);
     currentVerse = item;
+    onScreen = { type: 'verse', item: item };
     renderNowPlaying();
     setApiStatus('ok');
   } catch (err) {
@@ -678,6 +688,7 @@ function renderNowPlaying() {
 async function clearScreen() {
   try { await broadcast({ action: 'CLEAR' }); } catch(e) {}
   currentVerse = null;
+  onScreen = null;
   renderNowPlaying();
 }
 
