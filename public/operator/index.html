@@ -112,10 +112,10 @@
     </select>
       <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
       <select id="cameraSelect" title="Squeeze mode: how big the preacher's camera window is. Smaller = bigger scripture. Set the vMix camera layer to the same size." onchange="applyBackground()">
-      <option value="46" selected>Camera: 46% — preacher top left, verse right</option>
+      <option value="20" selected>Camera: 20% — UEFA squeeze, preacher top left</option>
+      <option value="25">Camera: 25%</option>
       <option value="33">Camera: 33%</option>
-      <option value="25">Camera: 25% — verse full width below</option>
-      <option value="20">Camera: 20% — biggest text</option>
+      <option value="46">Camera: 46% — preacher left, verse right</option>
     </select>
       <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Push confident explicit references straight to the screen">
       <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
@@ -316,7 +316,7 @@ function connectWS() {
         document.getElementById('bgSelect').value = st.background.background || 'theme';
         document.getElementById('frameSelect').value = st.background.frame || 'bar';
         document.getElementById('sizeSelect').value = st.background.size || 'large';
-        document.getElementById('cameraSelect').value = loadPref('camera') || st.background.camera || '46';
+        document.getElementById('cameraSelect').value = loadPref('camera') || st.background.camera || '20';
       } else {
         applyBackground(); // nothing chosen yet on this laptop: send the defaults
       }
@@ -410,8 +410,8 @@ loadTranslations();
 // → Full-screen. Squeeze switches vMix automatically when VMIX_URL is set.
 var MODES = [
   ['lower-third', '◧ Lower-Third'],
-  ['squeeze', '◰ Squeeze (camera small, big text)'],
-  ['full-screen', '⬜ Full-Screen'],
+  ['squeeze', '◰ Squeeze (preacher small, big text)'],
+  ['full-screen', '⬜ Full-Screen (scripture only)'],
 ];
 function toggleMode() {
   var i = MODES.findIndex(function(m) { return m[0] === displayMode; });
@@ -1153,8 +1153,8 @@ var base64 = btoa(binary);
     document.getElementById('frameSelect').value = fr || 'glass';
     document.getElementById('sizeSelect').value = sz || 'large';
     // v1.5 makes the side-by-side squeeze (46%) the default, once
-  if (!loadPref('layoutV15')) { savePref('layoutV15', '1'); savePref('camera', '46'); }
-  document.getElementById('cameraSelect').value = loadPref('camera') || '46';
+  if (!loadPref('layoutV16')) { savePref('layoutV16', '1'); savePref('camera', '20'); } // UEFA-style squeeze: preacher at 0.8/4 of the screen
+  document.getElementById('cameraSelect').value = loadPref('camera') || '20';
     if (loadPref('mode')) setMode(loadPref('mode'));
     if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
   }

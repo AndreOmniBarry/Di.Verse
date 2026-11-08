@@ -19,6 +19,10 @@ const CHECKS = [
   [/\?\.[a-zA-Z_(]/, 'optional chaining ?. (Chrome 80)'],
   [/\?\?/, 'nullish coalescing ?? (Chrome 80)'],
   [/\.replaceAll\(/, 'String.replaceAll (Chrome 85)'],
+  [/querySelectorAll\([^)]*\)\s*\.forEach|badges\.forEach/, 'NodeList.forEach (Chrome 51) — wrap with toArray()'],
+  [/=>/, 'arrow functions — keep the page plain ES5 for older embedded browsers'],
+  [/(^|[^.\w])(let|const)\s/m, 'let / const — keep the page plain ES5'],
+  [/`/, 'template literals — keep the page plain ES5'],
 ];
 
 for (const [file, src] of files) {

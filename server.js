@@ -57,16 +57,17 @@ app.use('/api', require('./routes/push'));
 // vMix link check (SETUP.md): is it reachable, and what inputs does it have?
 app.get('/api/vmix', async (req, res) => {
   const v = vmixService();
-  if (!v.configured()) return res.json({ configured: false, help: 'Set VMIX_URL=http://<vmix-pc-ip>:8088 in .env' });
+  const screens = connectedScreens();
+  if (!v.configured()) return res.json({ configured: false, help: 'Set VMIX_URL=http://<vmix-pc-ip>:8088 in .env', screens });
   try {
     const st = await v.state();
     const want = process.env.VMIX_SQUEEZE_INPUT;
     const live = st.inputs.find(i => i.number === st.active);
     res.json({ configured: true, reachable: true, mode: v.sceneMode() ? 'scene' : 'automatic',
       live: live ? live.number + ' ' + live.title : st.active, inputs: st.inputs,
-      ...(want ? { squeezeInputFound: st.inputs.some(i => i.title === want || i.number === want) } : {}) });
+      ...(want ? { squeezeInputFound: st.inputs.some(i => i.title === want || i.number === want) } : {}), screens });
   } catch (err) {
-    res.json({ configured: true, reachable: false, error: err.message });
+    res.json({ configured: true, reachable: false, error: err.message, screens });
   }
 });
 function vmixService() { return require('./services/vmix'); }
@@ -133,6 +134,24 @@ wss.on('connection', (ws, req) => {
   if (type === 'operator') ws.send(JSON.stringify({ action: 'STATE', state: screenState }));
   else replayScreen(ws);
 
+  // Projection pages (the projector, vMix's Web Browser input) say which
+  // browser they run in and report their own errors, so a problem inside
+  // vMix shows up in this Terminal and on the Operator page
+  ws.on('message', (data) => {
+    if (type !== 'projection' || data.length > 4000) return;
+    let msg;
+    try { msg = JSON.parse(data); } catch (e) { return; }
+    if (msg.action === 'CLIENT_INFO') {
+      ws.info = describeScreen(msg, req);
+      console.log(`[Screen] ${ws.info.where}: ${ws.info.browser}, ${ws.info.size}${ws.info.overlay ? ', overlay' : ''}${ws.info.webgl ? '' : ', no WebGL'}`);
+    } else if (msg.action === 'CLIENT_ERROR' && typeof msg.message === 'string') {
+      const where = ws.info ? `${ws.info.where} (${ws.info.browser})` : 'projection page';
+      console.error(`[Screen] Error on ${where}: ${msg.message}`);
+      ws.errors = (ws.errors || 0) + 1;
+      if (ws.errors <= 3) alertOperator({ action: 'NOTICE', message: `Screen problem on ${where}: ${msg.message.slice(0, 160)}` });
+    }
+  });
+
   ws.on('close', () => {
     clients.delete(ws);
     console.log(`[WS] Client disconnected: ${type} (total: ${clients.size})`);
@@ -152,6 +171,25 @@ setInterval(() => {
     try { ws.ping(); } catch (e) {}
   });
 }, 30000).unref();
+
+function describeScreen(msg, req) {
+  const ua = String(msg.ua || '');
+  const chrome = (ua.match(/Chrome\/(\d+)/) || [])[1];
+  const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  const local = ip === '127.0.0.1' || ip === '::1';
+  return {
+    where: (/vMix/i.test(ua) ? 'vMix' : msg.overlay ? 'overlay' : 'projector') + (local ? ' on this Mac' : ` at ${ip}`),
+    browser: chrome ? `Chrome ${chrome}` : (ua.slice(0, 60) || 'unknown browser'),
+    size: `${parseInt(msg.width) || 0}×${parseInt(msg.height) || 0}`,
+    overlay: Boolean(msg.overlay),
+    webgl: Boolean(msg.webgl),
+    chrome: chrome ? parseInt(chrome) : null,
+  };
+}
+
+function connectedScreens() {
+  return [...clients].filter(c => c.clientType === 'projection' && c.info).map(c => ({ ...c.info, errors: c.errors || 0 }));
+}
 
 const vmix = require('./services/vmix');
 
