@@ -265,3 +265,20 @@ test('the preacher says "next verse" / "verse 17" while a verse is on screen', a
   d = await detect({ text: 'turn to John 3 verse 16', current, fast: true });
   assert.strictEqual(d.type, 'explicit'); assert.strictEqual(d.verseData.reference, 'John 3:16');
 });
+
+test('manual box: words of a verse find it', async () => {
+  let r = await (await fetch(base + '/api/search?q=' + encodeURIComponent('i wish above all things that thou mayest prosper'))).json();
+  assert.strictEqual(r.best, '3 John 1:2');
+  r = await (await fetch(base + '/api/search?q=' + encodeURIComponent('the man Isaac sowed in the land'))).json();
+  assert.strictEqual(r.best, 'Genesis 26:12');
+  assert.ok(r.results[0].text.startsWith('Then Isaac sowed'));
+});
+
+test('a misheard paraphrase in the sermon is shown', async () => {
+  const d = await fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'then Isaac souled in that land and received in the same year an hundredfold', fast: true }) }).then(r => r.json());
+  assert.strictEqual(d.type, 'explicit'); assert.ok(['quote', 'finder'].includes(d.source)); assert.strictEqual(d.verseData.reference, 'Genesis 26:12');
+  const s = await fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'the man Isaac sowed in the land', fast: true }) }).then(r => r.json());
+  assert.strictEqual(s.type, 'implicit'); assert.strictEqual(s.candidates[0].book + ' ' + s.candidates[0].chapter + ':' + s.candidates[0].verse, 'Genesis 26:12');
+});
