@@ -11,8 +11,13 @@
       --brand: #1A1A2E; --accent: #E94560; --mid: #4A4A6A;
       --surface: #22223A; --surface2: #2A2A45; --text: #CCCCDD; --white: #FFFFFF;
     }
-    body { background: var(--brand); color: var(--text); font-family: Arial, sans-serif; height: 100vh; display: grid; grid-template-rows: 56px 1fr; overflow: hidden; }
-    header { background: var(--surface); border-bottom: 2px solid var(--accent); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
+    body { background: var(--brand); color: var(--text); font-family: Arial, sans-serif; height: 100vh; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+    /* Two rows that grow as needed: nothing gets pushed off screen */
+    header { background: var(--surface); border-bottom: 2px solid var(--accent); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 20px; }
+    .header-rows { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; min-width: 0; }
+    .header-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .header-row .group-label { font-size: 0.6rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--mid); }
+    #translationSelect { border-color: var(--accent); color: var(--white); font-weight: bold; }
     header h1 { font-size: 1.2rem; color: var(--white); letter-spacing: 2px; }
     header h1 span { color: var(--accent); }
     .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -94,15 +99,38 @@
 
 <header>
   <h1>Di<span>.</span>Verse <span style="color:var(--mid);font-size:0.7rem;font-weight:normal;">OPERATOR</span></h1>
-  <div class="header-right">
-    <span class="ws-badge" id="wsStatus">WS</span>
+  <div class="header-rows">
+    <!-- Live: what you touch during the service -->
+    <div class="header-row">
+      <span class="ws-badge" id="wsStatus">WS</span>
     <span class="api-status ok" id="apiStatus">API: ok</span>
     <div class="status-dot" id="dot"></div>
     <span class="listening-label" id="listenLabel">Not listening</span>
-    <select id="translationSelect" title="Translations you have. Greyed ones need a licence — hover for why.">
+      <span class="group-label">Bible</span>
+      <select id="translationSelect" title="Translations you have. Greyed ones need a licence — hover for why.">
       <option value="KJV">KJV</option>
     </select>
-    <select id="themeSelect" onchange="applyTheme(this.value)">
+      <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
+      <select id="cameraSelect" title="Squeeze mode: how big the preacher's camera window is. Smaller = bigger scripture. Set the vMix camera layer to the same size." onchange="applyBackground()">
+      <option value="20">Camera: 20% (biggest text)</option>
+      <option value="25" selected>Camera: 25% (TV)</option>
+      <option value="33">Camera: 33%</option>
+      <option value="46">Camera: 46% (side by side)</option>
+    </select>
+      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Push confident explicit references straight to the screen">
+      <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
+    </label>
+      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off (recommended): Whisper only listens when Chrome's live captions aren't working, so Groq's free limit lasts all day. On: Whisper double-checks everything too (uses about 4–5 hours of free Groq a day).">
+      <input type="checkbox" id="whisperToggle" onchange="whisperAlways = this.checked; savePref('whisperAlways', this.checked ? '1' : '')"> Whisper double-check
+    </label>
+      <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
+      <span id="versionBadge" class="ws-badge" title="Di.Verse version running on this laptop">v…</span>
+      <a href="/about" style="font-size:0.7rem;color:var(--mid);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
+    </div>
+    <!-- Look: how the caption appears -->
+    <div class="header-row">
+      <span class="group-label">Look</span>
+      <select id="themeSelect" onchange="applyTheme(this.value)">
       <option value="dark-navy">Dark Navy</option>
       <option value="pure-black">Pure Black</option>
       <option value="church-white">Church White</option>
@@ -111,37 +139,22 @@
       <option value="forest-green">Forest Green</option>
       <option value="cinematic">Cinematic</option>
     </select>
-    <select id="bgSelect" title="Caption background — still colours/gradients or live effects" onchange="applyBackground()">
+      <select id="bgSelect" title="Caption background — still colours/gradients or live effects" onchange="applyBackground()">
       <option value="theme">Background: theme colour</option>
     </select>
-    <select id="frameSelect" title="Caption style" onchange="applyBackground()">
+      <select id="frameSelect" title="Caption style" onchange="applyBackground()">
       <option value="bar">Style: full bar</option>
       <option value="glass">Style: liquid glass card</option>
       <option value="minimal">Style: text only</option>
     </select>
-    <select id="sizeSelect" title="Caption text size — Large or Extra large for big rooms; long verses split into pages instead of shrinking" onchange="applyBackground()">
+      <select id="sizeSelect" title="Caption text size — Large or Extra large for big rooms; long verses split into pages instead of shrinking" onchange="applyBackground()">
       <option value="normal">Text: normal</option>
       <option value="large" selected>Text: large</option>
       <option value="xl">Text: extra large (big room)</option>
     </select>
-    <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
-    <select id="cameraSelect" title="Squeeze mode: how big the preacher's camera window is. Smaller = bigger scripture. Set the vMix camera layer to the same size." onchange="applyBackground()">
-      <option value="20">Camera: 20% (biggest text)</option>
-      <option value="25" selected>Camera: 25% (TV)</option>
-      <option value="33">Camera: 33%</option>
-      <option value="46">Camera: 46% (side by side)</option>
-    </select>
-    <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
+      <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
     <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
-    <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off (recommended): Whisper only listens when Chrome's live captions aren't working, so Groq's free limit lasts all day. On: Whisper double-checks everything too (uses about 4–5 hours of free Groq a day).">
-      <input type="checkbox" id="whisperToggle" onchange="whisperAlways = this.checked; savePref('whisperAlways', this.checked ? '1' : '')"> Whisper double-check
-    </label>
-    <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Push confident explicit references straight to the screen">
-      <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
-    </label>
-    <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
-    <span id="versionBadge" class="ws-badge" title="Di.Verse version running on this laptop">v…</span>
-    <a href="/about" style="font-size:0.7rem;color:var(--mid);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
+    </div>
   </div>
 </header>
 
@@ -443,7 +456,18 @@ async function manualSearch() {
     if (!res.ok) { showAlert(data.error); return; }
     if (data.fallback) showAlert(data.requestedTranslation + ' unavailable: ' + data.fallbackReason + ' — showing KJV where needed.');
     addToQueue(Object.assign({}, data, { confidence: 1.0, type: 'manual' }));
-  } catch (err) { showAlert('Could not reach server.'); }
+  } catch (err) {
+    // A dropped connection (e.g. Di.Verse restarting) gets one retry
+    if (!manualSearch.retried && /fetch|network/i.test(err.message)) {
+      manualSearch.retried = true;
+      setTimeout(function() { manualSearch().finally(function() { manualSearch.retried = false; }); }, 1500);
+      return;
+    }
+    manualSearch.retried = false;
+    showAlert(/fetch|network/i.test(err.message)
+      ? 'Can\'t reach Di.Verse on this laptop — is the Terminal window still running npm start?'
+      : 'Search failed: ' + err.message);
+  }
 }
 
 // ===== Songs =====
