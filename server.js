@@ -40,7 +40,9 @@ for (const page of ['/operator', '/admin']) {
 // Pages and scripts are always re-checked, so a browser (or vMix's browser
 // input) never keeps running an old copy after an update
 app.use(express.static(path.join(__dirname, 'public'), {
-  setHeaders: (res, file) => { if (/\.(html|js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); },
+  // Never kept in a browser cache (vMix's built-in browser held on to old
+  // copies): every load gets the version that is installed
+  setHeaders: (res, file) => { if (/\.(html|js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-store'); },
 }));
 
 // Which version is running — shown on the Operator page
@@ -80,11 +82,15 @@ app.use('/api', (err, req, res, next) => {
 
 // ── Views ──
 app.get('/', (req, res) => res.redirect('/operator'));
-app.get('/operator', (req, res) => res.sendFile(path.join(__dirname, 'public/operator/index.html')));
-app.get('/projection', (req, res) => res.sendFile(path.join(__dirname, 'public/projection/index.html')));
-app.get('/preacher', (req, res) => res.sendFile(path.join(__dirname, 'public/preacher/index.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public/admin/index.html')));
-app.get('/about', (req, res) => res.sendFile(path.join(__dirname, 'public/about/index.html')));
+function page(res, name) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', name, 'index.html'));
+}
+app.get('/operator', (req, res) => page(res, 'operator'));
+app.get('/projection', (req, res) => page(res, 'projection'));
+app.get('/preacher', (req, res) => page(res, 'preacher'));
+app.get('/admin', (req, res) => page(res, 'admin'));
+app.get('/about', (req, res) => page(res, 'about'));
 
 // ── Screen state ──
 // What is on screen right now (verse/lyrics, theme, background, font size).
@@ -131,8 +137,23 @@ wss.on('connection', (ws, req) => {
   ws.on('pong', () => { ws.isAlive = true; });
   clients.add(ws);
   console.log(`[WS] Client connected: ${type} (total: ${clients.size})`);
-  if (type === 'operator') ws.send(JSON.stringify({ action: 'STATE', state: screenState }));
-  else replayScreen(ws);
+  if (type === 'operator') {
+    ws.send(JSON.stringify({ action: 'STATE', state: screenState }));
+    for (const c of clients) if (c.stale) ws.send(JSON.stringify({ action: 'NOTICE', message: staleMessage(c) }));
+  } else replayScreen(ws);
+  // Every current projection page introduces itself straight away. One that
+  // doesn't is an old copy still open (e.g. in vMix): say so, and if vMix is
+  // linked, have vMix reload it
+  if (type === 'projection') {
+    ws.ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+    setTimeout(() => {
+      if (ws.info || ws.readyState !== 1) return;
+      ws.stale = true;
+      console.warn(`[Screen] ${ws.ip} is showing an OLD Di.Verse page — refresh it (in vMix: change the input's URL to http://${IP}:${PORT}/projection?overlay=1&v=${VERSION})`);
+      alertOperator({ action: 'NOTICE', message: staleMessage(ws) });
+      reloadVmixScreens('an old page was found');
+    }, parseInt(process.env.DIVERSE_STALE_MS) || 6000).unref();
+  }
 
   // Projection pages (the projector, vMix's Web Browser input) say which
   // browser they run in and report their own errors, so a problem inside
@@ -185,6 +206,24 @@ function describeScreen(msg, req) {
     webgl: Boolean(msg.webgl),
     chrome: chrome ? parseInt(chrome) : null,
   };
+}
+
+function staleMessage(ws) {
+  const local = ws.ip === '127.0.0.1' || ws.ip === '::1';
+  return `A screen ${local ? 'on this Mac' : 'at ' + ws.ip} is still showing an OLD Di.Verse page (old layouts, "1/6" pages). ` +
+    (local ? 'Press Cmd + R in that tab.' : `In vMix, open the Di.Verse input's settings and set its URL to http://${IP}:${PORT}/projection?overlay=1&v=${VERSION}`);
+}
+
+// Tell vMix to reload its Di.Verse Web Browser inputs (needs VMIX_URL).
+// At most once a minute.
+let lastVmixReload = 0;
+function reloadVmixScreens(why) {
+  const v = require('./services/vmix');
+  if (!v.configured() || Date.now() - lastVmixReload < 60000) return;
+  lastVmixReload = Date.now();
+  v.reloadBrowsers([IP, `:${PORT}`, '/projection']).then(done => {
+    if (done.length) console.log(`[vMix] Reloaded ${done.join(', ')} (${why})`);
+  }).catch(err => console.error('[vMix] reload failed:', err.message));
 }
 
 function connectedScreens() {

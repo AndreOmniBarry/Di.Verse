@@ -115,4 +115,23 @@ function onScreen(payload, notify, screen) {
   });
 }
 
-module.exports = { onScreen, state, configured, sceneMode, windowPosition, _reset: () => { warnedUnset = false; squeezed = false; squeezedInput = null; chain = Promise.resolve(); } };
+// Reload vMix's Web Browser inputs that show Di.Verse (matched by their
+// title or address containing any of `marks`). vMix: BrowserReload.
+async function reloadBrowsers(marks) {
+  const xml = await api('');
+  const done = [];
+  const re = /<input\b([^>]*)>([^<]*)<\/input>|<input\b([^>]*)\/>/g;
+  let m;
+  while ((m = re.exec(xml))) {
+    const attrs = m[1] || m[3] || '', body = m[2] || '';
+    if (!/\btype="Browser"/i.test(attrs)) continue;
+    const number = (attrs.match(/\bnumber="(\d+)"/) || [])[1];
+    const title = (attrs.match(/\btitle="([^"]*)"/) || [])[1] || '';
+    if (!number || !marks.some(k => k && (title.includes(k) || body.includes(k)))) continue;
+    await call('BrowserReload', number);
+    done.push(`input ${number} "${title}"`);
+  }
+  return done;
+}
+
+module.exports = { onScreen, state, reloadBrowsers, configured, sceneMode, windowPosition, _reset: () => { warnedUnset = false; squeezed = false; squeezedInput = null; chain = Promise.resolve(); } };
