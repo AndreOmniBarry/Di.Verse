@@ -20,7 +20,34 @@ function bookOf(x) {
   return findBook(String(x).replace(/\.$/, ''));
 }
 
+// { "Genesis": { "1": { "1": "In the beginning…", … } } } — book → chapter → verse,
+// optionally wrapped once ({ "ASV": { "Genesis": … } } or { "books": { … } })
+function fromBookMap(data) {
+  const isMap = o => o && typeof o === 'object' && !Array.isArray(o);
+  const bookKeys = o => isMap(o) ? Object.keys(o).filter(k => bookOf(k)).length : 0;
+  if (bookKeys(data) < 1) {
+    const inner = isMap(data) && Object.values(data).find(v => bookKeys(v) >= 1);
+    if (!inner) return null;
+    data = inner;
+  }
+  const rows = [];
+  for (const [bk, chapters] of Object.entries(data)) {
+    const b = bookOf(bk);
+    if (!b || !isMap(chapters)) continue;
+    for (const [c, verses] of Object.entries(chapters)) {
+      if (isMap(verses)) {
+        for (const [v, t] of Object.entries(verses)) rows.push({ book: b.name, chapter: parseInt(c), verse: parseInt(v), text: String(t && t.text != null ? t.text : t) });
+      } else if (Array.isArray(verses)) {
+        verses.forEach((t, i) => rows.push({ book: b.name, chapter: parseInt(c), verse: i + 1, text: String(t && t.text != null ? t.text : t) }));
+      }
+    }
+  }
+  return rows;
+}
+
 function fromJson(data) {
+  const mapped = fromBookMap(data);
+  if (mapped && mapped.length) return mapped;
   if (data && Array.isArray(data.books) && data.books[0] && data.books[0].chapters && data.books[0].chapters[0] && (data.books[0].chapters[0].chapter || data.books[0].chapters[0].content)) {
     return rowsFromHelloao(data); // bible.helloao.org
   }
@@ -122,6 +149,7 @@ function parse(content, filename = '') {
   else if (/<XMLBIBLE\b|<BIBLEBOOK\b/i.test(src)) { format = 'Zefania'; rows = fromZefania(src); }
   else throw new Error('Unrecognised file — use JSON, USFM, OSIS XML or Zefania XML');
   rows = rows.filter(r => Number.isInteger(r.chapter) && Number.isInteger(r.verse) && r.chapter > 0 && r.verse > 0);
+  if (!rows.length) throw new Error(`No verses found in this ${format} file — its layout isn't one Di.Verse knows yet. Send the first part of it (head -c 1500 FILE) to your helper.`);
   return { format, rows };
 }
 
