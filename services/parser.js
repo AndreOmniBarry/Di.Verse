@@ -110,6 +110,10 @@ const TRANSLATION_MAP = {
   'hcsb':'HCSB','holman':'HCSB',
   'asv':'ASV','american standard':'ASV',
   'web':'WEB','world english':'WEB',
+  'ylt':'YLT',"young's literal":'YLT','youngs literal':'YLT','young literal':'YLT',
+  'bbe':'BBE','basic english':'BBE','bible in basic english':'BBE',
+  'american standard version':'ASV',
+  'nrsv':'NRSV','new revised standard':'NRSV','rsv':'RSV','revised standard':'RSV',
 };
 
 const NUMBER_WORDS = {
@@ -131,6 +135,49 @@ function wordToNum(str) {
   return null;
 }
 
+// Cardinal number words only — ordinals (first/second/third) stay as words so
+// book names like "First Corinthians" still resolve.
+const CARDINALS = Object.fromEntries(
+  Object.entries(NUMBER_WORDS).filter(([w]) => !['first', 'second', 'third'].includes(w))
+);
+
+// Rewrites spelled-out numbers as digits: "one hundred and five" -> "105",
+// "twenty three" -> "23". Speech-to-text often spells numbers out, and the
+// reference patterns below only read the first word of a phrase otherwise.
+function normaliseNumbers(text) {
+  const tokens = text.split(/(\s+)/);
+  const out = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const word = tokens[i].toLowerCase().replace(/-/g, ' ');
+    const isNumWord = w => CARDINALS[w] !== undefined || w === 'hundred';
+    if (!isNumWord(word) && !(word === 'a' && (tokens[i + 2] || '').toLowerCase() === 'hundred')) {
+      out.push(tokens[i]); i++; continue;
+    }
+    let total = 0, current = 0, j = i, lastNumIdx = i;
+    while (j < tokens.length) {
+      const w = tokens[j].toLowerCase();
+      if (/^\s+$/.test(tokens[j])) { j++; continue; }
+      if (w === 'a' && j === i) { current = 1; lastNumIdx = j; j++; continue; }
+      if (w === 'hundred') { current = (current || 1) * 100; lastNumIdx = j; j++; continue; }
+      // "and" only joins numbers after "hundred" ("one hundred and five")
+      if (w === 'and' && current >= 100 && CARDINALS[(tokens[j + 2] || '').toLowerCase()] !== undefined) { j++; continue; }
+      if (CARDINALS[w] !== undefined) {
+        const n = CARDINALS[w];
+        // "twenty three" combines; "three sixteen" is two separate numbers
+        if (current % 100 !== 0 && !(current % 10 === 0 && current % 100 >= 20 && n < 10)) break;
+        if (current % 100 >= 20 && n >= 10) break;
+        current += n; lastNumIdx = j; j++; continue;
+      }
+      break;
+    }
+    total += current;
+    out.push(String(total));
+    i = lastNumIdx + 1;
+  }
+  return out.join('');
+}
+
 function resolveBook(raw) {
   if (!raw) return null;
   let lower = raw.toLowerCase().trim()
@@ -143,23 +190,70 @@ function resolveBook(raw) {
   if (BOOK_MAP[lower] !== undefined) {
     return { num: BOOK_MAP[lower], name: BOOK_NAMES[BOOK_MAP[lower]] };
   }
-  // Prefix match — minimum 3 chars to avoid false positives
-  for (const [key, num] of Object.entries(BOOK_MAP)) {
-    if (key.length >= 3 && lower.startsWith(key)) {
-      return { num, name: BOOK_NAMES[num] };
-    }
+  // Partial book name, e.g. "revel", "1 corinthian" — the spoken word must be a
+  // prefix of exactly one full book name. Never the reverse: "reverend" must
+  // not resolve to Revelation just because it starts with "rev".
+  if (lower.length >= 3) {
+    const hits = Object.entries(BOOK_NAMES).filter(([, name]) => name.toLowerCase().startsWith(lower));
+    if (hits.length === 1) return { num: Number(hits[0][0]), name: hits[0][1] };
   }
   return null;
 }
 
-function detectTranslation(text) {
-  const lower = text.toLowerCase();
-  // Sort by length desc so longer phrases match first ("the passion translation" before "passion")
-  const sorted = Object.entries(TRANSLATION_MAP).sort((a, b) => b[0].length - a[0].length);
-  for (const [phrase, code] of sorted) {
-    if (lower.includes(phrase)) return code;
+// The reference patterns capture every word before the numbers ("the gospel of
+// John"), so try the trailing 1-4 words, longest first, to find the book name.
+function resolveBookTail(raw) {
+  const words = raw.trim().split(/\s+/);
+  for (let n = Math.min(4, words.length); n >= 1; n--) {
+    const book = resolveBook(words.slice(-n).join(' '));
+    if (book) return book;
   }
   return null;
+}
+
+// Translation names that are also everyday sermon words ("the good news",
+// "his message", "compassion", "the web"). They only count with a clear cue:
+// "Message Bible", "Good News translation", "in the Passion", "from the Message"
+// at the end of what was said.
+const AMBIGUOUS = new Set(['message', 'the message', 'good news', 'passion', 'the passion', 'web', 'amp', 'living bible', 'the living bible', 'american standard', 'world english', 'basic english']);
+
+const escapeRe = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const TRANSLATION_PATTERNS = Object.entries(TRANSLATION_MAP)
+  .sort((a, b) => b[0].length - a[0].length) // longer phrases first ("the passion translation" before "passion")
+  .map(([phrase, code]) => {
+    const p = escapeRe(phrase).replace(/'/g, "'?");
+    if (!AMBIGUOUS.has(phrase)) return { code, re: new RegExp(String.raw`\b${p}\b`) };
+    const base = escapeRe(phrase.replace(/^the /, ''));
+    return { code, re: new RegExp(
+      String.raw`\b${base}\s+(?:bible|translation|version)\b` +            // "message bible"
+      String.raw`|\b(?:in|from|using|switch(?:ing)? to)\s+the\s+${base}\s*$`  // "...in the message" (end)
+    ) };
+  });
+
+function detectTranslation(text) {
+  const lower = text.toLowerCase().replace(/\s+/g, ' ').trim();
+  for (const { code, re } of TRANSLATION_PATTERNS) {
+    if (re.test(lower)) return code;
+  }
+  return null;
+}
+
+// Book name = up to 4 words, optionally after a 1-3 prefix ("1 John",
+// "Song of Solomon", "the gospel of John"). Bounded on purpose: the old
+// pattern (?:\s*[a-z]+)+? backtracked exponentially, so one ordinary
+// 15-word sentence with no numbers froze the whole server for minutes.
+const BOOK = String.raw`\b((?:[1-3]\s*)?[a-z]+(?:\s+[a-z]+){0,3}?)`;
+
+// Optional end of a range: "16-18", "16 to 18", "16 through 18"
+const RANGE = String.raw`(?:\s*(?:-|–|to|through|thru|until)\s*(\w+))?`;
+const MAX_RANGE = 10; // verses on one screen
+
+// End verse of a spoken range, capped so a long reading still fits on screen
+function rangeEnd(start, raw) {
+  const end = raw ? wordToNum(raw) : null;
+  if (!end || end <= start) return undefined;
+  return Math.min(end, start + MAX_RANGE - 1);
 }
 
 // Common filler words that appear before a book name in natural speech
@@ -168,8 +262,7 @@ const FILLER = /\b(can we have|give me|let us go to|let's go to|open to|open up 
 function parse(text, fallbackTranslation = 'KJV') {
   if (!text || text.trim().length < 3) return null;
 
-  const clean = text
-    .replace(/[,;!?]/g, ' ')
+  const clean = normaliseNumbers(text.replace(/[,;!?]/g, ' '))
     .replace(/\./g, ' ')
     .replace(FILLER, ' ')
     .replace(/\s+/g, ' ')
@@ -178,32 +271,32 @@ function parse(text, fallbackTranslation = 'KJV') {
   const detectedTranslation = detectTranslation(clean) || fallbackTranslation;
 
   // Pattern 1: Book chapter:verse  e.g. "John 3:16", "Rom 8:28"
-  const p1 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(\d+)\s*[:.]\s*(\d+)/gi;
+  const p1 = new RegExp(BOOK + String.raw`\s+(\d+)\s*[:.]\s*(\d+)` + RANGE, 'gi');
   let m;
   while ((m = p1.exec(clean)) !== null) {
-    const book = resolveBook(m[1].trim());
+    const book = resolveBookTail(m[1]);
     if (!book) continue;
     const chapter = parseInt(m[2]);
     const verse = parseInt(m[3]);
     if (!chapter || !verse || isNaN(chapter) || isNaN(verse) || verse > 176) continue;
-    return { book: book.name, chapter, verse, translation: detectedTranslation, confidence: 0.97, raw: m[0].trim() };
+    return { book: book.name, chapter, verse, verseEnd: rangeEnd(verse, m[4]), translation: detectedTranslation, confidence: 0.97, raw: m[0].trim() };
   }
 
   // Pattern 2: Book chapter verse N  e.g. "John chapter 3 verse 16"
-  const p2 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(?:chapter\s+)?(\w+)\s+verse\s+(\w+)/gi;
+  const p2 = new RegExp(BOOK + String.raw`\s+(?:chapter\s+)?(\w+)\s+verses?\s+(\w+)` + RANGE, 'gi');
   while ((m = p2.exec(clean)) !== null) {
-    const book = resolveBook(m[1].trim());
+    const book = resolveBookTail(m[1]);
     if (!book) continue;
     const chapter = wordToNum(m[2]);
     const verse = wordToNum(m[3]);
     if (!chapter || !verse || isNaN(chapter) || isNaN(verse)) continue;
-    return { book: book.name, chapter, verse, translation: detectedTranslation, confidence: 0.95, raw: m[0].trim() };
+    return { book: book.name, chapter, verse, verseEnd: rangeEnd(verse, m[4]), translation: detectedTranslation, confidence: 0.95, raw: m[0].trim() };
   }
 
   // Pattern 3: Book N and N  e.g. "John 3 and 16"
-  const p3 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(\d+)\s+and\s+(\d+)\b/gi;
+  const p3 = new RegExp(BOOK + String.raw`\s+(\d+)\s+and\s+(\d+)\b`, 'gi');
   while ((m = p3.exec(clean)) !== null) {
-    const book = resolveBook(m[1].trim());
+    const book = resolveBookTail(m[1]);
     if (!book) continue;
     const chapter = parseInt(m[2]);
     const verse = parseInt(m[3]);
@@ -212,9 +305,9 @@ function parse(text, fallbackTranslation = 'KJV') {
   }
 
   // Pattern 4: Book N N  e.g. "John 3 16" (space separated, sanity-checked)
-  const p4 = /\b([1-3]?(?:\s*[a-z]+)+?)\s+(\d{1,3})\s+(\d{1,3})\b/gi;
+  const p4 = new RegExp(BOOK + String.raw`\s+(\d{1,3})\s+(\d{1,3})\b`, 'gi');
   while ((m = p4.exec(clean)) !== null) {
-    const book = resolveBook(m[1].trim());
+    const book = resolveBookTail(m[1]);
     if (!book) continue;
     const chapter = parseInt(m[2]);
     const verse = parseInt(m[3]);
@@ -232,4 +325,4 @@ function parse(text, fallbackTranslation = 'KJV') {
   return null;
 }
 
-module.exports = { parse, detectTranslation, resolveBook };
+module.exports = { parse, detectTranslation, resolveBook, normaliseNumbers };

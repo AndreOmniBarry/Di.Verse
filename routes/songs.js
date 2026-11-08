@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { searchSongs, getSongSlides, addSong, addSlide, deleteSong } = require('../services/songsDb');
+const { searchSongs, getSongSlides, addSong, addSlide, deleteSong, updateSong } = require('../services/songsDb');
 
 router.get('/songs/search', (req, res) => {
   const { q = '' } = req.query;
@@ -21,6 +21,15 @@ router.post('/songs/:id/slides', (req, res) => {
   const { section, content, slide_num } = req.body;
   if (!content) return res.status(400).json({ error: 'content is required' });
   res.json({ id: addSlide(parseInt(req.params.id), slide_num, section, content) });
+});
+
+router.put('/songs/:id', (req, res) => {
+  const { title, artist, language, tags, slides } = req.body;
+  if (!title) return res.status(400).json({ error: 'title is required' });
+  if (!Array.isArray(slides)) return res.status(400).json({ error: 'slides must be an array' });
+  const found = updateSong(parseInt(req.params.id), { title, artist, language, tags, slides: slides.filter(sl => sl && sl.content) });
+  if (!found) return res.status(404).json({ error: 'This song no longer exists — it may have been deleted in another window' });
+  res.json({ ok: true });
 });
 
 router.delete('/songs/:id', (req, res) => {

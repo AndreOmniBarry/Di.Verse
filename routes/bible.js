@@ -1,13 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const { getVerse } = require('../services/bibleDb');
+const { getPassage, listTranslations } = require('../services/bibleDb');
 const { validateReference, normaliseBook } = require('../services/validation');
 
 router.get('/verse', async (req, res) => {
-  const { book, chapter, verse, translation = 'KJV' } = req.query;
+  // manual=1: the operator searched by hand and reads the result before
+  // pushing, so AI wording that couldn't be cross-checked is still shown, flagged
+  const { book, chapter, verse, verseEnd, translation = 'KJV', manual } = req.query;
 
   if (!book || !chapter || !verse) {
     return res.status(400).json({ error: 'book, chapter, and verse are required' });
+  }
+
+  if (!/^\d+$/.test(chapter) || !/^\d+$/.test(verse) || (verseEnd && !/^\d+$/.test(verseEnd))) {
+    return res.status(400).json({ error: 'chapter and verse must be whole numbers' });
   }
 
   const validation = validateReference(book, parseInt(chapter), parseInt(verse));
@@ -17,7 +23,7 @@ router.get('/verse', async (req, res) => {
 
   // Use normalised book name for DB lookup
   const normalisedBook = validation.normalised || book;
-  const result = await getVerse(normalisedBook, parseInt(chapter), parseInt(verse), translation);
+  const result = await getPassage(normalisedBook, parseInt(chapter), parseInt(verse), verseEnd ? Math.min(parseInt(verseEnd), parseInt(verse) + 9) : undefined, translation, { live: true, allowUnverified: manual === '1' });
 
   if (!result) {
     return res.status(404).json({
@@ -26,6 +32,10 @@ router.get('/verse', async (req, res) => {
   }
 
   res.json(result);
+});
+
+router.get('/translations', async (req, res) => {
+  res.json(await listTranslations());
 });
 
 module.exports = router;

@@ -1,7 +1,48 @@
-require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
 
+const OpenAI = require('openai');
+
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Free fallback for detection: Groq (OpenAI-compatible). Used when there is no
+// Anthropic key, or when Claude fails on key / credit / rate limit.
+const keys = require('./keys');
+const groqClients = new Map(); // one per key (backup keys: see services/keys.js)
+let groqDetectModel = null;
+let groqNoReasoningEffort = false;
+function groq(key) {
+  if (!groqClients.has(key)) groqClients.set(key, new OpenAI({ apiKey: key, baseURL: 'https://api.groq.com/openai/v1' }));
+  return groqClients.get(key);
+}
+async function pickGroqDetectModel() {
+  if (process.env.GROQ_DETECT_MODEL) return process.env.GROQ_DETECT_MODEL;
+  if (groqDetectModel) return groqDetectModel;
+  const ids = ((await keys.withKey('GROQ_API_KEY', key => groq(key).models.list())).data || []).map(m => m.id);
+  const prefs = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant'];
+  groqDetectModel = prefs.find(p => ids.includes(p)) || ids.find(id => !/whisper|guard|tts|embed|compound/i.test(id));
+  if (!groqDetectModel) throw new Error('no usable Groq chat model — set GROQ_DETECT_MODEL');
+  console.log('[Detect] Groq model:', groqDetectModel);
+  return groqDetectModel;
+}
+
+// Pull the JSON object out of a reply even if the model wrapped it in prose
+function extractJSON(raw) {
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end <= start) throw new Error('No JSON in model reply: ' + raw.slice(0, 120));
+  return JSON.parse(raw.slice(start, end + 1));
+}
+
+// Operator-facing reason for a failed Claude call (the old code logged it and
+// returned "none", so a dead key looked exactly like "no verse spoken")
+function describeError(err) {
+  if (err instanceof Anthropic.AuthenticationError) return 'Anthropic API key is invalid or revoked — update ANTHROPIC_API_KEY in .env';
+  if (err instanceof Anthropic.PermissionDeniedError) return 'Anthropic API key lacks permission for this model';
+  if (err instanceof Anthropic.RateLimitError) return 'Anthropic rate limit or spend limit reached — check console.anthropic.com billing';
+  if (err instanceof Anthropic.APIConnectionError) return 'Cannot reach Anthropic — check internet connection';
+  if (err instanceof Anthropic.APIError) return 'Anthropic error ' + err.status + ': ' + err.message;
+  return err.message;
+}
 
 // ── System prompt for scripture detection ──
 const DETECTION_SYSTEM = `You are Di.Verse, a scripture detection engine inside a live church service.
@@ -48,32 +89,11 @@ RULES — NO EXCEPTIONS:
 JSON SCHEMA — always return exactly this structure:
 {
   "type": "explicit" | "implicit" | "translation_change" | "none",
-  "reference": { "book": string, "chapter": number, "verse": number, "translation": string },
+  "reference": { "book": string, "chapter": number, "verse": number, "verse_end": number (only for a range like "verses 28 to 30", else omit), "translation": string },
   "candidates": [ { "book": string, "chapter": number, "verse": number, "confidence": number, "snippet": string } ],
   "new_translation": string,
   "confidence": number,
   "raw_quote": string
-}`;
-
-// ── System prompt for verse fetching ──
-const VERSE_SYSTEM = `You are a Bible verse provider for Di.Verse, a church display system.
-When given a scripture reference and translation, return the exact verse text.
-
-RULES:
-- Return ONLY valid JSON. No prose. No markdown. No explanation.
-- Return the verse text as accurately as possible from your training knowledge.
-- If you are not confident in the exact wording, return your best accurate rendering and
-  set confidence to "approximate".
-- Never fabricate a verse that does not exist in the Bible.
-- Support ALL Bible translations including KJV, NKJV, AMP, AMPC, TPT, MSG, GNT, TLB, NIV, ESV,
-  NLT, NASB, CSB, CEV, NCV, HCSB, ASV, WEB, YLT, DARBY, RSV, NRSV and any other translation requested.
-
-JSON SCHEMA:
-{
-  "text": string,
-  "reference": string,
-  "translation": string,
-  "confidence": "exact" | "approximate"
 }`;
 
 // ── Detect scripture from transcription ──
@@ -83,36 +103,76 @@ async function detectScripture(transcriptionChunk, recentContext = '', activeTra
     return { type: 'none' };
   }
 
-  try {
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 512,
-      system: DETECTION_SYSTEM,
-      messages: [{
-        role: 'user',
-        content: `ACTIVE TRANSLATION: ${activeTranslation}
+  const userMessage = `ACTIVE TRANSLATION: ${activeTranslation}
 RECENT CONTEXT: ${recentContext}
 NEW TRANSCRIPTION: ${transcriptionChunk}
 
-Analyse and return JSON only.`
-      }]
-    });
+Analyse and return JSON only.`;
 
-    const raw = response.content[0].text.trim();
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+  const hasClaude = Boolean(process.env.ANTHROPIC_API_KEY);
+  const hasGroq = Boolean(process.env.GROQ_API_KEY);
+  if (!hasClaude && !hasGroq) return { type: 'none' }; // parser-only mode; explicit references still work
 
-    // Safety net: discard explicit detections with suspiciously low confidence
-    if (parsed.type === 'explicit' && (parsed.confidence || 0) < 0.7) {
-      return { type: 'none' };
+  let claudeError = null;
+  if (hasClaude) {
+    try {
+      const response = await client.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 512,
+        system: DETECTION_SYSTEM,
+        messages: [{ role: 'user', content: userMessage }]
+      });
+      return screen(extractJSON(response.content[0].text));
+    } catch (err) {
+      console.error('[Claude Detection Error]', err.message);
+      claudeError = describeError(err);
+      const recoverable = err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError ||
+        err instanceof Anthropic.RateLimitError || err instanceof Anthropic.APIConnectionError ||
+        (err instanceof Anthropic.BadRequestError && /credit/i.test(err.message));
+      if (!hasGroq || !recoverable) return { type: 'none', error: claudeError };
     }
-
-    return parsed;
-
-  } catch (err) {
-    console.error('[Claude Detection Error]', err.message);
-    return { type: 'none' };
   }
+
+  try {
+    const model = await pickGroqDetectModel();
+    // gpt-oss / qwen models "think" before answering: give them room, and ask
+    // gpt-oss for brief thinking so detection stays quick
+    const request = {
+      model,
+      temperature: 0,
+      max_tokens: 2048,
+      messages: [{ role: 'system', content: DETECTION_SYSTEM }, { role: 'user', content: userMessage }],
+      ...(/gpt-oss/.test(model) && !groqNoReasoningEffort ? { reasoning_effort: 'low' } : {}),
+    };
+    let res;
+    try {
+      res = await keys.withKey('GROQ_API_KEY', key => groq(key).chat.completions.create(request, { maxRetries: 0, timeout: 15000 }));
+    } catch (err) {
+      if (err.status !== 400 || !request.reasoning_effort) throw err;
+      groqNoReasoningEffort = true; // this model doesn't take the setting
+      delete request.reasoning_effort;
+      res = await keys.withKey('GROQ_API_KEY', key => groq(key).chat.completions.create(request, { maxRetries: 0, timeout: 15000 }));
+    }
+    const content = (res.choices[0].message.content || '').trim();
+    // An empty or prose reply means "nothing to report", not an outage
+    let parsed;
+    try { parsed = extractJSON(content); } catch (e) {
+      console.log('[Groq Detection] no JSON in reply, treating as none:', content.slice(0, 120));
+      parsed = { type: 'none' };
+    }
+    const result = screen(parsed);
+    return claudeError ? { ...result, warning: claudeError + ' — using Groq for detection' } : result;
+  } catch (err) {
+    console.error('[Groq Detection Error]', err.status || '', err.message);
+    const groqError = err.status === 429 ? 'Groq free-tier limit reached for detection' : err.status === 401 ? 'Groq API key is invalid' : 'Groq detection failed: ' + err.message;
+    return { type: 'none', error: claudeError ? claudeError + '; ' + groqError : groqError };
+  }
+}
+
+// Safety net: discard explicit detections with suspiciously low confidence
+function screen(parsed) {
+  if (parsed.type === 'explicit' && (parsed.confidence || 0) < 0.7) return { type: 'none' };
+  return parsed;
 }
 
 // Quick heuristic check before even calling Claude — catches counting loops, repeated words
@@ -133,39 +193,4 @@ function isGarbledText(text) {
   return false;
 }
 
-// ── Fetch verse text in any translation ──
-async function fetchVerse(book, chapter, verse, translation = 'KJV') {
-  try {
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 512,
-      system: VERSE_SYSTEM,
-      messages: [{
-        role: 'user',
-        content: `Provide the exact text of ${book} ${chapter}:${verse} in the ${translation} translation.
-Return JSON only.`
-      }]
-    });
-
-    const raw = response.content[0].text.trim();
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const data = JSON.parse(clean);
-
-    return {
-      reference: `${book} ${chapter}:${verse}`,
-      translation,
-      text: data.text,
-      book,
-      chapter,
-      verse,
-      source: 'claude',
-      confidence: data.confidence || 'approximate'
-    };
-
-  } catch (err) {
-    console.error('[Claude Verse Fetch Error]', err.message);
-    return null;
-  }
-}
-
-module.exports = { detectScripture, fetchVerse };
+module.exports = { detectScripture };
