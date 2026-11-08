@@ -400,6 +400,24 @@
     for (var k in renderers) renderers[k].stop(); // nothing on screen: no GPU work
   }
 
+  // A screen left open (vMix, the projector) loads the new page by itself
+  // when Di.Verse is updated, so nobody has to refresh vMix's input
+  var pageVersion = null;
+  function checkVersion() {
+    try {
+      var x = new XMLHttpRequest();
+      x.open('GET', '/api/version?t=' + Date.now());
+      x.onload = function() {
+        try {
+          var v = JSON.parse(x.responseText).version;
+          if (!pageVersion) pageVersion = v;
+          else if (v && v !== pageVersion) location.reload();
+        } catch (e) {}
+      };
+      x.send();
+    } catch (e) {}
+  }
+
   function connect() {
     var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '?type=projection' + (OVERLAY ? '&overlay=1' : ''));
     sock = ws;
@@ -408,6 +426,7 @@
       document.getElementById('reconnect').style.display = 'none';
       send({ action: 'CLIENT_INFO', ua: navigator.userAgent, width: window.innerWidth, height: window.innerHeight, overlay: OVERLAY, webgl: hasWebGL() });
       while (pending.length) send(pending.shift());
+      checkVersion();
     };
     ws.onmessage = function(e) {
       try {
