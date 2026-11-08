@@ -248,9 +248,17 @@ server.listen(PORT, '0.0.0.0', () => {
 
   // Tests and headless runs set DIVERSE_NO_BROWSER so no Chrome tabs pop up
   if (process.env.DIVERSE_NO_BROWSER) return;
-  const { exec } = require('child_process');
-  const cmd = process.platform === 'darwin'
-    ? `open -a "Google Chrome" http://localhost:${PORT}/operator`
-    : `start chrome http://localhost:${PORT}/operator`;
-  exec(cmd);
+  // An Operator tab still open from before reconnects (and reloads itself
+  // to this version) within a few seconds; open a new one only if none does
+  setTimeout(() => {
+    if ([...clients].some(c => c.clientType === 'operator' && c.readyState === 1)) {
+      console.log('  Operator page already open in Chrome — it has reconnected.\n');
+      return;
+    }
+    const { exec } = require('child_process');
+    const cmd = process.platform === 'darwin'
+      ? `open -a "Google Chrome" http://localhost:${PORT}/operator`
+      : `start chrome http://localhost:${PORT}/operator`;
+    exec(cmd);
+  }, 4000);
 });

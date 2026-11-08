@@ -341,9 +341,13 @@ connectWS();
 var pageVersion = null;
 function checkVersion() {
   fetch('/api/version').then(function(r) { return r.json(); }).then(function(v) {
-    document.getElementById('versionBadge').textContent = 'v' + v.version;
-    if (!pageVersion) pageVersion = v.version;
-    else if (v.version !== pageVersion) showAlert('Di.Verse was updated to v' + v.version + ' — press Cmd + R to reload this page.');
+    if (!pageVersion) { pageVersion = v.version; document.getElementById('versionBadge').textContent = 'v' + v.version; }
+    else if (v.version !== pageVersion) {
+      // Di.Verse was updated while this page stayed open: load the new page
+      // (unless listening is on mid-service, which a reload would stop)
+      if (!isListening) location.reload();
+      else showAlert('Di.Verse was updated to v' + v.version + ' — press Cmd + R to reload this page when you can.');
+    }
   }).catch(function() {});
 }
 checkVersion();
