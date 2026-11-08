@@ -1,6 +1,6 @@
 {
   "name": "diverse",
-  "version": "1.4.4",
+  "version": "1.5.0",
   "description": "Di.Verse \u2014 live scripture and lyrics display for church services",
   "main": "server.js",
   "scripts": {

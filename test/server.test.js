@@ -134,3 +134,34 @@ test('squeeze mode switches vMix to the squeeze scene and back to the camera tha
     assert.deepStrictEqual(calls, ['Fade Di.Verse Squeeze', 'Fade 3']); // one switch in, back to Camera 3
   } finally { srv.kill(); fake.close(); }
 });
+
+test('automatic squeeze: vMix zooms the live camera into the window, then puts it back', async () => {
+  const http = require('http');
+  const calls = [];
+  const fake = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    const fn = u.searchParams.get('Function');
+    if (fn) calls.push(`${fn} ${u.searchParams.get('Input')}${u.searchParams.has('Value') ? ' ' + u.searchParams.get('Value') : ''}`);
+    res.end('<vmix><inputs><input key="a" number="1" type="Capture" title="Blackmagic Design"/><input key="b" number="2" type="Browser" title="Browser 192.168.0.133"/></inputs><active>1</active></vmix>');
+  }).listen(3933);
+  const { spawn } = require('child_process');
+  const srv = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env: { ...process.env, PORT: '3934', OPENAI_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', ANTHROPIC_API_KEY: '', DIVERSE_NO_BROWSER: '1',
+    DIVERSE_STATE_FILE: require('path').join(require('os').tmpdir(), 'diverse-vmix-auto-' + process.pid + '.json'), VMIX_URL: 'http://localhost:3933', VMIX_SQUEEZE_INPUT: '' }, stdio: 'pipe' });
+  try {
+    for (let i = 0; i < 50; i++) { try { await fetch('http://localhost:3934/api/songs/search'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
+    const check = await (await fetch('http://localhost:3934/api/vmix')).json();
+    assert.strictEqual(check.mode, 'automatic');
+    assert.strictEqual(check.live, '1 Blackmagic Design');
+    const push = body => fetch('http://localhost:3934/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    await push({ action: 'APPLY_BACKGROUND', background: 'theme', frame: 'glass', size: 'large', camera: '46' });
+    await push({ action: 'SHOW_VERSE', verse: { reference: 'Jeremiah 27:13', text: 'x', translation: 'KJV', displayMode: 'squeeze' } });
+    await new Promise(r => setTimeout(r, 300));
+    // camera 46% → left edge at 3%, top edge at 5% of the frame
+    assert.deepStrictEqual(calls, ['SetZoom 1 0.46', 'SetPanX 1 -0.48', 'SetPanY 1 0.44']);
+    calls.length = 0;
+    await push({ action: 'APPLY_BACKGROUND', background: 'theme', frame: 'glass', size: 'large', camera: '25' }); // resized while up
+    await push({ action: 'CLEAR' });
+    await new Promise(r => setTimeout(r, 300));
+    assert.deepStrictEqual(calls, ['SetZoom 1 0.25', 'SetPanX 1 -0.69', 'SetPanY 1 0.65', 'SetZoom 1 1', 'SetPanX 1 0', 'SetPanY 1 0']);
+  } finally { srv.kill(); fake.close(); }
+});

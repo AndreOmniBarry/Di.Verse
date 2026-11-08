@@ -207,24 +207,26 @@ Use **Lower-Third** mode for the stream (Full-Screen mode deliberately covers th
 ## Squeeze-back: shrink the preacher, big scripture (vMix)
 
 Three caption modes, chosen with the mode button on the Operator page:
-- **Lower-Third:** verse across the bottom of the camera picture.
-- **Squeeze (camera small, big text):** the camera picture shrinks into a framed window at the top left, and the scripture gets most of the screen in very large type. Choose the window size with the **Camera** picker: **20%** or **25%** (best for a TV: the reference sits beside the camera and the verse runs full width underneath, with short verses growing to fill the space) up to **46%** (side by side).
+- **Squeeze (camera small, big text):** the preacher shrinks into a glass-framed window at the **top left** and the scripture fills a large glass panel on the right. Choose the window size with the **Camera** picker: **46%** (default, side by side), or 33% / 25% / 20% (camera smaller, verse runs full width underneath).
 - **Full-Screen:** the verse covers the whole picture.
+- **Lower-Third:** verse across the bottom of the camera picture.
 
-Squeeze needs a scene in vMix that has the camera shrunk into Di.Verse's window. Set it up once:
+The whole verse always fits on one screen (no "1/6" pages): long verses get slightly smaller type, short ones grow.
 
-1. **Create the scene.** In vMix: **Add Input → Colour** (black) → OK. Right-click it → **Rename** → `Di.Verse Squeeze`.
-2. **Put the camera in it.** Open that input's settings (cog) → **Layers** (called **MultiView** in older vMix) → Layer 1 → choose your camera input.
-3. **Size and place the camera.** Edit Layer 1's position. Set the size (zoom) to the **same percentage as the Camera picker** (25% by default) and move it to the **top left**, so it sits exactly inside Di.Verse's white window frame. Use the frame as your guide: put the Operator in **Squeeze** mode and push any verse first, and keep overlay 1 (Di.Verse) on, so you can see the frame while you adjust.
-4. **Turn on vMix's remote control.** vMix: **Settings → Web Controller** → tick enabled (port **8088**). If Windows asks whether to allow vMix on the network, allow it on **Private** networks.
-5. **Tell Di.Verse where vMix is.** On the Di.Verse Mac, open `.env` and add (with the vMix PC's own address; in Windows run `ipconfig` and read the IPv4 address):
+**Automatic squeeze: vMix shrinks the camera for you, so you don't build any scene.** Set it up once:
+
+1. **Turn on vMix's remote control.** vMix: **Settings → Web Controller** → tick enabled (port **8088**) → OK. If Windows asks whether to allow vMix on the network, allow it on **Private** networks.
+2. **Find the vMix PC's address.** On Windows: Start → type `cmd` → Enter → type `ipconfig` → read the **IPv4 Address** (e.g. `192.168.0.120`).
+3. **Tell Di.Verse.** On the Di.Verse Mac: `open -e ~/Desktop/Di.Verse/.env` and add one line (your address):
    ```
    VMIX_URL=http://192.168.0.120:8088
-   VMIX_SQUEEZE_INPUT=Di.Verse Squeeze
    ```
-   Restart Di.Verse (Ctrl + C, then `npm start`).
-6. **Check the link.** On the Di.Verse Mac, open `http://localhost:3000/api/vmix`. It should say `"reachable": true` and `"squeezeInputFound": true`.
+   Save, then restart Di.Verse (Ctrl + C, then `npm start`).
+4. **Check the link.** On the Mac open `http://localhost:3000/api/vmix`. It should say `"reachable": true`, `"mode": "automatic"` and name your camera as `live`.
+5. In vMix, keep the Di.Verse Web Browser input on **Overlay 1** all the time, with the URL ending `?overlay=1`.
 
-From then on: pushing a verse in **Squeeze** mode fades vMix to `Di.Verse Squeeze`. **✕ Clear**, or showing the next verse in another mode, fades back to whichever camera was live before. Keep overlay 1 (Di.Verse) on all the time; it draws the frame and text on top of the scene.
+From then on: pushing a verse in **Squeeze** mode makes vMix zoom the live camera down into the window at the top left (exactly inside Di.Verse's frame). **✕ Clear**, or showing the next verse in another mode, puts the camera back to full screen. Changing the Camera size while squeezed resizes it live.
 
-Without the vMix link (no `VMIX_URL`), Squeeze still draws the layout; switch vMix to the squeeze scene yourself.
+*Alternative, a scene of your own:* if you'd rather build a vMix scene with the camera already shrunk, also add `VMIX_SQUEEZE_INPUT=<scene name>`; Di.Verse then fades to that scene and back instead (`VMIX_TRANSITION`, `VMIX_DURATION` set the transition).
+
+Without the vMix link (no `VMIX_URL`), Squeeze still draws the layout and the camera stays full size behind it.
