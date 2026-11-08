@@ -298,6 +298,7 @@ function connectWS() {
         applyBackground(); // nothing chosen yet on this laptop: send the defaults
       }
     }
+    if (msg.action === 'NOTICE') noteOnce(msg.message);
     if (msg.action === 'TRANSLATION_CHANGE') setTranslation(msg.translation, true);
     if (msg.action === 'LATE_VERSE' && msg.verse) {
       addToQueue(Object.assign({}, msg.verse, { confidence: 0.9, type: 'explicit', note: msg.verse.note + ' (confirmed after a delay)' }));
@@ -320,6 +321,7 @@ buildBackgroundList();
   document.getElementById('bgSelect').value = bg || 'crystal-glass';
   document.getElementById('frameSelect').value = fr || 'glass';
   document.getElementById('sizeSelect').value = sz || 'large';
+  if (loadPref('mode')) setMode(loadPref('mode'));
   if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
 })();
 
@@ -380,9 +382,22 @@ document.getElementById('translationSelect').addEventListener('change', function
 });
 loadTranslations();
 
+// Lower-third → Squeeze (camera shrinks into a window, big scripture panel)
+// → Full-screen. Squeeze switches vMix automatically when VMIX_URL is set.
+var MODES = [
+  ['lower-third', '◧ Lower-Third'],
+  ['squeeze', '◰ Squeeze (camera shrinks)'],
+  ['full-screen', '⬜ Full-Screen'],
+];
 function toggleMode() {
-  displayMode = displayMode === 'lower-third' ? 'full-screen' : 'lower-third';
-  document.getElementById('modeBtn').textContent = displayMode === 'lower-third' ? '◧ Lower-Third' : '⬜ Full-Screen';
+  var i = MODES.findIndex(function(m) { return m[0] === displayMode; });
+  setMode(MODES[(i + 1) % MODES.length][0]);
+}
+function setMode(mode) {
+  var m = MODES.find(function(x) { return x[0] === mode; }) || MODES[0];
+  displayMode = m[0];
+  document.getElementById('modeBtn').textContent = m[1];
+  savePref('mode', displayMode);
 }
 
 function adjustFont(delta) {

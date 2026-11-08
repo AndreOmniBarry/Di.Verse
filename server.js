@@ -46,6 +46,20 @@ app.use('/api', require('./routes/transcribe'));
 app.use('/api', require('./routes/detect'));
 app.use('/api', require('./routes/push'));
 
+// vMix link check (SETUP.md): is it reachable, and what inputs does it have?
+app.get('/api/vmix', async (req, res) => {
+  if (!vmixService().configured()) return res.json({ configured: false, help: 'Set VMIX_URL and VMIX_SQUEEZE_INPUT in .env' });
+  try {
+    const st = await vmixService().state();
+    const want = process.env.VMIX_SQUEEZE_INPUT;
+    res.json({ configured: true, reachable: true, live: st.active, inputs: st.inputs,
+      squeezeInputFound: st.inputs.some(i => i.title === want || i.number === want) });
+  } catch (err) {
+    res.json({ configured: true, reachable: false, error: err.message });
+  }
+});
+function vmixService() { return require('./services/vmix'); }
+
 // Any route error answers in JSON instead of hanging the request
 app.use('/api', (err, req, res, next) => {
   console.error('[API Error]', req.method, req.path, err.message);
@@ -128,8 +142,11 @@ setInterval(() => {
   });
 }, 30000).unref();
 
+const vmix = require('./services/vmix');
+
 function broadcast(payload) {
   rememberScreen(payload);
+  vmix.onScreen(payload, message => alertOperator({ action: 'NOTICE', message }));
   const message = JSON.stringify(payload);
   clients.forEach(client => {
     if (client.readyState === 1 && client.clientType !== 'operator') {
