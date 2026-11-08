@@ -37,7 +37,15 @@ for (const page of ['/operator', '/admin']) {
     : res.status(403).send('<p style="font-family:sans-serif">The operator and admin pages only open on the Di.Verse laptop. Use <a href="/projection">/projection</a> or <a href="/preacher">/preacher</a> on this device.</p>'));
 }
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Pages and scripts are always re-checked, so a browser (or vMix's browser
+// input) never keeps running an old copy after an update
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, file) => { if (/\.(html|js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); },
+}));
+
+// Which version is running — shown on the Operator page
+const VERSION = require('./package.json').version;
+app.get('/api/version', (req, res) => res.json({ version: VERSION }));
 
 // ── Routes ──
 app.use('/api', require('./routes/bible'));
@@ -188,7 +196,7 @@ const IP = getLocalIP();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('\n========================================');
-  console.log('  Di.Verse — The Word, on cue.');
+  console.log('  Di.Verse — The Word, on cue.   v' + VERSION);
   console.log('========================================\n');
   console.log(`  Operator:   http://localhost:${PORT}/operator`);
   console.log(`  Projection: http://${IP}:${PORT}/projection`);
