@@ -36,8 +36,9 @@
       opacity: 0; transition: opacity 0.3s ease; pointer-events: none; z-index: 10;
     }
     #fullScreen.show { opacity: 1; }
-    .fs-text { font-weight: 700; color: #FFFFFF; line-height: 1.35; max-width: 86%; margin-bottom: 3vh; }
-    .fs-ref { width: 86%; color: #E94560; font-weight: bold; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
+    .fs-text { font-weight: 700; color: #FFFFFF; line-height: 1.35; width: 86%; margin-bottom: 3vh; } /* fixed width: pages are measured against it */
+    .fs-ref { width: 86%; color: #E94560; font-weight: bold; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .fs-ref .page-count { margin-left: 1em; }
     /* Live/still backgrounds (backgrounds.js) sit under a soft darkening layer */
     .bg-canvas, .bg-dim { position: absolute; inset: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
     .bg-canvas { z-index: 0; }
@@ -72,6 +73,27 @@
     /* Light backgrounds need dark text */
     html[data-light] .lt-text, html[data-light] .fs-text { color: #14142B !important; text-shadow: none; }
     html[data-light] #ltRef, html[data-light] #fsRef { color: #1F3A8A !important; }
+    /* ── Squeeze-back (camera window + large scripture panel) ──
+       Window: 58% of the screen, top-left, 16:9. In vMix the camera layer is
+       sized to fill it (see SETUP.md). */
+    #squeeze { position: fixed; inset: 0; opacity: 0; transition: opacity 0.45s ease; pointer-events: none; z-index: 11; }
+    #squeeze.show { opacity: 1; }
+    .sq-bg { position: absolute; inset: 0; background: #070a14; }
+    .sq-window { position: absolute; left: 3vw; top: 6vh; width: 58vw; height: 58vh; z-index: 2; border-radius: 0.6vh;
+      box-shadow: 0 0 0 0.35vh rgba(255,255,255,0.8), 0 0 0 0.9vh rgba(255,255,255,0.08), 0 1.5vh 5vh rgba(0,0,0,0.55); }
+    .sq-panel { position: absolute; left: 63vw; right: 3vw; top: 6vh; bottom: 6vh; z-index: 3; overflow: hidden;
+      display: flex; flex-direction: column; justify-content: center; padding: 3vh 2.2vw;
+      border-radius: 2vh; background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
+      border: 1px solid rgba(255,255,255,0.14); border-top-color: rgba(255,255,255,0.45);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 2vh 5vh rgba(0,0,0,0.35); }
+    .sq-panel::before { content: ''; position: absolute; left: 2.2vw; right: 2.2vw; top: 0; height: 0.45vh; border-radius: 0 0 1vh 1vh;
+      background: linear-gradient(90deg, var(--accent, #E94560), rgba(255,255,255,0.8)); box-shadow: 0 0 1.6vh var(--accent, #E94560); }
+    .sq-text { font-weight: 700; color: #FFFFFF; line-height: 1.3; white-space: pre-line; transition: opacity 0.26s ease;
+      text-shadow: 0 2px 3px rgba(0,0,0,0.6), 0 0 18px rgba(0,0,0,0.3); }
+    .sq-text.turning { opacity: 0; }
+    .sq-page { margin-top: 2vh; font-size: 2.2vh; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 0.1em; min-height: 2.6vh; }
+    .sq-ref { position: absolute; left: 3vw; width: 58vw; top: 67vh; bottom: 6vh; z-index: 3; display: flex; align-items: center; gap: 0.6em;
+      font-weight: 800; color: #F5C518; letter-spacing: 0.04em; text-shadow: 0 2px 4px rgba(0,0,0,0.6); }
     #reconnect { position: fixed; bottom: 10px; right: 14px; font-size: 0.62rem; color: rgba(255,255,255,0.2); display: none; z-index: 20; }
   </style>
 </head>
@@ -86,6 +108,14 @@
     <canvas class="bg-canvas"></canvas><div class="bg-dim"></div>
     <div class="fs-text" id="fsText"></div>
     <div class="fs-ref"><span id="fsRef"></span><span class="badge" id="fsBadge">KJV</span><span class="page-count" id="fsPage"></span></div>
+  </div>
+  <!-- Squeeze-back: the camera (a vMix layer underneath) shows through the
+       window; the scripture gets its own large panel -->
+  <div id="squeeze">
+    <div class="sq-bg" id="sqBg"><canvas class="bg-canvas"></canvas><div class="bg-dim"></div></div>
+    <div class="sq-window" id="sqWindow"></div>
+    <div class="sq-panel"><div class="sq-text" id="sqText"></div><div class="sq-page" id="sqPage"></div></div>
+    <div class="sq-ref"><span id="sqRef"></span><span class="badge" id="sqBadge">KJV</span></div>
   </div>
   <div id="reconnect">Reconnecting...</div>
 <script src="/projection/backgrounds.js"></script>
@@ -107,22 +137,27 @@
 
   function paintBackgrounds() {
     var found = BG && BG.find(currentBg);
+    updateSqueezeClip(); // keep the camera window open whatever the background
     document.documentElement.removeAttribute('data-light');
-    ['lowerThird', 'fullScreen'].forEach(function(boxId) {
-      var box = document.getElementById(boxId), canvas = box.querySelector('.bg-canvas'), dim = box.querySelector('.bg-dim');
+    // [box that is shown, element that carries the background]
+    [['lowerThird', 'lowerThird'], ['fullScreen', 'fullScreen'], ['squeeze', 'sqBg']].forEach(function(pair) {
+      var boxId = pair[0], box = document.getElementById(pair[1]), shownBox = document.getElementById(boxId);
+      var canvas = box.querySelector('.bg-canvas'), dim = box.querySelector('.bg-dim');
       if (renderers[boxId]) renderers[boxId].stop();
       canvas.style.display = 'none'; dim.style.display = 'none';
+      var covers = boxId !== 'lowerThird'; // full screen and squeeze hide the picture behind them
       if (!found) {
-        if (currentTheme) box.style.background = boxId === 'fullScreen' ? currentTheme.bg.replace(/[\d.]+\)$/, '1)') : currentTheme.bg;
+        if (currentTheme) box.style.background = covers ? currentTheme.bg.replace(/[\d.]+\)$/, '1)') : currentTheme.bg;
         return;
       }
       if (found.kind === 'still') {
-        box.style.background = found.bg.css;
-        if (found.bg.light) document.documentElement.setAttribute('data-light', '1');
+        // See-through tints would let the camera show behind full-screen text: give them a solid base there
+        box.style.background = covers && (found.bg.glass || found.bg.clear) ? found.bg.css.replace(/^transparent$/, 'rgba(0,0,0,0)') + ', #070a14' : found.bg.css;
+        if (found.bg.light && boxId === 'lowerThird') document.documentElement.setAttribute('data-light', '1');
         return;
       }
       box.style.background = BG.fallbackCss(found.bg); // shown if WebGL isn't available
-      if (!box.classList.contains('show')) return;     // only animate what's on screen
+      if (!shownBox.classList.contains('show')) return; // only animate what's on screen
       var r = renderers[boxId] || (renderers[boxId] = new BG.Renderer(canvas, boxId === 'lowerThird' ? 0.5 : 0.35));
       if (r.start(found.bg)) { canvas.style.display = 'block'; dim.style.display = 'block'; }
     });
@@ -137,6 +172,7 @@
     document.getElementById('ltText').style.color = theme.text;
     document.getElementById('fsText').style.color = theme.text;
     document.getElementById('fsRef').style.color = theme.ref;
+    document.getElementById('sqRef').style.color = theme.ref;
     var badges = document.querySelectorAll('.badge');
     badges.forEach(function(b) { b.style.background = theme.accent; });
     document.documentElement.style.setProperty('--accent', theme.accent);
@@ -149,9 +185,9 @@
   // shown in turn at reading pace with a "1/3" counter — the preacher's face
   // stays visible above the caption.
   var SIZES = {
-    normal: { lt: 3.8, ref: 2.4, fs: 5.2, ltLines: 3 },
-    large:  { lt: 4.8, ref: 2.8, fs: 6.2, ltLines: 2 },
-    xl:     { lt: 5.9, ref: 3.2, fs: 7.4, ltLines: 2 },
+    normal: { lt: 3.8, ref: 2.4, fs: 5.2, sq: 4.4, ltLines: 3 },
+    large:  { lt: 4.8, ref: 2.8, fs: 6.2, sq: 5.2, ltLines: 2 },
+    xl:     { lt: 5.9, ref: 3.2, fs: 7.4, sq: 6.2, ltLines: 2 },
   };
   var textSize = 'large';
   var fontDelta = 0; // operator's +/- buttons, kept for every new verse
@@ -160,7 +196,9 @@
     var sz = SIZES[textSize] || SIZES.large, k = Math.max(0.6, 1 + fontDelta / 24);
     document.getElementById('ltText').style.fontSize = (sz.lt * k) + 'vh';
     document.getElementById('fsText').style.fontSize = (sz.fs * k) + 'vh';
+    document.getElementById('sqText').style.fontSize = (sz.sq * k) + 'vh';
     document.querySelectorAll('.lt-ref, .fs-ref').forEach(function(el) { el.style.fontSize = (sz.ref * k) + 'vh'; });
+    document.querySelector('.sq-ref').style.fontSize = (sz.ref * 1.6 * k) + 'vh';
   }
 
   function applyFontSize(delta) {
@@ -171,12 +209,26 @@
 
   var pager = { box: null, text: null, pages: [], i: 0, timer: null };
 
+  var BOXES = {
+    lowerThird: { text: 'ltText', counter: 'ltPage', ref: 'ltRef', badge: 'ltBadge' },
+    fullScreen: { text: 'fsText', counter: 'fsPage', ref: 'fsRef', badge: 'fsBadge' },
+    squeeze:    { text: 'sqText', counter: 'sqPage', ref: 'sqRef', badge: 'sqBadge' },
+  };
+
   function maxLinesFor(box) {
     var sz = SIZES[textSize] || SIZES.large;
     if (box === 'lowerThird') return sz.ltLines;
-    var el = document.getElementById('fsText');
+    var el = document.getElementById(BOXES[box].text);
     var lh = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.35;
-    return Math.max(2, Math.floor(window.innerHeight * 0.62 / lh));
+    var room = box === 'squeeze' ? (window.innerHeight * 0.88 - 6 * window.innerHeight / 100 - 60) : window.innerHeight * 0.62;
+    return Math.max(2, Math.floor(room / lh));
+  }
+
+  // The squeeze background has a hole where the camera window is, so the
+  // vMix camera layer underneath shows through
+  function updateSqueezeClip() {
+    var w = document.getElementById('sqWindow').getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
+    document.getElementById('sqBg').style.clipPath = 'path(evenodd, "M0 0H' + W + 'V' + H + 'H0Z M' + w.left + ' ' + w.top + 'H' + w.right + 'V' + w.bottom + 'H' + w.left + 'Z")';
   }
 
   // Splits text into pages of at most maxLines lines at the current size,
@@ -215,7 +267,7 @@
 
   function showPaged(box, text) {
     clearTimeout(pager.timer);
-    var el = document.getElementById(box === 'lowerThird' ? 'ltText' : 'fsText');
+    var el = document.getElementById(BOXES[box].text);
     applySizes();
     pager.box = box; pager.text = text; pager.i = 0;
     pager.pages = paginate(el, text, maxLinesFor(box));
@@ -223,8 +275,8 @@
   }
 
   function renderPage(animate) {
-    var el = document.getElementById(pager.box === 'lowerThird' ? 'ltText' : 'fsText');
-    var counter = document.getElementById(pager.box === 'lowerThird' ? 'ltPage' : 'fsPage');
+    var el = document.getElementById(BOXES[pager.box].text);
+    var counter = document.getElementById(BOXES[pager.box].counter);
     var page = pager.pages[pager.i];
     var put = function() {
       el.textContent = page;
@@ -244,7 +296,7 @@
   // Last resort for a single page that still doesn't fit (e.g. one enormous
   // word on a small window): shrink just that page
   function fitToScreen() {
-    [['lowerThird', 'ltText', 'box', 0.5], ['fullScreen', 'fsText', 'text', 0.72]].forEach(function(p) {
+    [['lowerThird', 'ltText', 'box', 0.5], ['fullScreen', 'fsText', 'text', 0.72], ['squeeze', 'sqText', 'text', 0.78]].forEach(function(p) {
       var box = document.getElementById(p[0]), el = document.getElementById(p[1]);
       if (!box.classList.contains('show')) return;
       var measured = p[2] === 'box' ? box : el;
@@ -254,15 +306,19 @@
     });
   }
 
-  window.addEventListener('resize', function() { applyFontSize(); });
+  window.addEventListener('resize', function() { updateSqueezeClip(); applyFontSize(); });
+
+  function boxFor(mode) {
+    return mode === 'full-screen' ? 'fullScreen' : mode === 'squeeze' ? 'squeeze' : 'lowerThird';
+  }
 
   function showVerse(verse, theme, fontSize) {
     hide();
     applyTheme(theme);
     if (fontSize !== undefined) fontDelta = fontSize;
-    var full = verse.displayMode === 'full-screen', box = full ? 'fullScreen' : 'lowerThird';
-    document.getElementById(full ? 'fsRef' : 'ltRef').textContent = verse.reference;
-    document.getElementById(full ? 'fsBadge' : 'ltBadge').textContent = verse.translation;
+    var box = boxFor(verse.displayMode);
+    document.getElementById(BOXES[box].ref).textContent = verse.reference;
+    document.getElementById(BOXES[box].badge).textContent = verse.translation;
     document.getElementById(box).classList.add('show');
     paintBackgrounds(); // start the live effect now the box is visible
     showPaged(box, verse.text);
@@ -272,9 +328,9 @@
     hide();
     applyTheme(theme);
     if (fontSize !== undefined) fontDelta = fontSize;
-    var full = lyrics.displayMode === 'full-screen', box = full ? 'fullScreen' : 'lowerThird';
-    document.getElementById(full ? 'fsRef' : 'ltRef').textContent = lyrics.songTitle + (lyrics.section ? '  ·  ' + lyrics.section : '');
-    document.getElementById(full ? 'fsBadge' : 'ltBadge').textContent = lyrics.slideNum + '/' + lyrics.totalSlides;
+    var box = boxFor(lyrics.displayMode);
+    document.getElementById(BOXES[box].ref).textContent = lyrics.songTitle + (lyrics.section ? '  ·  ' + lyrics.section : '');
+    document.getElementById(BOXES[box].badge).textContent = lyrics.slideNum + '/' + lyrics.totalSlides;
     document.getElementById(box).classList.add('show');
     paintBackgrounds();
     showPaged(box, lyrics.content);
@@ -285,6 +341,7 @@
     pager.text = null;
     document.getElementById('lowerThird').classList.remove('show');
     document.getElementById('fullScreen').classList.remove('show');
+    document.getElementById('squeeze').classList.remove('show');
     for (var k in renderers) renderers[k].stop(); // nothing on screen: no GPU work
   }
 

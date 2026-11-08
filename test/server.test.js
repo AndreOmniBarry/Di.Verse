@@ -108,3 +108,29 @@ test('a screen that reconnects gets the current picture back', async () => {
   assert.deepStrictEqual(got.map(m => m.action), ['APPLY_BACKGROUND', 'SHOW_VERSE']);
   assert.strictEqual(got[1].verse.reference, 'Psalms 23:1');
 });
+
+test('squeeze mode switches vMix to the squeeze scene and back to the camera that was live', async () => {
+  // Stand-in for vMix's web API on another port
+  const http = require('http');
+  const calls = [];
+  const fake = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    if (u.searchParams.get('Function')) calls.push(u.searchParams.get('Function') + ' ' + u.searchParams.get('Input'));
+    res.end('<vmix><inputs><input key="a" number="1" type="Capture" title="Camera 1"/><input key="b" number="3" type="Capture" title="Camera 3"/><input key="c" number="5" type="Colour" title="Di.Verse Squeeze"/></inputs><active>3</active></vmix>');
+  }).listen(3931);
+  const { spawn } = require('child_process');
+  const srv = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env: { ...process.env, PORT: '3932', OPENAI_API_KEY: '', GROQ_API_KEY: '', GEMINI_API_KEY: '', ANTHROPIC_API_KEY: '', DIVERSE_NO_BROWSER: '1',
+    DIVERSE_STATE_FILE: require('path').join(require('os').tmpdir(), 'diverse-vmix-state-' + process.pid + '.json'), VMIX_URL: 'http://localhost:3931', VMIX_SQUEEZE_INPUT: 'Di.Verse Squeeze' }, stdio: 'pipe' });
+  try {
+    for (let i = 0; i < 50; i++) { try { await fetch('http://localhost:3932/api/songs/search'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
+    const check = await (await fetch('http://localhost:3932/api/vmix')).json();
+    assert.strictEqual(check.reachable, true);
+    assert.strictEqual(check.squeezeInputFound, true);
+    const push = body => fetch('http://localhost:3932/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    await push({ action: 'SHOW_VERSE', verse: { reference: 'John 3:16', text: 'x', translation: 'KJV', displayMode: 'squeeze' } });
+    await push({ action: 'SHOW_VERSE', verse: { reference: 'John 3:17', text: 'y', translation: 'KJV', displayMode: 'squeeze' } });
+    await push({ action: 'CLEAR' });
+    await new Promise(r => setTimeout(r, 400));
+    assert.deepStrictEqual(calls, ['Fade Di.Verse Squeeze', 'Fade 3']); // one switch in, back to Camera 3
+  } finally { srv.kill(); fake.close(); }
+});
