@@ -7,6 +7,10 @@ const { getPassage } = require('../services/bibleDb');
 const quotes = require('../services/quoteMatch');
 quotes.warmUp();
 
+const SCRIPTURE_CUE = /\b(verses?|chapters?|book of|bible|scriptures?|it is written|the word says|says|saith|said|psalms?|gospel|epistle|prophet|apostle|amplified|translation|version)\b/i;
+const AI_MIN_GAP_MS = 3000;
+let lastAiCheck = 0;
+
 router.post('/detect', async (req, res) => {
   // fast: parser + quote matching only (used on live words while the
   // preacher is still talking); the AI layer runs on finished sentences
@@ -84,6 +88,14 @@ router.post('/detect', async (req, res) => {
     }
 
     if (fast) return res.json({ type: 'none' });
+
+    // ── LAYER 2 budget: free AI tiers have daily limits, and a long service
+    // has thousands of sentences. Only sentences that sound like they involve
+    // scripture (or long ones that might paraphrase it) go to the AI, at most
+    // one every few seconds; named references and quotes never need it.
+    if (!SCRIPTURE_CUE.test(text) && text.trim().split(/\s+/).length < 14) return res.json({ type: 'none' });
+    if (Date.now() - lastAiCheck < AI_MIN_GAP_MS) return res.json({ type: 'none' });
+    lastAiCheck = Date.now();
 
     // ── LAYER 2: Claude — implicit quotes, ambiguous speech, hard cases ──
     const detection = await detectScripture(text, context, activeTranslation);

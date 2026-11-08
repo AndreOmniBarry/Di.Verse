@@ -37,20 +37,45 @@
     .fs-text.md { font-size: 1.8rem; }
     .fs-text.sm { font-size: 1.4rem; }
     .fs-ref { font-size: 1.1rem; color: #E94560; font-weight: bold; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
+    /* Live/still backgrounds (backgrounds.js) sit under a soft darkening layer */
+    .bg-canvas, .bg-dim { position: absolute; inset: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
+    .bg-canvas { z-index: 0; }
+    .bg-dim { z-index: 1; background: linear-gradient(0deg, rgba(0,0,0,0.38), rgba(0,0,0,0.16)); }
+    #lowerThird > .lt-ref, #lowerThird > .lt-text, #fullScreen > .fs-text, #fullScreen > .fs-ref { position: relative; z-index: 2; }
+    .lt-text, .fs-text { text-shadow: 0 2px 10px rgba(0,0,0,0.35); }
+    /* Caption styles */
+    html[data-frame="glass"] #lowerThird {
+      left: 3vw; right: 3vw; bottom: 4vh; width: auto; min-height: 26vh; overflow: hidden;
+      border-radius: 26px; border: 1px solid rgba(255,255,255,0.22); border-top: 1px solid rgba(255,255,255,0.5);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -18px 40px rgba(255,255,255,0.05);
+      -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
+    }
+    html[data-frame="glass"] #lowerThird::after {
+      content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: inherit;
+      background: linear-gradient(180deg, rgba(255,255,255,0.20), rgba(255,255,255,0.04) 38%, transparent 60%);
+    }
+    html[data-frame="minimal"] #lowerThird { background: transparent !important; border-top: none; }
+    html[data-frame="minimal"] .lt-text { text-shadow: 0 2px 6px rgba(0,0,0,0.9), 0 0 24px rgba(0,0,0,0.7); }
+    /* Light backgrounds need dark text */
+    html[data-light] .lt-text, html[data-light] .fs-text { color: #14142B !important; text-shadow: none; }
+    html[data-light] #ltRef, html[data-light] #fsRef { color: #1F3A8A !important; }
     #reconnect { position: fixed; bottom: 10px; right: 14px; font-size: 0.62rem; color: rgba(255,255,255,0.2); display: none; z-index: 20; }
   </style>
 </head>
 <body>
   <div id="idle"><div class="logo">Di.Verse</div></div>
   <div id="lowerThird">
+    <canvas class="bg-canvas"></canvas><div class="bg-dim"></div>
     <div class="lt-ref"><span id="ltRef"></span><span class="badge" id="ltBadge">KJV</span></div>
     <div class="lt-text" id="ltText"></div>
   </div>
   <div id="fullScreen">
+    <canvas class="bg-canvas"></canvas><div class="bg-dim"></div>
     <div class="fs-text" id="fsText"></div>
     <div class="fs-ref"><span id="fsRef"></span><span class="badge" id="fsBadge">KJV</span></div>
   </div>
   <div id="reconnect">Reconnecting...</div>
+<script src="/projection/backgrounds.js"></script>
 <script>
   if (new URLSearchParams(location.search).has('overlay')) document.documentElement.classList.add('overlay');
   var reconnectTimer;
@@ -63,13 +88,48 @@
     return '';
   }
 
+  // ── Backgrounds: 'theme' uses the colour theme; otherwise a still or live
+  // background from backgrounds.js ──
+  var BG = window.DiVerseBackgrounds;
+  var currentBg = 'theme', currentTheme = null, renderers = {};
+
+  function applyBackground(id, frame) {
+    currentBg = id || 'theme';
+    document.documentElement.setAttribute('data-frame', frame || 'bar');
+    paintBackgrounds();
+    fitToScreen();
+  }
+
+  function paintBackgrounds() {
+    var found = BG && BG.find(currentBg);
+    document.documentElement.removeAttribute('data-light');
+    ['lowerThird', 'fullScreen'].forEach(function(boxId) {
+      var box = document.getElementById(boxId), canvas = box.querySelector('.bg-canvas'), dim = box.querySelector('.bg-dim');
+      if (renderers[boxId]) renderers[boxId].stop();
+      canvas.style.display = 'none'; dim.style.display = 'none';
+      if (!found) {
+        if (currentTheme) box.style.background = boxId === 'fullScreen' ? currentTheme.bg.replace(/[\d.]+\)$/, '1)') : currentTheme.bg;
+        return;
+      }
+      if (found.kind === 'still') {
+        box.style.background = found.bg.css;
+        if (found.bg.light) document.documentElement.setAttribute('data-light', '1');
+        return;
+      }
+      box.style.background = BG.fallbackCss(found.bg); // shown if WebGL isn't available
+      if (!box.classList.contains('show')) return;     // only animate what's on screen
+      var r = renderers[boxId] || (renderers[boxId] = new BG.Renderer(canvas, boxId === 'lowerThird' ? 0.5 : 0.35));
+      if (r.start(found.bg)) { canvas.style.display = 'block'; dim.style.display = 'block'; }
+    });
+  }
+
   function applyTheme(theme) {
     if (!theme) return;
-    document.getElementById('lowerThird').style.background = theme.bg;
+    currentTheme = theme;
+    paintBackgrounds();
     document.getElementById('lowerThird').style.borderTopColor = theme.border;
     document.getElementById('ltRef').style.color = theme.ref;
     document.getElementById('ltText').style.color = theme.text;
-    document.getElementById('fullScreen').style.background = theme.bg.replace(/[\d.]+\)$/, '1)');
     document.getElementById('fsText').style.color = theme.text;
     document.getElementById('fsRef').style.color = theme.ref;
     var badges = document.querySelectorAll('.badge');
@@ -125,6 +185,7 @@
       document.getElementById('ltBadge').textContent = verse.translation;
       document.getElementById('lowerThird').classList.add('show');
     }
+    paintBackgrounds(); // start the live effect now the box is visible
     applyFontSize(fontSize);
   }
 
@@ -146,12 +207,14 @@
       document.getElementById('ltBadge').textContent = badge;
       document.getElementById('lowerThird').classList.add('show');
     }
+    paintBackgrounds(); // start the live effect now the box is visible
     applyFontSize(fontSize);
   }
 
   function hide() {
     document.getElementById('lowerThird').classList.remove('show');
     document.getElementById('fullScreen').classList.remove('show');
+    for (var k in renderers) renderers[k].stop(); // nothing on screen: no GPU work
   }
 
   function connect() {
@@ -164,6 +227,7 @@
       var msg = JSON.parse(e.data);
       if (msg.action === 'SHOW_VERSE')   showVerse(msg.verse, msg.theme, msg.fontSize);
       else if (msg.action === 'SHOW_LYRICS') showLyrics(msg.lyrics, msg.theme, msg.fontSize);
+      else if (msg.action === 'APPLY_BACKGROUND') applyBackground(msg.background, msg.frame);
       else if (msg.action === 'CLEAR')   hide();
       else if (msg.action === 'APPLY_THEME') applyTheme(msg.theme);
       else if (msg.action === 'FONT_SIZE')   applyFontSize(msg.delta);
