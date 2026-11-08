@@ -3,7 +3,7 @@
 // isn't fed silence (its main source of invented text) and a reference like
 // "John 3:16" isn't split across two fixed-length chunks.
 const OUT_RATE = 16000;
-const SPEECH_RMS = 0.012;        // block RMS above this counts as speech
+const SPEECH_RMS = 0.007;        // block RMS above this counts as speech (low: quiet preachers, distant mics)
 // Defaults; the operator page passes the active provider's values
 // (Groq bills each request as 10 s minimum, so it gets longer chunks)
 const DEFAULT_MIN_SECONDS = 2.5; // don't cut before this much audio

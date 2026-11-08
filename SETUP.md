@@ -171,6 +171,17 @@ Changing `.env` always needs a restart: Ctrl+C in Terminal, then `npm start`.
 
 ---
 
+## Moving through a passage
+
+When a verse is on screen:
+- **Next verse ▶ / ◀ Prev verse** under "On Screen Now", or the **→ / ←** keys, or a presentation clicker (**Page Down / Page Up**). **Shift + → / ←** or **Ch ⏭ / ⏮ Ch** move a whole chapter. It carries on into the next chapter and book by itself.
+- **The preacher can drive it** while you listen: *"next verse"*, *"the following verse"*, *"take it back"*, *"previous verse"*, *"next chapter"*, *"verse 17"*, *"verses 17 to 19"*, *"chapter 5 verse 3"* (same book). The transcript shows each one, e.g. `[ "next verse" → Romans 8:29 ]`. With Auto-push off, they go to the queue instead.
+- **↑ / ↓** choose in the queue; **Space** pushes the chosen one.
+
+**Manual, any time:** type a reference in the top box and press **Enter**, e.g. `rom 8 28`, `jn 3:16-18`, `esther 8 9`, `ps 23`. Press **/** to jump to the box. It works whether or not listening is on. A translation that has to be looked up online shows KJV after 2.5 seconds and switches over when it arrives.
+
+The small label above the transcript says which engine is writing it: **Live captions ✓**, or **Whisper covering** when Chrome's captions stall (they are restarted automatically).
+
 ## Livestream (OBS, vMix, Ecamm…)
 
 Add Di.Verse to the stream as a **browser source** with the overlay address. The page is transparent, so only the verse box shows over the camera:

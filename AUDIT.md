@@ -177,3 +177,22 @@ The operator dropdown is built from `GET /api/translations`. Available translati
 | Passages fetched one verse at a time | A 10-verse AI passage could take minutes | Three at a time (fast, but under free-tier per-minute limits) |
 | Saving a song deleted in another window | Generic 500 error | 404 with a clear message in Admin |
 | AI-detected ranges | Only the first verse shown | AI detection returns `verse_end`; the full range is shown |
+
+## 9. Field feedback from live tests (v1.5 – v1.7) and what changed
+
+Collected from the operator's tests on the real vMix setup (vMix 24, Windows, 720p) and in the room.
+
+| # | Feedback | Cause found | Fix (version) |
+|---|----------|-------------|---------------|
+| 1 | Squeeze showed an empty box; full screen half height in vMix | vMix's built-in browser is an old Chrome: CSS `inset` unsupported, panels collapsed | Plain top/right/bottom/left, no flex `gap`, polygon not `path()`; test blocks newer features (1.5.0) |
+| 2 | Verse panel and background missing in vMix squeeze | Clipped background layer + WebGL unreliable inside vMix | Background drawn as four plain strips round the camera window, CSS drift instead of WebGL, text shown before any styling step (1.6.0) |
+| 3 | "1/6" pages, auto-flipping before the reader got there; Esther 8:9 a nightmare | Long verses were split into timed pages | No pages ever: every verse is sized to fit its space in every mode, like Bible-show software (1.6.0) |
+| 4 | Wanted lower third / UEFA-style squeeze (preacher ≈ 0.8/4 of the screen) / full screen with no preacher | Default camera window was 46% | Squeeze default 20% top left, scripture fills the rest; full screen covers every inch (1.6.0) |
+| 5 | vMix kept showing the old design after updating | The page vMix loads had no cache header; vMix held an old copy | Pages sent `no-store`; screens reload themselves on update; an old page is detected and named, and vMix is told to reload it when linked (1.6.1–1.6.2) |
+| 6 | Couldn't go to the next verse when reading a passage | No verse stepping | Next / Previous verse and chapter buttons, ← → keys, a clicker's Page Up / Page Down, crossing chapters and books (1.7.0) |
+| 7 | Preacher wants to drive it: "take it back", "next verse", "next chapter" | No spoken cues | Cues understood from the verse on screen: next / previous verse or chapter, "take it back", "verse 17", "verses 17 to 19", "chapter 5 verse 3"; acted on once per sentence (1.7.0) |
+| 8 | Mic "active about 67% of the time", had to repeat or shout | Chrome captions could freeze silently and Whisper stayed off for 20 s; a failed caption restart left them dead; quiet speech under the speech threshold; noise suppression on a PA feed | Whisper writes any sentence the captions missed; frozen captions rebuilt within seconds; lower speech threshold; noise suppression / echo cancellation off; engine label shows who's listening (1.7.0) |
+| 9 | Manual fallback must work instantly, not wait | Online translations could take many seconds | Quick reference box (type `rom 8 28`, Enter = on screen); slow translations show KJV after 2.5 s and switch when ready (1.7.0) |
+| 10 | Implicit (unnamed) verses only suggested ~13% of the time | AI checks limited to one per 3 s and sentences in between were dropped; short caption sentences never checked; prompt demanded near-exact wording; quote matcher only knew exact KJV wording | Rolling window of recent sentences sent to the AI (nothing dropped); prompt allows paraphrase and clear allusion as suggestions; quote matcher maps old/new wording and matches across sentences (1.7.0) |
+
+Still to verify in the room: how often Chrome's captions need rebuilding on the church network, and the implicit-suggestion hit rate with the new AI window (expect a large improvement; free-tier daily limits are respected by pacing the checks).

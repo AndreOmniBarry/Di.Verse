@@ -233,3 +233,35 @@ test('pages are never cached (vMix kept old copies)', async () => {
     assert.strictEqual(res.headers.get('cache-control'), 'no-store', p);
   }
 });
+
+test('next / previous verse endpoint', async () => {
+  const get = async q => { const r = await fetch(base + '/api/verse/step?' + q); return [r.status, await r.json()]; };
+  let [st, v] = await get('book=Romans&chapter=8&verse=39&dir=next');
+  assert.strictEqual(st, 200); assert.strictEqual(v.reference, 'Romans 9:1');
+  [st, v] = await get('book=rom&chapter=8&verse=28&verseEnd=30&dir=next');
+  assert.strictEqual(v.reference, 'Romans 8:31');
+  [st, v] = await get('book=Esther&chapter=8&verse=9&dir=prev&unit=chapter');
+  assert.strictEqual(v.reference, 'Esther 7:1');
+  [st, v] = await get('book=Genesis&chapter=1&verse=1&dir=prev');
+  assert.strictEqual(st, 404);
+});
+
+test('the preacher says "next verse" / "verse 17" while a verse is on screen', async () => {
+  const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+  const current = { book: 'Romans', chapter: 8, verse: 28, translation: 'KJV' };
+  let d = await detect({ text: 'alright church let us go to the next verse', current, fast: true });
+  assert.strictEqual(d.type, 'navigate'); assert.strictEqual(d.verseData.reference, 'Romans 8:29');
+  d = await detect({ text: 'take it back', current, fast: true });
+  assert.strictEqual(d.verseData.reference, 'Romans 8:27');
+  d = await detect({ text: 'look at verse 31', current, fast: true });
+  assert.strictEqual(d.verseData.reference, 'Romans 8:31');
+  // still being spoken: "verse 3" may become "verse 31", so wait
+  d = await detect({ text: 'look at verse 3', current, fast: true, interim: true });
+  assert.notStrictEqual(d.type, 'navigate');
+  // nothing on screen: no cue
+  d = await detect({ text: 'the next verse says', fast: true });
+  assert.notStrictEqual(d.type, 'navigate');
+  // a named book is a normal reference, not a cue
+  d = await detect({ text: 'turn to John 3 verse 16', current, fast: true });
+  assert.strictEqual(d.type, 'explicit'); assert.strictEqual(d.verseData.reference, 'John 3:16');
+});

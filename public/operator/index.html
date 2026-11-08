@@ -39,6 +39,13 @@
     .btn-ghost:hover { border-color: #E74C3C; color: #E74C3C; }
     .btn-dim { background: var(--surface2); color: var(--text); border: 1px solid var(--mid); }
     .btn-dim:hover { border-color: var(--accent); }
+    .nav-row { display: flex; margin-top: 8px; min-width: 0; max-width: 100%; }
+    .nav-row .btn { margin-right: 5px; padding: 8px 7px; white-space: nowrap; flex: 0 0 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .nav-row .btn:last-child { margin-right: 0; }
+    .nav-row .nav-main { flex: 1 1 0; font-size: 0.8rem; }
+    .quick-row { display: flex; margin-bottom: 8px; }
+    .quick-row input { flex: 1; font-size: 0.95rem; padding: 9px 10px; }
+    .quick-row .btn { margin-left: 6px; }
     .font-btn { background: var(--surface2); border: 1px solid var(--mid); color: var(--white); width: 28px; height: 28px; border-radius: 4px; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; }
     .font-btn:hover { border-color: var(--accent); background: var(--accent); }
     .ws-badge { font-size: 0.58rem; color: var(--mid); background: var(--surface2); padding: 2px 6px; border-radius: 3px; }
@@ -164,21 +171,25 @@
       <div class="label">
         Live Transcription
         <span style="float:right;">
-          <span id="vadLabel" style="font-size:0.6rem;color:#555577;">VAD: ready</span>
+          <span id="engineLabel" style="font-size:0.6rem;color:#7a7aa8;margin-right:8px;" title="Which speech engine is writing the transcript right now"></span><span id="vadLabel" style="font-size:0.6rem;color:#555577;">VAD: ready</span>
         </span>
       </div>
       <div class="vad-bar"><div class="vad-fill" id="vadFill"></div></div>
       <div id="transcriptionFeed" style="margin-top:10px;"><span class="sys">Transcription appears here when listening is active...</span></div>
     </div>
     <div class="search-panel">
-      <div class="label">Manual Search</div>
+      <div class="label">Manual Search <span style="text-transform:none;letter-spacing:0;color:var(--mid);">— works any time, listening or not</span></div>
+      <div class="quick-row">
+        <input type="text" id="quickRef" placeholder="Type a reference, press Enter to show it — e.g. rom 8 28 · jn 3:16-18 · esther 8 9   ( / jumps here )" autocomplete="off" spellcheck="false">
+        <button class="btn btn-accent" onclick="quickGo()">Show</button>
+      </div>
       <div class="search-row">
         <input type="text" id="bookInput" placeholder="Book — e.g. John" style="flex:2;">
         <input type="number" id="chapterInput" placeholder="Ch" style="flex:0.7;min-width:52px;">
         <input type="text" id="verseInput" placeholder="Vs (16 or 16-18)" inputmode="numeric" style="flex:1;min-width:70px;">
         <button class="btn btn-dim" onclick="manualSearch()">Find</button>
       </div>
-      <div class="hint">← → = prev/next queue · Space = push · Esc = clear · M = mode · +/- = font</div>
+      <div class="hint">← → = previous/next verse (Shift = chapter; clicker works too) · ↑ ↓ = queue · Space = push · Esc = clear · M = mode · +/- = font</div>
       <div class="label" style="margin-top:12px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;">
         <span>Songs <span style="text-transform:none;letter-spacing:0;">— click a slide · ↑/↓ or clicker to move · <a href="/admin" style="color:var(--mid);">manage songs</a></span></span>
         <label style="text-transform:none;letter-spacing:0;font-size:0.72rem;color:var(--text);cursor:pointer;" title="Listen to the worship leader and move to the right slide automatically">
@@ -199,6 +210,12 @@
     <div class="now-playing">
       <div class="label">On Screen Now</div>
       <div id="nowPlaying"><div class="empty-state">Nothing displayed — logo showing</div></div>
+      <div class="nav-row" title="Move through the passage on screen. Keys: ← → verse, Shift+← → chapter, a clicker's Page Up / Page Down. The preacher can also say &quot;next verse&quot;, &quot;take it back&quot;, &quot;verse 17&quot;, &quot;next chapter&quot;.">
+        <button class="btn btn-dim" onclick="stepVerse('prev','chapter')">⏮ Ch</button>
+        <button class="btn btn-dim nav-main" onclick="stepVerse('prev','verse')">◀ Prev verse</button>
+        <button class="btn btn-dim nav-main" onclick="stepVerse('next','verse')">Next verse ▶</button>
+        <button class="btn btn-dim" onclick="stepVerse('next','chapter')">Ch ⏭</button>
+      </div>
     </div>
     <div class="queue-panel">
       <div class="label" style="margin-bottom:10px;">Queue <span id="queueCount" style="color:var(--mid);font-weight:normal;"></span></div>
@@ -448,9 +465,12 @@ async function manualSearch() {
   var verseEnd = vs && vs[2] ? parseInt(vs[2]) : null;
   if (!book || !chapter || !verse) { showAlert('Please enter a book, chapter, and verse (e.g. 16 or 16-18).'); return; }
   try {
-    var res = await fetch('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + (verseEnd ? '&verseEnd=' + verseEnd : '') + '&translation=' + activeTranslation + '&manual=1');
-    var data = await res.json();
-    if (!res.ok) { showAlert(data.error); return; }
+    // never waits on a slow online translation: KJV first, the translation when it comes
+    var data = await fetchVerseFast('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + (verseEnd ? '&verseEnd=' + verseEnd : ''), activeTranslation, function(late) {
+      addToQueue(Object.assign({}, late, { confidence: 1.0, type: 'manual' }));
+      if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true);
+    });
+    if (!data) return;
     if (data.fallback) showAlert(data.requestedTranslation + ' unavailable: ' + data.fallbackReason + ' — showing KJV where needed.');
     addToQueue(Object.assign({}, data, { confidence: 1.0, type: 'manual' }));
   } catch (err) {
@@ -465,6 +485,22 @@ async function manualSearch() {
       ? 'Can\'t reach Di.Verse on this laptop — is the Terminal window still running npm start?'
       : 'Search failed: ' + err.message);
   }
+}
+
+// Quick reference: "rom 8 28", "jn 3:16-18", "1 cor 13 4-7", "ps 23" → on screen
+async function quickGo() {
+  var box = document.getElementById('quickRef');
+  var m = box.value.trim().match(/^([1-3]?\s*[a-z][a-z .]*?)\s*(\d{1,3})(?:\s*[:., v]\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?)?\s*$/i);
+  if (!m) { showAlert('Type a book, chapter and verse — e.g. rom 8 28 or jn 3:16-18'); return; }
+  var url = '/api/verse?book=' + encodeURIComponent(m[1].replace(/\.$/, '').trim()) + '&chapter=' + m[2] + '&verse=' + (m[3] || 1) + (m[4] ? '&verseEnd=' + m[4] : '');
+  var item = await fetchVerseFast(url, activeTranslation, function(late) {
+    if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true);
+  });
+  if (!item) return;
+  item = Object.assign({}, item, { confidence: 1, type: 'manual' });
+  addToQueue(item);
+  await pushVerse(item);
+  box.value = '';
 }
 
 // ===== Songs =====
@@ -651,6 +687,59 @@ function queuePrev() {
   renderQueue();
 }
 
+// ===== Next / previous verse =====
+// From whatever is on screen; the requested translation if it's quick,
+// otherwise KJV straight away and the translation as soon as it arrives
+var stepChain = Promise.resolve();
+function stepVerse(dir, unit) {
+  stepChain = stepChain.then(function() { return doStep(dir, unit); });
+  return stepChain;
+}
+async function doStep(dir, unit) {
+  var cur = currentVerse;
+  if (!cur || !cur.book) { noteOnce('Push a verse first — Next / Previous move on from the verse on screen.'); return; }
+  var q = 'book=' + encodeURIComponent(cur.book) + '&chapter=' + cur.chapter + '&verse=' + cur.verse +
+    (cur.verseEnd ? '&verseEnd=' + cur.verseEnd : '') + '&dir=' + dir + '&unit=' + unit;
+  var item = await fetchVerseFast('/api/verse/step?' + q, baseTranslation(cur.translation), function(late) {
+    // the requested translation arrived after KJV went up: swap it in if that verse is still showing
+    if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true);
+  });
+  if (item) await pushVerse(Object.assign({}, item, { type: 'manual', confidence: 1 }));
+}
+function baseTranslation(t) { return String(t || activeTranslation).split('/')[0]; }
+
+// Fetches a verse in `translation`. Local Bibles answer at once; one that has
+// to be looked up online gets 2.5 s, then KJV is returned so the screen never
+// waits, and onLate(verse) is called when the requested translation arrives.
+async function fetchVerseFast(url, translation, onLate) {
+  var withT = function(t) { return url + (url.indexOf('?') < 0 ? '?' : '&') + 'translation=' + encodeURIComponent(t) + '&manual=1'; };
+  var main = fetch(withT(translation)).then(async function(r) {
+    var d = await r.json().catch(function() { return {}; });
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
+  });
+  if (/^KJV$/i.test(translation)) {
+    try { return await main; } catch (err) { showAlert(err.message); return null; }
+  }
+  var settled = false, timer;
+  var quick = new Promise(function(resolve) { timer = setTimeout(function() { resolve('slow'); }, 2500); });
+  var first;
+  try { first = await Promise.race([main.then(function(d) { return { d: d }; }), quick]); }
+  catch (err) { clearTimeout(timer); first = { err: err }; }
+  clearTimeout(timer);
+  if (first && first.d) return first.d;
+  // slow (or failed): KJV now
+  try {
+    var r = await fetch(withT('KJV')); var d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    if (first === 'slow') {
+      noteOnce(translation + ' is taking a moment — showing KJV, it will switch to ' + translation + ' when it arrives.');
+      main.then(function(late) { if (onLate) onLate(late); }).catch(function() {});
+    } else noteOnce(translation + ' unavailable (' + first.err.message + ') — showing KJV.');
+    return d;
+  } catch (err) { showAlert(err.message); return null; }
+}
+
 // ===== Push =====
 // What the screens show right now, so a mode change can re-show it
 var onScreen = null; // { type: 'verse', item } | { type: 'slide', index }
@@ -699,7 +788,9 @@ async function clearScreen() {
 // ===== Detection handling =====
 // Top-level so sendPCMToWhisper can reach it (it used to be nested inside
 // startListening, so every detection threw "handleDetection is not defined").
-async function handleDetection(detection) {
+var cuesDone = {}; // sentence number → cues already acted on in it
+async function handleDetection(detection, meta) {
+  meta = meta || {};
   if (!detection) return;
   if (detection.error) reportProblem('AI detection unavailable: ' + detection.error);
   if (detection.warning) noteOnce(detection.warning);
@@ -726,7 +817,7 @@ async function handleDetection(detection) {
   // Suggestions: implicit quotes, or the verse whose words were quoted when the
   // spoken reference pointed somewhere else
   if (detection.candidates && detection.candidates.length > 0) {
-    for (var i = 0; i < Math.min(2, detection.candidates.length); i++) {
+    for (var i = 0; i < Math.min(3, detection.candidates.length); i++) {
       var c = detection.candidates[i];
       try {
         var res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
@@ -736,6 +827,20 @@ async function handleDetection(detection) {
         }
       } catch(e) {}
     }
+  }
+
+  // The preacher moving through the passage: "next verse", "take it back", "verse 17"
+  if (detection.type === 'navigate' && detection.verseData) {
+    var cmd = detection.command || {};
+    var sig = cmd.kind === 'step' ? 'step:' + cmd.dir + ':' + cmd.unit : 'goto:' + (cmd.chapter || '') + ':' + cmd.verse;
+    var done = cuesDone[meta.utt] || (cuesDone[meta.utt] = {});
+    if (meta.utt == null || done[sig]) return; // the same cue heard again in the same sentence
+    done[sig] = true;
+    var said = cmd.kind === 'step' ? (cmd.dir === 'next' ? 'next ' : 'previous ') + cmd.unit : 'verse ' + cmd.verse;
+    var nav = Object.assign({}, detection.verseData, { confidence: 0.95, type: 'explicit', source: 'cue' });
+    appendTranscription('[ "' + said + '" → ' + nav.reference + ' ]', false, true);
+    if (autoPush) await pushVerse(nav); else addToQueue(nav);
+    return;
   }
 
   if (detection.type === 'translation_change' && detection.new_translation) setTranslation(detection.new_translation, true);
@@ -820,8 +925,10 @@ function setApiStatus(state, message) {
       audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
+          // church PA / mixer feeds: noise suppression and echo cancellation
+          // can swallow the preacher's voice; automatic gain keeps it level
+          echoCancellation: false,
+          noiseSuppression: false,
           autoGainControl: true
         }
       });
@@ -849,6 +956,7 @@ function setApiStatus(state, message) {
           var pct = Math.min(100, Math.round(e.data.level / 0.1 * 100));
           document.getElementById('vadFill').style.width = pct + '%';
           document.getElementById('vadLabel').textContent = 'VAD: ' + (e.data.speech ? 'SPEECH' : 'silence');
+          watchCaptions(e.data.speech, mySession);
           return;
         }
 
@@ -856,10 +964,14 @@ function setApiStatus(state, message) {
         // Standby: while Chrome's live captions are working, Whisper (Groq) isn't
         // used, so its free daily limit lasts all day; it takes over the moment
         // captions stop. Tick "Whisper double-check" to run both.
-        if (!whisperAlways && captionsHealthy()) return;
+        // Per sentence: if the live captions wrote nothing while this was
+        // being said, they missed it, and Whisper writes it instead.
         var pcm = new Int16Array(e.data.pcm);
         var rate = e.data.sampleRate;
-        transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(pcm, rate, mySession); });
+        var saidFrom = Date.now() - pcm.length / rate * 1000 - 600;
+        var captionsCovered = !!recognition && captionsLastResult > saidFrom;
+        if (!whisperAlways && captionsCovered) return;
+        transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(pcm, rate, mySession, !captionsCovered); });
       };
 
       sourceNode.connect(workletNode);
@@ -926,7 +1038,8 @@ function setApiStatus(state, message) {
     document.getElementById('vadLabel').textContent = 'VAD: ready';
   }
 
-  async function sendPCMToWhisper(pcmInt16, rate, mySession) {
+  // primary: the captions missed this sentence, so Whisper's text is the transcript
+  async function sendPCMToWhisper(pcmInt16, rate, mySession, primary) {
     try {
       // Convert Int16Array to base64
       var uint8 = new Uint8Array(pcmInt16.buffer);
@@ -958,7 +1071,7 @@ var base64 = btoa(binary);
 
       // While Chrome's live captions are working they lead (they're seconds
       // faster); Whisper then quietly double-checks for references they missed
-      if (captionsHealthy()) {
+      if (!primary && captionsHealthy()) {
         detectScripture(text, '', activeTranslation, mySession, true);
         return;
       }
@@ -970,7 +1083,8 @@ var base64 = btoa(binary);
 
       // Detection runs alongside: a slow verse lookup must never hold up the
       // transcription of what the preacher says next
-      detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession);
+      detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession, true, { utt: 'w' + (whisperUtt++) });
+      queueForAI(text, mySession);
 
     } catch(err) {
       console.error('[Audio Error]', err);
@@ -982,22 +1096,65 @@ var base64 = btoa(binary);
     }
   }
 
-  async function detectScripture(text, context, translation, mySession, fast) {
+  // opts: { interim, utt } — utt numbers the sentence, so a cue like "next
+  // verse" heard in the live words and again in the finished sentence moves once.
+  // Only the engine that's leading sends cues (a late Whisper copy must not step twice).
+  async function detectScripture(text, context, translation, mySession, fast, opts) {
+    opts = opts || {};
+    var cur = opts.utt != null && currentVerse && currentVerse.book && onScreen && onScreen.type === 'verse'
+      ? { book: currentVerse.book, chapter: currentVerse.chapter, verse: currentVerse.verse, verseEnd: currentVerse.verseEnd, translation: baseTranslation(currentVerse.translation) } : null;
     try {
       var detectRes = await fetch('/api/detect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, context: context, activeTranslation: translation, fast: !!fast })
+        body: JSON.stringify({ text: text, context: context, activeTranslation: translation, fast: !!fast, current: cur, interim: !!opts.interim })
       });
       if (sessionId !== mySession) return;
       if (!detectRes.ok) { setApiStatus('fail'); return; }
       var detection = await detectRes.json();
       if (!detection.error) setApiStatus('ok');
-      await handleDetection(detection);
+      await handleDetection(detection, { utt: opts.utt });
     } catch (err) {
       console.error('[Detect Error]', err);
       setApiStatus(String(err.message).includes('fetch') ? 'offline' : 'fail');
     }
+  }
+
+  // ===== Implicit verses: AI over a rolling window =====
+  // Every finished sentence is kept and the last few are checked together, so
+  // a paraphrase split across sentences is still recognised and nothing is
+  // dropped between checks (sentences used to be skipped while a check was
+  // recent, and short ones were never checked). To stay inside free daily
+  // limits: every 6 s while scripture-sounding words are heard, otherwise
+  // every 25 s or so of steady talk.
+  var AI_CUES = /\b(verses?|chapters?|bible|scriptures?|written|word of god|says|saith|said|psalms?|proverbs?|gospel|prophets?|apostles?|disciples?|jesus|christ|lord|god|holy spirit|moses|abraham|isaac|jacob|joseph|david|solomon|elijah|elisha|daniel|jonah|paul|peter|john|mary|israel|pharaoh|egypt|jerusalem|heaven|blessed|amen|thou|thee|thy|unto|beloved|brethren)\b/i;
+  var aiBuffer = [], aiNewWords = 0, aiLastSent = 0, aiBusy = false, aiTimer = null;
+  function queueForAI(text, mySession) {
+    aiBuffer.push(text);
+    if (aiBuffer.length > 6) aiBuffer.shift();
+    aiNewWords += text.split(/\s+/).length;
+    scheduleAI(mySession);
+  }
+  function scheduleAI(mySession) {
+    clearTimeout(aiTimer);
+    if (aiBusy || aiNewWords < 5) return;
+    var recent = aiBuffer.slice(-3).join(' ');
+    var gap = AI_CUES.test(recent) ? 6000 : (aiNewWords >= 30 ? 12000 : 25000);
+    var wait = Math.max(0, aiLastSent + gap - Date.now());
+    aiTimer = setTimeout(function() { sendAI(mySession); }, wait);
+  }
+  async function sendAI(mySession) {
+    if (sessionId !== mySession || aiBusy || !aiBuffer.length) return;
+    aiBusy = true; aiLastSent = Date.now(); aiNewWords = 0;
+    var words = aiBuffer.join(' ').split(/\s+/);
+    var text = words.slice(-70).join(' ');
+    try {
+      var res = await fetch('/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, context: '', activeTranslation: activeTranslation, ai: true }) });
+      if (sessionId === mySession && res.ok) await handleDetection(await res.json());
+    } catch (e) {}
+    aiBusy = false;
+    if (sessionId === mySession) scheduleAI(mySession);
   }
 
   // ===== Live captions (Chrome speech recognition) =====
@@ -1008,11 +1165,36 @@ var base64 = btoa(binary);
   var recognition = null;
   var captionLang = 'en-NG';
   var captionsLastResult = 0;
+  var captionsBlocked = false;
   var interimTimer = null;
   var lastFastText = '';
+  var captionUtt = 0, whisperUtt = 0;
 
   function captionsHealthy() {
-    return !!recognition && Date.now() - captionsLastResult < 20000;
+    // Healthy = wrote something recently, or nobody is talking
+    return !!recognition && (Date.now() - captionsLastResult < 6000 || Date.now() - lastSpeechAt > 4000);
+  }
+
+  // Chrome's recogniser sometimes goes deaf without ending. If the mic hears
+  // speech for 3 s and the captions write nothing, rebuild them (at most
+  // every 8 s); Whisper covers those sentences meanwhile.
+  var lastSpeechAt = 0, speechSinceCaption = 0, lastCaptionRebuild = 0;
+  function watchCaptions(speaking, mySession) {
+    if (speaking) { lastSpeechAt = Date.now(); speechSinceCaption += 100; }
+    updateEngineLabel();
+    if (!SpeechRec || !isListening || sessionId !== mySession || captionsBlocked) return;
+    if (speechSinceCaption >= 3000 && Date.now() - captionsLastResult > 5000 && Date.now() - lastCaptionRebuild > 8000) {
+      lastCaptionRebuild = Date.now();
+      speechSinceCaption = 0;
+      console.log('[Captions] no words for ' + Math.round((Date.now() - captionsLastResult) / 1000) + ' s while speech is heard — restarting them');
+      stopCaptions();
+      startCaptions(mySession);
+    }
+  }
+  var engineShown = '';
+  function updateEngineLabel() {
+    var t = !isListening ? '' : captionsBlocked || !SpeechRec ? 'Whisper' : captionsHealthy() ? 'Live captions ✓' : 'Whisper covering';
+    if (t !== engineShown) { engineShown = t; document.getElementById('engineLabel').textContent = t; }
   }
 
   function startCaptions(mySession) {
@@ -1024,6 +1206,7 @@ var base64 = btoa(binary);
     rec.onresult = function(e) {
       if (sessionId !== mySession) return;
       captionsLastResult = Date.now();
+      speechSinceCaption = 0;
       var interim = '';
       for (var i = e.resultIndex; i < e.results.length; i++) {
         var t = e.results[i][0].transcript.trim();
@@ -1040,13 +1223,14 @@ var base64 = btoa(binary);
       if (interim) interimTimer = setTimeout(function() {
         if (interim === lastFastText) return;
         lastFastText = interim;
-        detectScripture(interim, '', activeTranslation, mySession, true);
+        detectScripture(interim, '', activeTranslation, mySession, true, { interim: true, utt: captionUtt });
       }, 500);
     };
     rec.onerror = function(e) {
       if (e.error === 'language-not-supported' && captionLang !== 'en-US') { captionLang = 'en-US'; return; }
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         recognition = null;
+        captionsBlocked = true;
         noteOnce('Chrome live captions are blocked — using Whisper only (a few seconds slower)');
       }
       if (e.error === 'network') noteOnce('Chrome live captions lost their connection — Whisper is covering');
@@ -1057,7 +1241,8 @@ var base64 = btoa(binary);
         setTimeout(function() {
           if (sessionId !== mySession || recognition !== rec) return;
           rec.lang = captionLang;
-          try { rec.start(); } catch (err) {}
+          // if it won't restart, build a fresh one rather than stay silent
+          try { rec.start(); } catch (err) { stopCaptions(); setTimeout(function() { if (sessionId === mySession && isListening && !recognition) startCaptions(mySession); }, 1000); }
         }, 250);
       }
     };
@@ -1082,8 +1267,9 @@ var base64 = btoa(binary);
     if (transcriptionContext.length > 3) transcriptionContext.shift();
     lastFastText = '';
     // Finished sentence: parser + quotes + (for longer sentences) AI
-    var words = text.split(/\s+/).length;
-    detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession, words < 8);
+    detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession, true, { utt: captionUtt });
+    captionUtt++;
+    queueForAI(text, mySession); // implicit / paraphrased verses: checked over the last few sentences
   }
 
   function showInterim(text) {
@@ -1113,7 +1299,8 @@ var base64 = btoa(binary);
 
   function appendTranscription(text, isHit, isSystem, isError) {
     var feed = document.getElementById('transcriptionFeed');
-    if (feed.querySelector('.sys') && feed.children.length === 1 && !isSystem) feed.innerHTML = '';
+    var placeholder = feed.querySelector('.sys');
+    if (placeholder && feed.children.length === 1 && (!isSystem || /appears here/.test(placeholder.textContent))) feed.innerHTML = '';
     var span = document.createElement('span');
     if (isHit) span.className = 'hit';
     if (isSystem) span.className = 'sys';
@@ -1130,20 +1317,30 @@ var base64 = btoa(binary);
     // Typing in a box: leave keys alone. Checkboxes keep focus after a click,
     // so they must not swallow the clicker / arrow keys.
     if ((tag === 'INPUT' && e.target.type !== 'checkbox') || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (e.key === '/')           { e.preventDefault(); document.getElementById('quickRef').focus(); return; }
     if (e.code === 'Space')      { e.preventDefault(); pushSelected(); }
     if (e.code === 'Escape')     { clearScreen(); }
     if (e.code === 'KeyM')       { toggleMode(); }
-    if (e.code === 'ArrowRight') { e.preventDefault(); queueNext(); }
-    if (e.code === 'ArrowLeft')  { e.preventDefault(); queuePrev(); }
-    // Slides: arrow keys, or a presentation clicker (sends Page Up / Page Down)
-    if (activeSong && (e.code === 'ArrowDown' || e.code === 'PageDown')) { e.preventDefault(); pushSlide(Math.min(activeSlideIdx + 1, activeSlides.length - 1)); }
-    if (activeSong && (e.code === 'ArrowUp' || e.code === 'PageUp')) { e.preventDefault(); pushSlide(Math.max(activeSlideIdx - 1, 0)); }
+    // A verse on screen: ← → (or a clicker's Page Up / Page Down) move verse
+    // by verse, Shift+← → by chapter. A song on screen: they move slides.
+    var verseUp = onScreen && onScreen.type === 'verse';
+    var fwd = e.code === 'ArrowRight' || e.code === 'PageDown', back = e.code === 'ArrowLeft' || e.code === 'PageUp';
+    if (verseUp && (fwd || back)) { e.preventDefault(); stepVerse(fwd ? 'next' : 'prev', e.shiftKey ? 'chapter' : 'verse'); return; }
+    if (activeSong && (fwd || e.code === 'ArrowDown')) { e.preventDefault(); pushSlide(Math.min(activeSlideIdx + 1, activeSlides.length - 1)); return; }
+    if (activeSong && (back || e.code === 'ArrowUp')) { e.preventDefault(); pushSlide(Math.max(activeSlideIdx - 1, 0)); return; }
+    // ↑ ↓ choose in the queue
+    if (e.code === 'ArrowDown') { e.preventDefault(); queueNext(); }
+    if (e.code === 'ArrowUp')   { e.preventDefault(); queuePrev(); }
     if (e.key === '+' || e.key === '=') { adjustFont(2); }
     if (e.key === '-')           { adjustFont(-2); }
   });
 
   document.getElementById('verseInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') manualSearch();
+  });
+  document.getElementById('quickRef').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); quickGo(); }
+    if (e.key === 'Escape') { this.value = ''; this.blur(); }
   });
 
   // ===== Start-up =====

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getPassage, listTranslations } = require('../services/bibleDb');
 const { validateReference, normaliseBook } = require('../services/validation');
+const { step } = require('../services/navigation');
 
 router.get('/verse', async (req, res) => {
   // manual=1: the operator searched by hand and reads the result before
@@ -31,6 +32,20 @@ router.get('/verse', async (req, res) => {
     });
   }
 
+  res.json(result);
+});
+
+// Next / previous verse or chapter from a reference (operator buttons and
+// keys, presentation clickers)
+router.get('/verse/step', async (req, res) => {
+  const { book, chapter, verse, verseEnd, dir = 'next', unit = 'verse', translation = 'KJV', manual } = req.query;
+  const name = normaliseBook(book);
+  if (!name || !/^\d+$/.test(chapter || '') || !/^\d+$/.test(verse || '')) return res.status(400).json({ error: 'book, chapter and verse are required' });
+  const target = step({ book: name, chapter: parseInt(chapter), verse: parseInt(verse), verseEnd: verseEnd ? parseInt(verseEnd) : undefined },
+    dir === 'prev' ? 'prev' : 'next', unit === 'chapter' ? 'chapter' : 'verse');
+  if (!target) return res.status(404).json({ error: dir === 'prev' ? 'This is the first verse of the Bible.' : 'This is the last verse of the Bible.' });
+  const result = await getPassage(target.book, target.chapter, target.verse, undefined, translation, { live: true, allowUnverified: manual === '1' });
+  if (!result) return res.status(404).json({ error: `Could not retrieve ${target.book} ${target.chapter}:${target.verse} in ${translation}` });
   res.json(result);
 });
 
