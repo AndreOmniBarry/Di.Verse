@@ -172,6 +172,25 @@ Add Di.Verse to the stream as a **browser source** with the overlay address. The
 - Streaming software on **another computer** on the same network: `http://<laptop-ip>:3000/projection?overlay=1` (the IP is printed in Terminal when Di.Verse starts)
 
 **OBS:** Sources → **+** → **Browser** → paste the URL, set Width **1920** and Height **1080**, leave "Custom CSS" as it is, then OK. Put the source above your camera in the list.
-**vMix:** Add Input → **Web Browser** → paste the URL, 1920×1080.
+
+**vMix, step by step:**
+1. Start Di.Verse on the laptop (`npm start`).
+2. In vMix: **Add Input** (bottom left) → **Web Browser**.
+3. URL: `http://localhost:3000/projection?overlay=1` if vMix runs on the same laptop, otherwise `http://<laptop-ip>:3000/projection?overlay=1` (the IP is printed in Terminal when Di.Verse starts; both computers on the same network).
+4. Size **1920 × 1080** → **OK**. The new input looks empty or black until a verse is pushed; that's the transparent part.
+5. Under that input, click overlay button **1**. Di.Verse now sits on top of whatever is in Program. Leave it on for the whole service: when nothing is pushed it's invisible.
+6. Push a verse from the Operator page and check it appears over the camera in Program.
+7. If the verse appears on a black box instead of over the camera, open the input's settings (cog) and make sure transparency isn't turned off, then right-click the input → **Refresh**.
+
+The Wi-Fi lock doesn't affect vMix or OBS: the projection page is open to any computer on the network, only control is locked to the operator laptop.
 
 Use **Lower-Third** mode for the stream (Full-Screen mode deliberately covers the whole picture). The projector and the stream can run at the same time: the projector uses `/projection` (solid background) and the stream uses `/projection?overlay=1`. Both follow every push, clear, theme and font change.
+
+---
+
+## Free tiers, backup keys and long services
+
+- Chrome live captions do the listening and cost nothing. **Whisper double-check** (header switch) is off by default: Whisper then only listens when the live captions aren't working, so Groq's free daily limit lasts all day. Turned on, Whisper checks everything too and uses roughly 4–5 hours of free Groq audio a day.
+- **Backup keys:** put several keys in one line, separated by commas: `GROQ_API_KEY=gsk_main,gsk_backup`. When a key hits its limit it rests for 10 minutes and the next one is used in the same moment; a rejected key rests for a day. Works for `GROQ_API_KEY`, `GEMINI_API_KEY` and `OPENAI_API_KEY`. Use keys you're entitled to, for example a colleague's own account with their agreement, or a cheap paid key as the last backup. Creating extra free accounts just to get around the limits breaks the providers' terms and can get all of them blocked.
+- `npm start` keeps Di.Verse running: if it ever stops, it restarts within a second and every screen comes back showing what it showed before. The Mac is kept awake while it runs.
+- Keep the Operator window **visible** (not minimised or covered by a full-screen app): Chrome slows down timers in hidden tabs.

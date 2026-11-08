@@ -122,6 +122,9 @@
     <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
     <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
     <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
+    <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off (recommended): Whisper only listens when Chrome's live captions aren't working, so Groq's free limit lasts all day. On: Whisper double-checks everything too (uses about 4–5 hours of free Groq a day).">
+      <input type="checkbox" id="whisperToggle" onchange="whisperAlways = this.checked; savePref('whisperAlways', this.checked ? '1' : '')"> Whisper double-check
+    </label>
     <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Push confident explicit references straight to the screen">
       <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
     </label>
@@ -206,6 +209,7 @@ var currentFontSize = 0; // relative offset in px sent to projection
 var apiFailCount = 0;
 var isOffline = false;
 var autoPush = true;
+var whisperAlways = false; // see "Whisper double-check" 
 
 // ===== Themes =====
 var THEMES = {
@@ -294,6 +298,7 @@ buildBackgroundList();
   if (t && THEMES[t]) { currentTheme = t; document.getElementById('themeSelect').value = t; }
   if (bg) document.getElementById('bgSelect').value = bg;
   if (fr) document.getElementById('frameSelect').value = fr;
+  if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
 })();
 
 function broadcast(payload) {
@@ -539,7 +544,7 @@ function renderQueue() {
   el.innerHTML = queue.slice(0, 8).map(function(item, i) {
     var meta = item.type === 'manual' ? 'Manual' :
       item.type === 'implicit' ? 'Implicit — confirm before pushing' :
-      (item.source === 'parser' ? 'Parser' : 'Claude') + ' · ' + Math.round((item.confidence||0)*100) + '%';
+      ({ parser: 'Said', quote: 'Quoted' }[item.source] || 'AI') + ' · ' + Math.round((item.confidence||0)*100) + '%';
     if (item.fallback) meta += ' · ' + item.requestedTranslation + ' unavailable (' + (item.fallbackReason || 'no text') + '), showing KJV';
     if (item.copyright) meta += ' · ' + item.copyright;
     if (item.note) meta += ' · ' + item.note;
@@ -761,6 +766,10 @@ function setApiStatus(state, message) {
         }
 
         // A finished utterance (silence is already filtered out in the worklet)
+        // Standby: while Chrome's live captions are working, Whisper (Groq) isn't
+        // used, so its free daily limit lasts all day; it takes over the moment
+        // captions stop. Tick "Whisper double-check" to run both.
+        if (!whisperAlways && captionsHealthy()) return;
         var pcm = new Int16Array(e.data.pcm);
         var rate = e.data.sampleRate;
         transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(pcm, rate, mySession); });

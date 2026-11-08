@@ -6,17 +6,18 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Free fallback for detection: Groq (OpenAI-compatible). Used when there is no
 // Anthropic key, or when Claude fails on key / credit / rate limit.
-let groqClient = null;
+const keys = require('./keys');
+const groqClients = new Map(); // one per key (backup keys: see services/keys.js)
 let groqDetectModel = null;
 let groqNoReasoningEffort = false;
-function groq() {
-  if (!groqClient) groqClient = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
-  return groqClient;
+function groq(key) {
+  if (!groqClients.has(key)) groqClients.set(key, new OpenAI({ apiKey: key, baseURL: 'https://api.groq.com/openai/v1' }));
+  return groqClients.get(key);
 }
 async function pickGroqDetectModel() {
   if (process.env.GROQ_DETECT_MODEL) return process.env.GROQ_DETECT_MODEL;
   if (groqDetectModel) return groqDetectModel;
-  const ids = ((await groq().models.list()).data || []).map(m => m.id);
+  const ids = ((await keys.withKey('GROQ_API_KEY', key => groq(key).models.list())).data || []).map(m => m.id);
   const prefs = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant'];
   groqDetectModel = prefs.find(p => ids.includes(p)) || ids.find(id => !/whisper|guard|tts|embed|compound/i.test(id));
   if (!groqDetectModel) throw new Error('no usable Groq chat model — set GROQ_DETECT_MODEL');
@@ -145,12 +146,12 @@ Analyse and return JSON only.`;
     };
     let res;
     try {
-      res = await groq().chat.completions.create(request, { maxRetries: 0, timeout: 15000 });
+      res = await keys.withKey('GROQ_API_KEY', key => groq(key).chat.completions.create(request, { maxRetries: 0, timeout: 15000 }));
     } catch (err) {
       if (err.status !== 400 || !request.reasoning_effort) throw err;
       groqNoReasoningEffort = true; // this model doesn't take the setting
       delete request.reasoning_effort;
-      res = await groq().chat.completions.create(request, { maxRetries: 0, timeout: 15000 });
+      res = await keys.withKey('GROQ_API_KEY', key => groq(key).chat.completions.create(request, { maxRetries: 0, timeout: 15000 }));
     }
     const content = (res.choices[0].message.content || '').trim();
     // An empty or prose reply means "nothing to report", not an outage

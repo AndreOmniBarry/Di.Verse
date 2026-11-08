@@ -256,3 +256,15 @@ test('AI_SHOW_UNVERIFIED=true lets flagged single-source wording into the queue'
     assert.strictEqual(v.verification, 'unverified');
   } finally { delete process.env.AI_SHOW_UNVERIFIED; }
 });
+
+test('backup Gemini key takes over when the first is rejected', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'AIza_bad1, AIza_good2';
+  replies = { gemini: TPT_JOHN_3_16 };
+  const mocked = global.fetch;
+  global.fetch = async (url, init) => {
+    if (init && init.headers && init.headers['x-goog-api-key'] === 'AIza_bad1') return json({ error: { message: 'API key not valid' } }, 400 + 3);
+    return mocked(url, init);
+  };
+  const v = await aiVerse.getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.text, TPT_JOHN_3_16);
+});
