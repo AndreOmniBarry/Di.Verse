@@ -1,19 +1,29 @@
-// Optional link to vMix for the squeeze-back. When a verse or slide is shown
-// in Squeeze mode, vMix is switched to the squeeze scene (the camera shrunk
-// into Di.Verse's window); when it's cleared or shown another way, vMix goes
-// back to whatever input was live before. Uses vMix's built-in web API
-// (vMix: Settings → Web Controller, port 8088).
+// Optional link to vMix for Squeeze mode (vMix: Settings → Web Controller,
+// port 8088). Set VMIX_URL=http://<vmix-pc>:8088 in .env.
 //
-//   VMIX_URL=http://192.168.0.120:8088
-//   VMIX_SQUEEZE_INPUT=Di.Verse Squeeze      (input name or number)
-//   VMIX_TRANSITION=Fade  VMIX_DURATION=500  (optional)
+// Automatic (default): when a verse or slide goes up in Squeeze mode, the
+// camera that is live in Program is zoomed and moved by vMix itself so it
+// sits exactly in Di.Verse's window; Clear (or another mode) puts it back to
+// full screen. Nothing to build in vMix. Uses SetZoom / SetPanX / SetPanY
+// (vMix 24+): zoom 1 = 100%; pan 0 = centred, ±2 = moved by a full frame
+// (PanX: + is right; PanY: + is up).
+//
+// Scene (alternative): if VMIX_SQUEEZE_INPUT names an input (e.g. a scene
+// with the camera already shrunk in a layer), vMix fades to it instead and
+// back to the previous input afterwards.
+//
+// Window geometry must match public/projection/index.html (.sq-window):
+// left 3% and top 5% of the frame, size = the Camera setting (% of frame).
+const WINDOW_LEFT = 0.03;
+const WINDOW_TOP = 0.05;
 
 let squeezed = false;
-let squeezedFrom = null; // input number that was live before the squeeze
+let squeezedInput = null;   // input number we shrank (automatic) or left (scene)
 let chain = Promise.resolve();
 
 function base() { return String(process.env.VMIX_URL || '').replace(/\/+$/, ''); }
-function configured() { return Boolean(base() && process.env.VMIX_SQUEEZE_INPUT); }
+function configured() { return Boolean(base()); }
+function sceneMode() { return Boolean(process.env.VMIX_SQUEEZE_INPUT); }
 
 async function api(query) {
   const res = await fetch(`${base()}/api/?${query}`, { signal: AbortSignal.timeout(3000) });
@@ -29,10 +39,36 @@ async function state() {
   return { active, inputs };
 }
 
+function call(fn, input, value) {
+  return api(`Function=${encodeURIComponent(fn)}&Input=${encodeURIComponent(input)}` + (value !== undefined ? `&Value=${encodeURIComponent(value)}` : ''));
+}
+
 function transition(input) {
   const fn = process.env.VMIX_TRANSITION || 'Fade';
   const ms = parseInt(process.env.VMIX_DURATION) || 500;
   return api(`Function=${encodeURIComponent(fn)}&Input=${encodeURIComponent(input)}&Duration=${ms}`);
+}
+
+// Zoom and pan that put the full camera picture exactly into the window
+function windowPosition(cameraPercent) {
+  const z = Math.min(0.5, Math.max(0.15, (parseFloat(cameraPercent) || 46) / 100));
+  const shiftRight = WINDOW_LEFT + z / 2 - 0.5; // as a share of the frame width
+  const shiftDown = WINDOW_TOP + z / 2 - 0.5;   // as a share of the frame height
+  const r = n => Math.round(n * 10000) / 10000;
+  return { zoom: r(z), panX: r(shiftRight * 2), panY: r(-shiftDown * 2) };
+}
+
+async function shrink(input, cameraPercent) {
+  const p = windowPosition(cameraPercent);
+  await call('SetZoom', input, p.zoom);
+  await call('SetPanX', input, p.panX);
+  await call('SetPanY', input, p.panY);
+}
+
+async function restore(input) {
+  await call('SetZoom', input, 1);
+  await call('SetPanX', input, 0);
+  await call('SetPanY', input, 0);
 }
 
 function modeOf(payload) {
@@ -40,22 +76,29 @@ function modeOf(payload) {
   return item && item.displayMode;
 }
 
-// Called for every screen change. notify(message) tells the operator.
-function onScreen(payload, notify) {
+// Called for every screen change. notify(message) tells the operator;
+// screen() returns the current screen state (for the Camera size setting).
+function onScreen(payload, notify, screen) {
   if (!configured()) return;
   const showing = payload.action === 'SHOW_VERSE' || payload.action === 'SHOW_LYRICS';
-  if (!showing && payload.action !== 'CLEAR') return;
+  const cameraPercent = () => ((screen && screen().background) || {}).camera || 46;
   const wantSqueeze = showing && modeOf(payload) === 'squeeze';
-  // One vMix change at a time, in order
+  const resize = payload.action === 'APPLY_BACKGROUND' && squeezed && !sceneMode();
+  if (!showing && payload.action !== 'CLEAR' && !resize) return;
+
   chain = chain.then(async () => {
     try {
-      if (wantSqueeze && !squeezed) {
+      if (resize) {
+        await shrink(squeezedInput, payload.camera || cameraPercent()); // Camera size changed while squeezed
+      } else if (wantSqueeze && !squeezed) {
         const { active } = await state();
-        squeezedFrom = active;
-        await transition(process.env.VMIX_SQUEEZE_INPUT);
+        squeezedInput = active;
+        if (sceneMode()) await transition(process.env.VMIX_SQUEEZE_INPUT);
+        else await shrink(active, cameraPercent());
         squeezed = true;
       } else if (!wantSqueeze && squeezed) {
-        await transition(squeezedFrom || process.env.VMIX_CAMERA_INPUT || '1');
+        if (sceneMode()) await transition(squeezedInput || process.env.VMIX_CAMERA_INPUT || '1');
+        else await restore(squeezedInput);
         squeezed = false;
       }
     } catch (err) {
@@ -65,4 +108,4 @@ function onScreen(payload, notify) {
   });
 }
 
-module.exports = { onScreen, state, configured, _reset: () => { squeezed = false; squeezedFrom = null; chain = Promise.resolve(); } };
+module.exports = { onScreen, state, configured, sceneMode, windowPosition, _reset: () => { squeezed = false; squeezedInput = null; chain = Promise.resolve(); } };

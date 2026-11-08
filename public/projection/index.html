@@ -7,7 +7,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; width: 100vw; height: 100vh; overflow: hidden; font-family: Arial, sans-serif; }
-    #idle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #0A0A1E; }
+    #idle { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; background: #0A0A1E; }
     #idle .logo { font-size: 3rem; font-weight: bold; color: rgba(255,255,255,0.06); letter-spacing: 10px; text-transform: uppercase; }
     /* Livestream overlay (/projection?overlay=1): transparent page, so OBS /
        vMix show only the verse box on top of the camera */
@@ -24,23 +24,24 @@
     }
     #lowerThird.show { opacity: 1; transform: translateY(0); }
     /* Sizes are set from script in vh (share of screen height) — see SIZES */
-    .lt-ref { font-weight: 800; color: #F5C518; letter-spacing: 0.06em; margin-bottom: 0.9vh; display: flex; align-items: center; gap: 0.6em; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+    .lt-ref { font-weight: 800; color: #F5C518; letter-spacing: 0.06em; margin-bottom: 0.9vh; display: flex; align-items: center; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+    .lt-ref .badge, .fs-ref .badge, .sq-ref .badge { margin-left: 0.6em; }
     .badge { background: #E94560; color: white; font-size: 0.62em; font-weight: 800; padding: 0.25em 0.75em; border-radius: 1em; letter-spacing: 0.08em; }
     .page-count { margin-left: auto; font-size: 0.7em; font-weight: 700; color: rgba(255,255,255,0.75); letter-spacing: 0.1em; }
     .lt-text, .fs-text { white-space: pre-line; transition: opacity 0.26s ease; }
     .lt-text { color: #FFFFFF; line-height: 1.32; font-weight: 700; }
     .lt-text.turning, .fs-text.turning { opacity: 0; }
     #fullScreen {
-      position: fixed; inset: 0; background: #1A1A2E; display: flex; flex-direction: column;
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: #1A1A2E; display: flex; flex-direction: column;
       align-items: center; justify-content: center; padding: 60px; text-align: center;
       opacity: 0; transition: opacity 0.3s ease; pointer-events: none; z-index: 10;
     }
     #fullScreen.show { opacity: 1; }
     .fs-text { font-weight: 700; color: #FFFFFF; line-height: 1.35; width: 86%; margin-bottom: 3vh; } /* fixed width: pages are measured against it */
-    .fs-ref { width: 86%; color: #E94560; font-weight: bold; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .fs-ref { width: 86%; color: #E94560; font-weight: bold; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; }
     .fs-ref .page-count { margin-left: 1em; }
     /* Live/still backgrounds (backgrounds.js) sit under a soft darkening layer */
-    .bg-canvas, .bg-dim { position: absolute; inset: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
+    .bg-canvas, .bg-dim { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
     .bg-canvas { z-index: 0; }
     .bg-dim { z-index: 1; background: linear-gradient(0deg, rgba(0,0,0,0.38), rgba(0,0,0,0.16)); }
     #lowerThird > .lt-ref, #lowerThird > .lt-text, #fullScreen > .fs-text, #fullScreen > .fs-ref { position: relative; z-index: 2; }
@@ -59,7 +60,7 @@
       -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
     }
     html[data-frame="glass"] #lowerThird::after {
-      content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: inherit;
+      content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1; pointer-events: none; border-radius: inherit;
       background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06) 26%, transparent 52%),
                   radial-gradient(120% 90% at 0% 0%, rgba(255,255,255,0.10), transparent 55%);
     }
@@ -76,9 +77,9 @@
     /* ── Squeeze-back (camera window + large scripture panel) ──
        Window: 46% of the screen, top-left, 16:9 — the scripture panel gets
        the rest. In vMix the camera layer is sized to fill it (SETUP.md). */
-    #squeeze { position: fixed; inset: 0; opacity: 0; transition: opacity 0.45s ease; pointer-events: none; z-index: 11; }
+    #squeeze { position: fixed; top: 0; right: 0; bottom: 0; left: 0; opacity: 0; transition: opacity 0.45s ease; pointer-events: none; z-index: 11; }
     #squeeze.show { opacity: 1; }
-    .sq-bg { position: absolute; inset: 0; background: #070a14; }
+    .sq-bg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: #070a14; }
     .sq-window { position: absolute; left: 3vw; top: 5vh; width: calc(var(--cam, 0.25) * 100vw); height: calc(var(--cam, 0.25) * 100vh); z-index: 2; border-radius: 0.6vh;
       box-shadow: 0 0 0 0.35vh rgba(255,255,255,0.8), 0 0 0 0.9vh rgba(255,255,255,0.08), 0 1.5vh 5vh rgba(0,0,0,0.55); }
     .sq-panel { position: absolute; left: calc(3vw + var(--cam, 0.25) * 100vw + 3vw); right: 3vw; top: 5vh; bottom: 5vh; z-index: 3; overflow: hidden;
@@ -92,7 +93,7 @@
       text-shadow: 0 2px 3px rgba(0,0,0,0.6), 0 0 18px rgba(0,0,0,0.3); }
     .sq-text.turning { opacity: 0; }
     .sq-page { margin-top: 2vh; font-size: 2.2vh; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 0.1em; min-height: 2.6vh; }
-    .sq-ref { position: absolute; left: 3vw; width: calc(var(--cam, 0.25) * 100vw); top: calc(5vh + var(--cam, 0.25) * 100vh + 3vh); bottom: 5vh; flex-wrap: wrap; align-content: center; z-index: 3; display: flex; align-items: center; gap: 0.6em;
+    .sq-ref { position: absolute; left: 3vw; width: calc(var(--cam, 0.25) * 100vw); top: calc(5vh + var(--cam, 0.25) * 100vh + 3vh); bottom: 5vh; flex-wrap: wrap; align-content: center; z-index: 3; display: flex; align-items: center;
       font-weight: 800; color: #F5C518; letter-spacing: 0.04em; text-shadow: 0 2px 4px rgba(0,0,0,0.6); }
     /* Small camera window (TV-friendly, up to a third of the screen): the
        reference sits beside the camera and the scripture runs the full width
@@ -100,7 +101,7 @@
     html[data-sq="stack"] .sq-ref { left: calc(3vw + var(--cam) * 100vw + 2.5vw); right: 3vw; width: auto; top: 5vh; bottom: auto; height: calc(var(--cam) * 100vh); }
     html[data-sq="stack"] .sq-panel { left: 3vw; right: 3vw; top: calc(5vh + var(--cam) * 100vh + 2.5vh); bottom: 4vh; justify-content: flex-start; padding-top: 3.5vh; }
     /* On the plain projector page (no vMix behind it) say what the window is for */
-    html:not(.overlay) .sq-window::after { content: 'Camera shows here in vMix'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    html:not(.overlay) .sq-window::after { content: 'Camera shows here in vMix'; position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center;
       color: rgba(255,255,255,0.25); font-size: 2vh; letter-spacing: 0.1em; text-transform: uppercase; }
     #reconnect { position: fixed; bottom: 10px; right: 14px; font-size: 0.62rem; color: rgba(255,255,255,0.2); display: none; z-index: 20; }
   </style>
@@ -137,7 +138,7 @@
 
   // Squeeze camera window: a share of the screen (0.20–0.46). Up to a third
   // uses the stacked layout (scripture full width underneath)
-  var camShare = 0.25;
+  var camShare = 0.46;
   function camLayout() { return camShare <= 0.34 ? 'stack' : 'side'; }
   function applyCamera(percent) {
     var v = Math.min(0.5, Math.max(0.15, (parseFloat(percent) || 25) / 100));
@@ -145,7 +146,7 @@
     document.documentElement.style.setProperty('--cam', String(v));
     document.documentElement.setAttribute('data-sq', camLayout());
   }
-  applyCamera(25);
+  applyCamera(46);
 
   function applyBackground(id, frame, size, camera) {
     currentBg = id || 'theme';
@@ -257,9 +258,15 @@
   // The squeeze background has a hole where the camera window is, so the
   // vMix camera layer underneath shows through
   function updateSqueezeClip() {
-    var w = document.getElementById('sqWindow').getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
-    document.getElementById('sqBg').style.clipPath = 'path(evenodd, "M0 0H' + W + 'V' + H + 'H0Z M' + w.left + ' ' + w.top + 'H' + w.right + 'V' + w.bottom + 'H' + w.left + 'Z")';
+    var w = document.getElementById('sqWindow').getBoundingClientRect();
+    var x1 = Math.round(w.left) + 'px', y1 = Math.round(w.top) + 'px', x2 = Math.round(w.right) + 'px', y2 = Math.round(w.bottom) + 'px';
+    // Outer rectangle clockwise, then in along the top edge of the window and
+    // round it the other way: the window is left uncovered (the "keyhole"
+    // technique — older browsers such as vMix's don't support path() here)
+    document.getElementById('sqBg').style.clipPath = 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 ' + y1 + ', ' +
+      x1 + ' ' + y1 + ', ' + x1 + ' ' + y2 + ', ' + x2 + ' ' + y2 + ', ' + x2 + ' ' + y1 + ', 0 ' + y1 + ')';
   }
+
 
   // Splits text into pages of at most maxLines lines at the current size,
   // measuring with an invisible copy of the real text box

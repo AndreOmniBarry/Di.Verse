@@ -56,12 +56,15 @@ app.use('/api', require('./routes/push'));
 
 // vMix link check (SETUP.md): is it reachable, and what inputs does it have?
 app.get('/api/vmix', async (req, res) => {
-  if (!vmixService().configured()) return res.json({ configured: false, help: 'Set VMIX_URL and VMIX_SQUEEZE_INPUT in .env' });
+  const v = vmixService();
+  if (!v.configured()) return res.json({ configured: false, help: 'Set VMIX_URL=http://<vmix-pc-ip>:8088 in .env' });
   try {
-    const st = await vmixService().state();
+    const st = await v.state();
     const want = process.env.VMIX_SQUEEZE_INPUT;
-    res.json({ configured: true, reachable: true, live: st.active, inputs: st.inputs,
-      squeezeInputFound: st.inputs.some(i => i.title === want || i.number === want) });
+    const live = st.inputs.find(i => i.number === st.active);
+    res.json({ configured: true, reachable: true, mode: v.sceneMode() ? 'scene' : 'automatic',
+      live: live ? live.number + ' ' + live.title : st.active, inputs: st.inputs,
+      ...(want ? { squeezeInputFound: st.inputs.some(i => i.title === want || i.number === want) } : {}) });
   } catch (err) {
     res.json({ configured: true, reachable: false, error: err.message });
   }
@@ -154,7 +157,7 @@ const vmix = require('./services/vmix');
 
 function broadcast(payload) {
   rememberScreen(payload);
-  vmix.onScreen(payload, message => alertOperator({ action: 'NOTICE', message }));
+  vmix.onScreen(payload, message => alertOperator({ action: 'NOTICE', message }), () => screenState);
   const message = JSON.stringify(payload);
   clients.forEach(client => {
     if (client.readyState === 1 && client.clientType !== 'operator') {
