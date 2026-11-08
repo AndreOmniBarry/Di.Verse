@@ -80,3 +80,14 @@ test('the free list only names translations that are free to use, never licensed
   for (const f of library.FREE) assert.ok(!library.LICENSED_ONLY.has(f.code), f.code);
   assert.ok(!library.FREE.some(f => /good news|gnb|gnt/i.test(f.code + f.name)), 'the catalogue\'s "GNB" is the Noyes Bible, not Good News');
 });
+
+test('JSON laid out book → chapter → verse (as many Bible datasets are), plain or wrapped', () => {
+  const map = {};
+  for (const r of kjv('Ruth')) ((map.Ruth = map.Ruth || {})[r.chapter] = map.Ruth[r.chapter] || {})[r.verse] = r.text;
+  const plain = parse(JSON.stringify(map), 'ASV_bible.json');
+  assert.strictEqual(plain.format, 'JSON'); assert.strictEqual(plain.rows.length, kjv('Ruth').length);
+  assert.deepStrictEqual(plain.rows[0], { book: 'Ruth', chapter: 1, verse: 1, text: kjv('Ruth')[0].text });
+  const wrapped = parse(JSON.stringify({ ASV: map }), 'x.json');
+  assert.strictEqual(wrapped.rows.length, kjv('Ruth').length);
+  assert.throws(() => parse('{"hello": {"world": 1}}', 'x.json'), /No verses found/);
+});
