@@ -18,10 +18,11 @@ if (process.platform === 'darwin') {
 
 function start(first) {
   // Only the first start opens Chrome; restarts reconnect the open pages
-  const env = first ? process.env : { ...process.env, DIVERSE_NO_BROWSER: '1' };
+  const env = { ...process.env, DIVERSE_SUPERVISED: '1', ...(first ? {} : { DIVERSE_NO_BROWSER: '1' }) };
   child = spawn(process.execPath, [SERVER], { stdio: 'inherit', env });
   child.on('exit', (code, signal) => {
-    if (stopping || signal === 'SIGINT' || signal === 'SIGTERM') return process.exit(0);
+    if (stopping || signal === 'SIGINT' || signal === 'SIGTERM' || code === 64) return process.exit(0); // 64: "Stop Di.Verse" from the app
+    if (code === 65) return setTimeout(() => start(false), 300); // 65: restart to apply new settings
     const now = Date.now();
     restarts = restarts.filter(t => now - t < 60000).concat(now);
     // A port clash or broken install would loop forever; give up and say why

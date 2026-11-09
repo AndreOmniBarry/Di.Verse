@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Di.Verse — Settings</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { --brand: #1A1A2E; --accent: #E94560; --green: #2BB68A; --mid: #4A4A6A; --surface: #22223A; --surface2: #2A2A45; --text: #CCCCDD; --white: #FFFFFF; }
+  body { background: var(--brand); color: var(--text); font-family: Arial, sans-serif; min-height: 100vh; }
+  header { background: var(--surface); border-bottom: 2px solid var(--accent); padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 1.1rem; color: var(--white); letter-spacing: 2px; }
+  header h1 span { color: var(--accent); }
+  header a { color: var(--text); font-size: 0.8rem; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 20px 60px; }
+  h2 { font-size: 0.72rem; letter-spacing: 2px; text-transform: uppercase; color: var(--mid); margin: 28px 0 10px; }
+  p { font-size: 0.85rem; line-height: 1.55; color: #aab; }
+  .field { background: var(--surface); border: 1px solid var(--surface2); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; }
+  .field .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .field b { color: var(--white); font-size: 0.9rem; }
+  .field .why { font-size: 0.75rem; color: #889; margin: 4px 0 8px; line-height: 1.45; }
+  .state { font-size: 0.72rem; padding: 2px 8px; border-radius: 8px; background: var(--surface2); color: #99a; }
+  .state.on { background: rgba(43,182,138,0.15); color: var(--green); }
+  input { width: 100%; background: var(--brand); border: 1px solid var(--mid); color: var(--white); padding: 8px 10px; border-radius: 4px; font-size: 0.85rem; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  a.get { color: #8fb3ff; font-size: 0.75rem; }
+  .btn { padding: 9px 16px; border: none; border-radius: 4px; font-size: 0.85rem; font-weight: bold; cursor: pointer; }
+  .btn-accent { background: var(--accent); color: #fff; }
+  .btn-dim { background: var(--surface2); color: var(--text); border: 1px solid var(--mid); }
+  #msg { margin-top: 14px; font-size: 0.88rem; white-space: pre-line; }
+  .ok { color: var(--green); } .err { color: #ff7a8a; }
+  code { background: var(--surface2); padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Di<span>.</span>Verse <span style="color:var(--mid);font-size:0.7rem;font-weight:normal;">SETTINGS</span></h1>
+  <div><a href="/operator">Operator</a> &nbsp;·&nbsp; <a href="/admin/bibles.html">Bibles</a> &nbsp;·&nbsp; <a href="/admin">Songs</a></div>
+</header>
+<main>
+  <p>Keys are stored only on this computer and are never shown again here: only whether each one is set. Paste a new one to replace it. Several keys for the same service (backups) go on one line separated by commas.</p>
+  <div id="fields"></div>
+  <button class="btn btn-accent" onclick="save()">Save</button>
+  <div id="msg"></div>
+
+  <h2>Di.Verse on this computer</h2>
+  <p id="where"></p>
+  <p style="margin-top:12px;"><button class="btn btn-dim" onclick="stopIt()">Stop Di.Verse</button> &nbsp; <span style="font-size:0.75rem;color:#889;">Screens show "Reconnecting" until it's started again.</span></p>
+</main>
+<script>
+  var FIELDS = [
+    ['GROQ_API_KEY', 'Groq', 'Free. Listening backup (Whisper) when Chrome\'s live captions miss something, and finding verses that are quoted or paraphrased.', 'https://console.groq.com/keys'],
+    ['GEMINI_API_KEY', 'Google Gemini', 'Free. Looks up translations that aren\'t stored on this computer.', 'https://aistudio.google.com/apikey'],
+    ['APIBIBLE_KEY', 'API.Bible', 'Free for non-commercial use. Publisher-licensed translations — which ones depends on your plan.', 'https://scripture.api.bible/'],
+    ['OPENAI_API_KEY', 'OpenAI', 'Optional, paid. Whisper listening instead of Groq.', 'https://platform.openai.com/api-keys'],
+    ['ANTHROPIC_API_KEY', 'Anthropic', 'Optional, paid. Verse detection instead of Groq.', 'https://console.anthropic.com/settings/keys'],
+    ['VMIX_URL', 'vMix link', 'Not secret. The vMix computer\'s address with port 8088, e.g. http://192.168.0.120:8088 — lets Di.Verse shrink the camera in Squeeze mode.', ''],
+  ];
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function say(t, ok) { var m = document.getElementById('msg'); m.className = ok ? 'ok' : 'err'; m.textContent = t; }
+
+  async function load() {
+    var d = await (await fetch('/api/setup')).json();
+    document.getElementById('fields').innerHTML = FIELDS.map(function(f) {
+      var v = d.settings[f[0]];
+      return '<div class="field"><div class="top"><b>' + f[1] + '</b><span class="state' + (v ? ' on' : '') + '">' + (v ? '✓ ' + esc(v) : 'not set') + '</span></div>' +
+        '<div class="why">' + f[2] + (f[3] ? ' <a class="get" href="' + f[3] + '" target="_blank" rel="noopener">Get a key →</a>' : '') + '</div>' +
+        '<input id="' + f[0] + '" autocomplete="off" spellcheck="false" placeholder="' + (v ? 'Leave empty to keep the current one' : (f[0] === 'VMIX_URL' ? 'http://192.168.0.120:8088' : 'Paste the key here')) + '"></div>';
+    }).join('');
+    document.getElementById('where').innerHTML = 'Your keys, Bibles and songs are kept in <code>' + esc(d.dataFolder) + '</code>' +
+      (d.packaged ? ' — outside the app, so updating the app never touches them.' : '.');
+  }
+
+  async function save() {
+    var body = {};
+    FIELDS.forEach(function(f) { var v = document.getElementById(f[0]).value.trim(); if (v) body[f[0]] = v; });
+    if (!Object.keys(body).length) return say('Paste a key (or the vMix address) first.');
+    var r = await fetch('/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    var d = await r.json();
+    if (!r.ok) return say('✗ ' + d.error);
+    say('✓ Saved ' + d.saved.join(', ') + (d.restarting ? '. Di.Verse is restarting to use them (2 seconds) — open pages reconnect by themselves.' : '. Restart Di.Verse to use them.'), true);
+    setTimeout(load, d.restarting ? 2500 : 200);
+  }
+
+  async function stopIt() {
+    if (!confirm('Stop Di.Verse? The screens will go blank until you start it again.')) return;
+    await fetch('/api/shutdown', { method: 'POST' }).catch(function() {});
+    say('Di.Verse has stopped. Open the Di.Verse app (or run npm start) to start it again.', true);
+  }
+  load();
+</script>
+</body>
+</html>
