@@ -59,6 +59,12 @@ if [ ! -f db/bible.db ]; then
   npm run seed || fail "Bible download failed — check the internet and run: npm run seed"
 fi
 
+# Free modern translations (about a second each); skipped if already there
+if ! node -e "process.exit(require('./services/library').list().installed.some(m=>m.code==='BSB')?0:1)" >/dev/null 2>&1; then
+  say "Adding free modern translations (BSB, WEB)..."
+  npm run -s bibles -- add BSB WEB || echo "  ! Couldn't download them now — add them later in Admin → Bibles"
+fi
+
 say "Done — Di.Verse v$(node -p "require('./package.json').version") is installed. Starting it now."
 echo "  (Next time, just: cd ~/Desktop/Di.Verse && npm start)"
 npm start
