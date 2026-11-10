@@ -1,6 +1,7 @@
 // Keeps Di.Verse running for a whole service: restarts the server within a
-// second if it ever stops unexpectedly, and on a Mac keeps the computer from
-// sleeping while it runs. `npm start` uses this; Ctrl + C stops everything.
+// second if it ever stops unexpectedly, and keeps the computer (and its
+// screen) from sleeping while it runs, on Mac and Windows. `npm start` and
+// the Di.Verse apps use this; Ctrl + C (or Settings → Stop) stops everything.
 const { spawn } = require('child_process');
 const path = require('path');
 
@@ -14,6 +15,19 @@ if (process.platform === 'darwin') {
   const c = spawn('caffeinate', ['-dims', '-w', String(process.pid)], { stdio: 'ignore' });
   c.on('error', () => {});
   c.unref();
+}
+
+// Windows: the same, through SetThreadExecutionState (system + display
+// required) held by a hidden PowerShell that ends when this process ends
+if (process.platform === 'win32') {
+  const script = [
+    "$t = Add-Type -Name Power -Namespace DiVerse -PassThru -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern uint SetThreadExecutionState(uint f);'",
+    '[void]$t::SetThreadExecutionState(0x80000003)', // ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+    `Wait-Process -Id ${process.pid} -ErrorAction SilentlyContinue`,
+  ].join('; ');
+  const w = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script], { stdio: 'ignore', windowsHide: true });
+  w.on('error', () => {});
+  w.unref();
 }
 
 function start(first) {
