@@ -91,3 +91,15 @@ test('JSON laid out book → chapter → verse (as many Bible datasets are), pla
   assert.strictEqual(wrapped.rows.length, kjv('Ruth').length);
   assert.throws(() => parse('{"hello": {"world": 1}}', 'x.json'), /No verses found/);
 });
+
+test('a translation that numbers verses differently is flagged (e.g. Psalms numbered the Latin way)', () => {
+  const ps = kjv('Psalms');
+  const same = importFile({ content: JSON.stringify(ps.map(r => ({ book: 'PSA', chapter: r.chapter, verse: r.verse, text: r.text }))), code: 'ZZJ', name: 'Psalms as KJV', obtained: 'Test fixture built from KJV' });
+  assert.strictEqual(same.numberingDiffers, false);
+  // every verse one later (a psalm title counted as verse 1): 150 verses past chapter ends
+  const shifted = importFile({ content: JSON.stringify(ps.map(r => ({ book: 'PSA', chapter: r.chapter, verse: r.verse + 1, text: r.text }))), code: 'ZZJ', name: 'Psalms shifted', obtained: 'Test fixture built from KJV' });
+  assert.strictEqual(shifted.numberingDiffers, true);
+  assert.match(shifted.coverage, /verse numbering differs from KJV/);
+  assert.ok(shifted.differsIn.length > 0 && /^Psalms \d+$/.test(shifted.differsIn[0]));
+  library.remove('ZZJ');
+});

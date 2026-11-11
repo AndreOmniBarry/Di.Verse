@@ -124,7 +124,8 @@
       if (!r.ok) throw new Error(d.error);
       say('✓ ' + d.code + ' imported (' + d.format + '): ' + d.coverage + ', ' + d.verses.toLocaleString() + ' verses' +
         (d.missingBooks.length && d.missingBooks.length < 66 ? '\nBooks not in the file: ' + d.missingBooks.join(', ') : '') +
-        (d.missing && d.missingBooks.length === 0 ? '\n' + d.missing + ' verses of the usual layout are not in this text.' : ''), true);
+        (d.missing && d.missingBooks.length === 0 ? '\n' + d.missing + ' verses of the usual layout are not in this text.' : '') +
+        (d.numberingDiffers ? '\n⚠ Its verse numbering differs from the KJV (e.g. ' + d.differsIn.join(', ') + '). A spoken "Psalm 23" may show a different passage in this translation — check before using it live.' : ''), true);
     } catch (err) { say('✗ ' + err.message); }
     btn.disabled = false; btn.textContent = 'Import';
     load();

@@ -57,13 +57,18 @@ function store(code, name, rows, info = {}) {
   const expected = layout();
   const seen = new Set(), clean = [];
   let extra = 0, empty = 0, dupes = 0;
+  const extraChapters = new Map(); // "Psalms 23" -> verses past the KJV end of that chapter
   for (const r of rows) {
     const text = String(r.text || '').replace(/\s+/g, ' ').trim();
     if (!text) { empty++; continue; }
     const key = r.book + '|' + r.chapter + '|' + r.verse;
     if (seen.has(key)) { dupes++; continue; }
     seen.add(key);
-    if (!expected.has(r.book + '|' + r.chapter) || r.verse > expected.get(r.book + '|' + r.chapter)) extra++;
+    if (!expected.has(r.book + '|' + r.chapter) || r.verse > expected.get(r.book + '|' + r.chapter)) {
+      extra++;
+      const ch = r.book + ' ' + r.chapter;
+      extraChapters.set(ch, (extraChapters.get(ch) || 0) + 1);
+    }
     clean.push({ book: r.book, chapter: r.chapter, verse: r.verse, text });
   }
   if (clean.length < 100) throw new Error(`Only ${clean.length} verses found — this doesn't look like a Bible file`);
@@ -84,10 +89,16 @@ function store(code, name, rows, info = {}) {
   const books = perBook.length;
   const nt = perBook.filter(p => getBookNum(p.book) >= 40).length, ot = books - nt;
   const share = (total - missing) / total;
-  const coverage = books === 66 && share >= 0.985 ? 'Full Bible'
+  // Verses a translation leaves out are normal (BSB omits 16); verses past the
+  // end of KJV chapters mean it numbers verses differently — e.g. the 1899
+  // Douay-Rheims puts "The Lord ruleth me" at Psalm 22 — and "Psalm 23"
+  // would then show the wrong psalm. Flag it so nobody is surprised live.
+  const numberingDiffers = extra >= 30;
+  const coverage = (books === 66 && share >= 0.985 ? 'Full Bible'
     : nt === 27 && ot === 0 ? 'New Testament'
     : ot === 39 && nt === 0 ? 'Old Testament'
-    : `${books} books (${ot} OT, ${nt} NT)`;
+    : `${books} books (${ot} OT, ${nt} NT)`) + (numberingDiffers ? ' · verse numbering differs from KJV' : '');
+  const differsIn = [...extraChapters.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]);
 
   const db = getDb();
   db.transaction(() => {
@@ -96,12 +107,15 @@ function store(code, name, rows, info = {}) {
     for (const r of clean) ins.run(code, r.book, getBookNum(r.book), r.chapter, r.verse, r.text, info.source || 'import');
     db.prepare(`INSERT OR REPLACE INTO translation_meta (code, name, source, licence, coverage, verses, books, missing, installed_at, note)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(code, name, info.source || 'import', info.licence || '', coverage, clean.length, books, missing, new Date().toISOString(), info.note || '');
+      .run(code, name, info.source || 'import', info.licence || '', coverage, clean.length, books, missing, new Date().toISOString(),
+        (info.note || '') + (numberingDiffers ? `${info.note ? ' — ' : ''}numbering differs from KJV, e.g. ${differsIn.join(', ')}` : ''));
   })();
   invalidateTranslations();
   const report = { code, name, coverage, verses: clean.length, books, missing, extra, empty, duplicates: dupes,
+    numberingDiffers, ...(numberingDiffers ? { differsIn } : {}),
     missingBooks: BOOKS.filter(b => !perBook.find(p => p.book === b.name)).map(b => b.name) };
-  console.log(`[Library] ${code} stored: ${coverage}, ${clean.length} verses${missing ? `, ${missing} verses missing vs KJV layout` : ''}`);
+  console.log(`[Library] ${code} stored: ${coverage}, ${clean.length} verses${missing ? `, ${missing} verses missing vs KJV layout` : ''}` +
+    (numberingDiffers ? ` — WARNING: ${extra} verses numbered past KJV chapter ends (${differsIn.join(', ')}…)` : ''));
   return report;
 }
 
