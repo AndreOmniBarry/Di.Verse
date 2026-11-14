@@ -86,6 +86,76 @@ app.post('/api/shutdown', (req, res) => {
   setTimeout(() => process.exit(process.env.DIVERSE_SUPERVISED ? 64 : 0), 300);
 });
 
+// ── System check (Settings page): everything a service depends on, in one
+// list, so the Day-of checklist takes ten seconds. Operator laptop only.
+// Each check: { name, state: 'ok' | 'warn' | 'fail' | 'off', detail }
+const STARTED = Date.now();
+app.get('/api/health', async (req, res) => {
+  if (!isOperator(req)) return res.status(403).json({ error: 'Operator laptop only' });
+  const keys = require('./services/keys');
+  const apiBible = require('./services/apiBible');
+  const aiVerse = require('./services/aiVerse');
+  const { localTranslations } = require('./services/bibleDb');
+  const vmix = require('./services/vmix');
+  const checks = [];
+  const add = (name, state, detail) => checks.push({ name, state, detail });
+  const within = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('no answer in ' + ms / 1000 + ' s')), ms))]);
+  const keyState = (env, label) => {
+    const all = keys.list(env), ready = keys.available(env);
+    if (!all.length) return null;
+    return ready.length === all.length ? [label + (all.length > 1 ? ` (${all.length} keys)` : ''), 'ok']
+      : ready.length ? [`${label}: ${all.length - ready.length} of ${all.length} keys resting after a limit — the others are covering`, 'warn']
+      : [`${label}: every key is resting after a limit (they come back by themselves)`, 'fail'];
+  };
+
+  const mins = Math.round((Date.now() - STARTED) / 60000);
+  add('Di.Verse', 'ok', `v${VERSION}, running for ${mins < 60 ? mins + ' min' : Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min'}`);
+
+  // any one of these answering means the internet works (one site may be blocked)
+  const ping = url => fetch(url, { signal: AbortSignal.timeout(3000) }).then(r => { if (r.status >= 500) throw new Error(); return true; });
+  const internet = await within(Promise.any(['https://www.google.com/generate_204', 'https://api.groq.com/', 'https://bible.helloao.org/'].map(ping)), 3500).catch(() => false);
+  add('Internet', internet ? 'ok' : 'fail', internet ? 'Connected' : 'Not reachable — local Bibles, manual search and the screens still work; listening and online translations need it');
+
+  const whisper = keyState('GROQ_API_KEY', 'Groq') || keyState('OPENAI_API_KEY', 'OpenAI');
+  add('Listening backup (Whisper)', whisper ? whisper[1] : 'fail', whisper ? whisper[0] + ' — Chrome\'s live captions lead; this covers anything they miss' : 'No Groq or OpenAI key — add a free Groq key above (live captions alone will miss more)');
+
+  const detect = keyState('GROQ_API_KEY', 'Groq') || keyState('ANTHROPIC_API_KEY', 'Anthropic');
+  add('Paraphrase / AI detection', detect ? detect[1] : 'warn', detect ? detect[0] : 'No key — spoken references, exact quotes and paraphrases still work offline; the AI window is off');
+
+  const ai = aiVerse.status();
+  const gem = keyState('GEMINI_API_KEY', 'Gemini');
+  add('Online translation lookups', gem ? gem[1] : (ai.available ? 'ok' : 'off'), gem ? gem[0] + (ai.errors.gemini ? ' — last problem: ' + ai.errors.gemini : '') : (ai.available ? 'Using ' + ai.providers.join(', ') : 'Not set (optional) — local Bibles are unaffected'));
+
+  if (apiBible.status().configured) {
+    try {
+      const codes = await within(apiBible.availableCodes(), 5000);
+      add('API.Bible', codes.length ? 'ok' : 'warn', codes.length ? `${codes.length} licensed translations: ${codes.slice(0, 12).join(', ')}${codes.length > 12 ? '…' : ''}` : (apiBible.status().error || 'Key accepted but no translations in the plan'));
+    } catch (err) { add('API.Bible', 'fail', apiBible.status().error || err.message); }
+  } else add('API.Bible', 'off', 'Not set (optional) — for licensed translations');
+
+  if (vmix.configured()) {
+    try {
+      const st = await within(vmix.state(), 3000);
+      const live = st.inputs.find(i => i.number === st.active);
+      add('vMix link', 'ok', `Reachable — live: ${live ? live.number + ' ' + live.title : 'input ' + st.active}${vmix.sceneMode() ? ' (scene mode)' : ' (automatic squeeze)'}`);
+    } catch (err) { add('vMix link', 'fail', `Not reachable (${err.message}) — check the vMix PC is on, its Web Controller is enabled, and VMIX_URL`); }
+  } else add('vMix link', 'off', 'Not set (optional) — Squeeze still draws; the camera won\'t shrink by itself');
+
+  const screens = connectedScreens(), stale = [...clients].filter(c => c.stale).length;
+  add('Screens', stale ? 'fail' : screens.length ? (screens.some(s => s.errors) ? 'warn' : 'ok') : 'warn',
+    stale ? `${stale} screen(s) showing an OLD page — refresh them (see the message on the Operator page)`
+      : screens.length ? screens.map(s => `${s.where}: ${s.browser}, ${s.size}${s.errors ? `, ${s.errors} problem(s) reported` : ''}`).join(' · ')
+      : 'None connected — open the projection page (or refresh the vMix input)');
+
+  const bibles = Object.keys(localTranslations());
+  add('Bibles on this computer', bibles.length ? 'ok' : 'fail', `${bibles.length}: ${bibles.join(', ')}`);
+
+  try { fs.accessSync(paths.DATA, fs.constants.W_OK); add('Data folder', 'ok', paths.DATA); }
+  catch (e) { add('Data folder', 'fail', `Can't write to ${paths.DATA} — keys and songs can't be saved`); }
+
+  res.json({ checks, worst: ['fail', 'warn', 'ok'].find(s => checks.some(c => c.state === s)) || 'ok' });
+});
+
 // Which version is running — shown on the Operator page
 const VERSION = require('./package.json').version;
 app.get('/api/version', (req, res) => res.json({ version: VERSION }));
