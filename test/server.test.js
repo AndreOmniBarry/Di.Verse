@@ -305,3 +305,14 @@ test('packaged app: data lives in its own folder; settings save keys without eve
     assert.strictEqual(r.status, 400);
   } finally { srv.kill(); fs.rmSync(data, { recursive: true, force: true }); }
 });
+
+test('system check lists what a service depends on, each with a state and what to do', async () => {
+  const d = await (await fetch(base + '/api/health')).json();
+  const names = d.checks.map(c => c.name);
+  for (const n of ['Di.Verse', 'Internet', 'Listening backup (Whisper)', 'API.Bible', 'vMix link', 'Screens', 'Bibles on this computer', 'Data folder']) assert.ok(names.includes(n), n);
+  for (const c of d.checks) { assert.ok(['ok', 'warn', 'fail', 'off'].includes(c.state), c.name); assert.ok(c.detail, c.name); }
+  // the test server has no keys: says so and how to fix it, never shows a key
+  assert.strictEqual(d.checks.find(c => c.name === 'Listening backup (Whisper)').state, 'fail');
+  assert.match(d.checks.find(c => c.name === 'Bibles on this computer').detail, /KJV/);
+  assert.ok(['ok', 'warn', 'fail'].includes(d.worst));
+});
