@@ -155,6 +155,8 @@ If something's wrong, the red **ALERT** box on the Operator page says exactly wh
 
 ## Before each service
 
+**Quickest check:** open **Settings** (top right of the Operator page). The **System check** at the top shows, in one list, whether the internet, listening keys, AI, API.Bible, the vMix link, the screens and the Bibles are ready, and what to do about anything marked ⚠️ or ❌.
+
 Load the sermon's verses the night before, so they're instant and work even if the church internet drops:
 
 ```bash

@@ -28,6 +28,11 @@
   .btn-dim { background: var(--surface2); color: var(--text); border: 1px solid var(--mid); }
   #msg { margin-top: 14px; font-size: 0.88rem; white-space: pre-line; }
   .ok { color: var(--green); } .err { color: #ff7a8a; }
+  .chk { display: flex; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--surface2); font-size: 0.85rem; }
+  .chk .dot { width: 22px; flex: 0 0 22px; font-size: 0.95rem; line-height: 1.2; }
+  .chk b { color: var(--white); display: block; font-weight: bold; }
+  .chk span.d { color: #99a; font-size: 0.78rem; line-height: 1.45; word-break: break-word; }
+  .summary { margin: 4px 0 6px; font-size: 0.85rem; }
   code { background: var(--surface2); padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; }
 </style>
 </head>
@@ -37,6 +42,10 @@
   <div><a href="/operator">Operator</a> &nbsp;·&nbsp; <a href="/admin/bibles.html">Bibles</a> &nbsp;·&nbsp; <a href="/admin">Songs</a></div>
 </header>
 <main>
+  <h2 style="margin-top:4px;">System check <button class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:8px;letter-spacing:0;text-transform:none;" onclick="check()">Check again</button></h2>
+  <div id="health"><p>Checking…</p></div>
+
+  <h2>Keys and links</h2>
   <p>Keys are stored only on this computer and are never shown again here: only whether each one is set. Paste a new one to replace it. Several keys for the same service (backups) go on one line separated by commas.</p>
   <div id="fields"></div>
   <button class="btn btn-accent" onclick="save()">Save</button>
@@ -58,6 +67,21 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function say(t, ok) { var m = document.getElementById('msg'); m.className = ok ? 'ok' : 'err'; m.textContent = t; }
 
+  // Everything a service depends on, with what to do about anything that isn't right
+  var ICON = { ok: '✅', warn: '⚠️', fail: '❌', off: '⚪' };
+  async function check() {
+    var el = document.getElementById('health');
+    el.innerHTML = '<p>Checking…</p>';
+    try {
+      var d = await (await fetch('/api/health')).json();
+      var summary = d.worst === 'ok' ? '✅ Ready for the service.' : d.worst === 'warn' ? '⚠️ Ready, with something to look at below.' : '❌ Something needs fixing before the service — see below.';
+      el.innerHTML = '<div class="summary">' + summary + '</div>' + d.checks.map(function(c) {
+        return '<div class="chk"><div class="dot">' + ICON[c.state] + '</div><div><b>' + esc(c.name) + '</b><span class="d">' + esc(c.detail) + '</span></div></div>';
+      }).join('');
+    } catch (err) { el.innerHTML = '<p class="err">Couldn\'t run the check: ' + esc(err.message) + '</p>'; }
+  }
+  check();
+
   async function load() {
     var d = await (await fetch('/api/setup')).json();
     document.getElementById('fields').innerHTML = FIELDS.map(function(f) {
@@ -78,7 +102,7 @@
     var d = await r.json();
     if (!r.ok) return say('✗ ' + d.error);
     say('✓ Saved ' + d.saved.join(', ') + (d.restarting ? '. Di.Verse is restarting to use them (2 seconds) — open pages reconnect by themselves.' : '. Restart Di.Verse to use them.'), true);
-    setTimeout(load, d.restarting ? 2500 : 200);
+    setTimeout(function() { load(); check(); }, d.restarting ? 3000 : 200);
   }
 
   async function stopIt() {
