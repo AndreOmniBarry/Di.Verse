@@ -69,11 +69,13 @@ router.post('/detect', async (req, res) => {
     // ── LAYER 1b: quoted KJV words — offline, a few milliseconds ──
     let quoted = quotes.match(text);
     // A quote that runs across the end of the last sentence into this one:
-    // match the two together, ignoring anything the last sentence matched alone
+    // match the two together, ignoring anything the last sentence matched
+    // alone. Helped by earlier words, it's only ever a suggestion (never
+    // strong): old words must not put a verse on screen.
     if (!quoted.length && context) {
       const tail = String(context).split(/\s+/).slice(-25).join(' ');
       const before = quotes.match(tail).map(q => q.book + q.chapter + ':' + q.verse);
-      quoted = quotes.match(tail + ' ' + text).filter(q => !before.includes(q.book + q.chapter + ':' + q.verse));
+      quoted = quotes.match(tail + ' ' + text).filter(q => !before.includes(q.book + q.chapter + ':' + q.verse)).map(q => ({ ...q, strong: false }));
     }
     const quoteTranslation = (parsed && parsed.translation) || activeTranslation;
 
@@ -100,7 +102,10 @@ router.post('/detect', async (req, res) => {
       // real verses go to the queue for the operator.
       if (!validation.valid) {
         if (validation.code === 'BOOK_NOT_FOUND') return answer({ type: 'none' });
-        const strongQuote = quoted.find(q => q.strong);
+        // only words said right around the reference count (the start of a
+        // long caption sentence may hold an earlier quote)
+        const around = String(text).split(/\s+/).slice(-20).join(' ');
+        const strongQuote = quotes.match(around).find(q => q.strong);
         if (strongQuote) {
           const verseData = await getPassage(strongQuote.book, strongQuote.chapter, strongQuote.verse, undefined, translation, { live: true });
           if (verseData) {
@@ -175,7 +180,10 @@ router.post('/detect', async (req, res) => {
     if (!interim) {
       const tail = String(context || '').split(/\s+/).slice(-15).join(' ');
       found = finder.find((tail + ' ' + text).trim(), 5);
-      const verdict = finder.judge(found);
+      let verdict = finder.judge(found);
+      // strong (shown on its own) only when the current words alone say so —
+      // the earlier sentence may be about a verse that's already been shown
+      if (verdict === 'strong' && finder.judge(finder.find(text, 5)) !== 'strong') verdict = 'suggest';
       if (verdict === 'strong') {
         const f = found[0];
         const verseData = await getPassage(f.book, f.chapter, f.verse, undefined, quoteTranslation, { live: true });

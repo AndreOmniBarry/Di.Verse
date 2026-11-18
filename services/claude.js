@@ -85,6 +85,8 @@ RULES — NO EXCEPTIONS:
 - Return ONLY valid JSON. No prose. No markdown. No explanation.
 - NEVER invent or fabricate a scripture reference.
 - If uncertain whether scripture is being cited, return { "type": "none" }.
+- Report ONLY scripture in NEW TRANSCRIPTION. RECENT CONTEXT is earlier speech that was already
+  handled — use it to understand what is being said, never report a verse that is only in the context.
 - A missed verse is always better than a wrong one. A hallucinated verse is the worst possible
   outcome and must never happen.
 - For implicit matches: return at most 3 ranked candidates with confidence of at least 0.5,
