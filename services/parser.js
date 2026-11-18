@@ -239,90 +239,222 @@ function detectTranslation(text) {
   return null;
 }
 
-// Book name = up to 4 words, optionally after a 1-3 prefix ("1 John",
-// "Song of Solomon", "the gospel of John"). Bounded on purpose: the old
-// pattern (?:\s*[a-z]+)+? backtracked exponentially, so one ordinary
-// 15-word sentence with no numbers froze the whole server for minutes.
-const BOOK = String.raw`\b((?:[1-3]\s*)?[a-z]+(?:\s+[a-z]+){0,3}?)`;
+// ── Finding references in what was said ──
+//
+// One pass over the words. At each word, see whether a book name starts there
+// (up to 4 words: "1 John", "Song of Solomon", "the gospel of John"), then
+// read the numbers that follow in any of the ways pastors say them:
+//   John 3:16 · John 3 16 · John 3 verse 16 · John chapter 3 verse 16 ·
+//   John 3 and 16 · John 3 vs 16 · John 3 versus 16 (captions) · John 3, from verse 16
+//   ranges: 16-18 · 16 to 18 · through 18 · 16 and 17 · verses 5 and 6
+//   one number: Psalm 23 → 23:1 · Jude 3 / 3 John 2 → verse 3 / 2 (one-chapter books)
+//   run-together numbers from captions: John 316 → 3:16 · Romans 828 → 8:28
+// Every reference in the sentence is returned, in order.
 
-// Optional end of a range: "16-18", "16 to 18", "16 through 18"
-const RANGE = String.raw`(?:\s*(?:-|–|to|through|thru|until)\s*(\w+))?`;
-const MAX_RANGE = 10; // verses on one screen
+// Chapters in each book (1–66), for one-chapter books and splitting run-together numbers
+const CHAPTERS = [0, 50, 40, 27, 36, 34, 24, 21, 4, 31, 24, 22, 25, 29, 36, 10, 13, 10, 42, 150, 31, 12, 8, 66, 52, 5, 48, 12, 14, 3, 9, 1, 4, 7, 3, 3, 3, 2, 14, 4,
+  28, 16, 24, 21, 28, 16, 16, 13, 6, 6, 4, 4, 5, 3, 6, 4, 3, 1, 13, 5, 5, 3, 5, 1, 1, 1, 22];
 
-// End verse of a spoken range, capped so a long reading still fits on screen
-function rangeEnd(start, raw) {
-  const end = raw ? wordToNum(raw) : null;
-  if (!end || end <= start) return undefined;
-  return Math.min(end, start + MAX_RANGE - 1);
+// Verses per chapter, from the local Bible database when there is one
+let verseCounts;
+function maxVerse(bookName, chapter) {
+  if (verseCounts === undefined) {
+    try {
+      verseCounts = new Map();
+      for (const r of require('./bibleDb').getDb().prepare('SELECT book, chapter, max_verse FROM bible_structure').all()) verseCounts.set(r.book + '|' + r.chapter, r.max_verse);
+      if (!verseCounts.size) verseCounts = null;
+    } catch (e) { verseCounts = null; }
+  }
+  return verseCounts ? verseCounts.get(bookName + '|' + chapter) || 0 : 176;
+}
+function exists(book, chapter, verse) {
+  return chapter >= 1 && chapter <= CHAPTERS[book.num] && verse >= 1 && verse <= maxVerse(book.name, chapter);
 }
 
-// Common filler words that appear before a book name in natural speech
-const FILLER = /\b(can we have|give me|let us go to|let's go to|open to|open up to|turn to|read|we are in|we're in|go to|that is|that's|it is|it's|and|now|also|see|look at|i said)\b/gi;
+// Book names that are also everyday words or first names. Alone with one
+// number ("mark 2 things", "John 3 times") they need a cue to count as a
+// reference: "chapter", or "turn to / open / read / in / book of…" before them.
+const COMMON_WORD_BOOKS = new Set(['mark', 'john', 'james', 'acts', 'act', 'job', 'numbers', 'ruth', 'amos', 'jude', 'joel', 'titus', 'daniel', 'luke', 'jonah', 'micah', 'song', 'ezra', 'esther', 'hosea', 'nahum', 'mar', 'jon', 'pro', 'lam', 'num', 'gen', 'col', 'gal', 'dan', 'mal', 'hag', 'tit', 'jam', 'heb', 'rev', 'phil', 'mat', 'matt', 'eph']);
+const CUE_BEFORE = new Set(['in', 'of', 'from', 'open', 'read', 'reading', 'chapter', 'book', 'gospel', 'says', 'said', 'see', 'unto']);
+const TO_AFTER = new Set(['turn', 'open', 'go', 'back', 'over', 'bibles', 'bible', 'flip', 'me', 'us', 'move', 'come']); // "turn to", "go with me to"
+
+// Is the word before token i a sign that a reference follows?
+function cuedAt(tokens, i) {
+  const prev = tokens[i - 1];
+  if (CUE_BEFORE.has(prev)) return true;
+  if (prev === 'to' || prev === 'at') return tokens.slice(Math.max(0, i - 4), i - 1).some(w => TO_AFTER.has(w) || w === 'look');
+  return false;
+}
+
+const VERSE_WORD = new Set(['verse', 'verses', 'vs', 'v', 'vv', 'versus', 'vers', 'vss']);
+const CHAPTER_WORD = new Set(['chapter', 'chapters', 'ch', 'chap', 'chapt']);
+const RANGE_WORD = new Set(['-', '–', 'to', 'through', 'thru', 'till', 'until', 'unto']);
+const LEAD_IN = new Set(['and', 'from', 'at', 'starting', 'beginning', 'reading']); // "chapter 8, from verse 28"
+const MAX_RANGE = 10; // verses on one screen
+
+const isNum = t => t !== undefined && /^\d{1,4}$/.test(t);
+
+function tokenize(clean) {
+  return clean.match(/\d+(?:st|nd|rd|th)\b|\d+|[a-z']+|[:\-–]/g) || [];
+}
+
+// The longest book name that starts at token i: { book, next }
+function bookAt(tokens, i) {
+  for (let n = 4; n >= 1; n--) {
+    const words = tokens.slice(i, i + n);
+    if (words.length < n || words.some(w => /^[:\-–]$/.test(w))) continue;
+    if (n > 1 && isNum(words[n - 1])) continue;
+    if (isNum(words[0]) && !(n > 1 && /^[1-3]$/.test(words[0]))) continue; // a number only as "1 John"
+    const book = resolveBook(words.join(' '));
+    if (book) return { book: { ...book, spoken: words.join(' ').replace(/^(the|book of|the book of)\s+/, '') }, next: i + n };
+  }
+  return null;
+}
+
+// Reads the numbers after a book starting at token j.
+// Returns { chapter, verse, verseEnd, confidence, next, chapterOnly, alternatives } or null.
+function readNumbers(tokens, j, book, cued) {
+  const one = CHAPTERS[book.num] === 1;
+  let k = j, sawChapterWord = false;
+  if (CHAPTER_WORD.has(tokens[k])) { sawChapterWord = true; k++; }
+  // one-chapter book: "Jude verse 3", "3 John verse 2"
+  if (one && VERSE_WORD.has(tokens[k]) && isNum(tokens[k + 1])) return finish(1, +tokens[k + 1], k + 2, 0.93);
+  if (!isNum(tokens[k])) return null;
+  const n1 = +tokens[k];
+  k++;
+
+  // the second number, after a separator
+  let m = k, sep = null;
+  if (tokens[m] === ':' ) { sep = ':'; m++; }
+  else if ((tokens[m] === '-' || tokens[m] === '–') && isNum(tokens[m + 1]) && !one) { sep = ':'; m++; }        // "Psalm 1-1"
+  else {
+    let p = m;
+    while (LEAD_IN.has(tokens[p]) && p < m + 2) p++;
+    if (VERSE_WORD.has(tokens[p])) { sep = 'verse'; m = p + 1; }
+    // "John 3 and 16" yes; "the numbers 5 and 6" no (everyday-word book, small second number, no cue)
+    else if (tokens[m] === 'and' && isNum(tokens[m + 1]) && (cued || !COMMON_WORD_BOOKS.has(book.spoken) || +tokens[m + 1] >= 10)) { sep = 'and'; m++; }
+  }
+  if (sep && isNum(tokens[m])) {
+    // one-chapter book: "Jude 3 and 4" are verses — but "Jude chapter 2 verse 1"
+    // names a chapter that doesn't exist; keep it, so the closest verses are offered
+    if (one && sep !== ':' && !(sawChapterWord && sep === 'verse')) return finish(1, n1, k, 0.9);
+    return finish(n1, +tokens[m], m + 1, sep === ':' ? 0.97 : sep === 'verse' ? 0.95 : 0.9);
+  }
+  if (!sep && isNum(tokens[m]) && +tokens[m] <= 176 && n1 <= 150 && !bookAt(tokens, m) && !one) {
+    return finish(n1, +tokens[m], m + 1, 0.88);                         // "John 3 16"
+  }
+
+  // only one number
+  if (one) return finish(1, n1, k, 0.9);                                // "Jude 3", "3 John 2"
+  const splits = splitDigits(book, tokens[k - 1]);
+  if (n1 <= CHAPTERS[book.num]) {
+    // "Psalm 23" → 23:1. A bare book that's also an everyday word needs a cue.
+    if (!cued && !sawChapterWord && COMMON_WORD_BOOKS.has(book.spoken)) return null;
+    const r = finish(n1, 1, k, 0.88);
+    // "Psalm 11" may have been "Psalm 1:1" run together (repeated digits only)
+    if (r) { r.chapterOnly = true; if (splits.length && /^(\d)\1+$/.test(tokens[k - 1])) r.alternatives = splits; }
+    return r;
+  }
+  // more than the book's chapters: run-together numbers ("John 316" → 3:16)
+  if (splits.length) {
+    const r = finish(splits[0].chapter, splits[0].verse, k, 0.86);
+    if (r && splits.length > 1) r.alternatives = splits.slice(1);
+    return r;
+  }
+  return null;
+
+  function finish(chapter, verse, next, confidence) {
+    if (!chapter || !verse || verse > 176) return null;
+    // a range: "16-18", "16 to 18", "verses 5 and 6" (not "and 2 Kings")
+    let verseEnd, q = next;
+    const rangeWord = RANGE_WORD.has(tokens[q]) || (tokens[q] === 'and' && isNum(tokens[q + 1]));
+    if (rangeWord) {
+      let r = q + 1;
+      if (VERSE_WORD.has(tokens[r])) r++;
+      if (isNum(tokens[r]) && +tokens[r] > verse && !bookAt(tokens, r)) {
+        const end = +tokens[r];
+        if (tokens[q] !== 'and' || end - verse <= 3) { verseEnd = Math.min(end, verse + MAX_RANGE - 1); next = r + 1; }
+      }
+    }
+    return { chapter, verse, verseEnd, confidence, next };
+  }
+}
+
+// "316" for John → [{3,16}]; "1191" for Psalms → [{119,1}]; only splits that exist
+function splitDigits(book, digits) {
+  const out = [];
+  if (!digits || digits.length < 2) return out;
+  for (let c = digits.length - 1; c >= 1; c--) {
+    const vs = digits.slice(c);
+    if (vs[0] === '0') continue;
+    const chapter = +digits.slice(0, c), verse = +vs;
+    if (exists(book, chapter, verse)) out.push({ chapter, verse });
+  }
+  return out;
+}
+
+function cleanText(text) {
+  return normaliseNumbers(String(text).replace(/[,;!?"“”]/g, ' '))
+    .toLowerCase()
+    .replace(/(\d)\.(\d)/g, '$1:$2')                                    // "3.16"
+    .replace(/\./g, ' ')
+    .replace(/\b(iii|ii|i)\s+(samuel|kings|chronicles|corinthians|thessalonians|timothy|peter|john)\b/g,
+      (m, r, b) => ({ i: '1', ii: '2', iii: '3' })[r] + ' ' + b)         // "I Corinthians", "II Kings"
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Every reference in the text, in order
+function parseAll(text, fallbackTranslation = 'KJV') {
+  if (!text || text.trim().length < 3) return [];
+  const clean = cleanText(text);
+  const translation = detectTranslation(clean) || fallbackTranslation;
+  const tokens = tokenize(clean);
+  const out = [], seen = new Set();
+  for (let i = 0; i < tokens.length; i++) {
+    const hit = bookAt(tokens, i);
+    if (!hit) continue;
+    const cued = i > 0 && cuedAt(tokens, i);
+    const r = readNumbers(tokens, hit.next, hit.book, cued);
+    if (!r) continue;
+    const key = `${hit.book.name} ${r.chapter}:${r.verse}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push({ book: hit.book.name, chapter: r.chapter, verse: r.verse, verseEnd: r.verseEnd, translation, confidence: r.confidence,
+        raw: tokens.slice(i, r.next).join(' '), ...(r.chapterOnly ? { chapterOnly: true } : {}), ...(r.alternatives ? { alternatives: r.alternatives } : {}) });
+    }
+    i = r.next - 1;
+  }
+  return out;
+}
+
+// Does this sentence sound like it names a reference? (for the session report:
+// "named a book and a number but no verse came up"). A book name followed
+// closely by a number, or "chapter/verse N", or "N:N".
+function looksLikeReference(text) {
+  const tokens = tokenize(cleanText(text || ''));
+  for (let i = 0; i < tokens.length; i++) {
+    if (CHAPTER_WORD.has(tokens[i]) || (VERSE_WORD.has(tokens[i]) && tokens[i] !== 'v')) { if (isNum(tokens[i + 1])) return true; continue; }
+    if (tokens[i] === ':' && isNum(tokens[i - 1]) && isNum(tokens[i + 1])) return true;
+    const hit = bookAt(tokens, i);
+    if (hit && !COMMON_WORD_BOOKS.has(hit.book.spoken) && tokens.slice(hit.next, hit.next + 3).some(isNum)) return true;
+  }
+  return false;
+}
 
 function parse(text, fallbackTranslation = 'KJV') {
   if (!text || text.trim().length < 3) return null;
-
-  const clean = normaliseNumbers(text.replace(/[,;!?]/g, ' '))
-    .replace(/\./g, ' ')
-    .replace(FILLER, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const detectedTranslation = detectTranslation(clean) || fallbackTranslation;
-
-  // Pattern 1: Book chapter:verse  e.g. "John 3:16", "Rom 8:28"
-  const p1 = new RegExp(BOOK + String.raw`\s+(\d+)\s*[:.]\s*(\d+)` + RANGE, 'gi');
-  let m;
-  while ((m = p1.exec(clean)) !== null) {
-    const book = resolveBookTail(m[1]);
-    if (!book) continue;
-    const chapter = parseInt(m[2]);
-    const verse = parseInt(m[3]);
-    if (!chapter || !verse || isNaN(chapter) || isNaN(verse) || verse > 176) continue;
-    return { book: book.name, chapter, verse, verseEnd: rangeEnd(verse, m[4]), translation: detectedTranslation, confidence: 0.97, raw: m[0].trim() };
-  }
-
-  // Pattern 2: Book chapter verse N  e.g. "John chapter 3 verse 16"
-  const p2 = new RegExp(BOOK + String.raw`\s+(?:chapter\s+)?(\w+)\s+verses?\s+(\w+)` + RANGE, 'gi');
-  while ((m = p2.exec(clean)) !== null) {
-    const book = resolveBookTail(m[1]);
-    if (!book) continue;
-    const chapter = wordToNum(m[2]);
-    const verse = wordToNum(m[3]);
-    if (!chapter || !verse || isNaN(chapter) || isNaN(verse)) continue;
-    return { book: book.name, chapter, verse, verseEnd: rangeEnd(verse, m[4]), translation: detectedTranslation, confidence: 0.95, raw: m[0].trim() };
-  }
-
-  // Pattern 3: Book N and N  e.g. "John 3 and 16"
-  const p3 = new RegExp(BOOK + String.raw`\s+(\d+)\s+and\s+(\d+)\b`, 'gi');
-  while ((m = p3.exec(clean)) !== null) {
-    const book = resolveBookTail(m[1]);
-    if (!book) continue;
-    const chapter = parseInt(m[2]);
-    const verse = parseInt(m[3]);
-    if (!chapter || !verse || verse > 176) continue;
-    return { book: book.name, chapter, verse, translation: detectedTranslation, confidence: 0.90, raw: m[0].trim() };
-  }
-
-  // Pattern 4: Book N N  e.g. "John 3 16" (space separated, sanity-checked)
-  const p4 = new RegExp(BOOK + String.raw`\s+(\d{1,3})\s+(\d{1,3})\b`, 'gi');
-  while ((m = p4.exec(clean)) !== null) {
-    const book = resolveBookTail(m[1]);
-    if (!book) continue;
-    const chapter = parseInt(m[2]);
-    const verse = parseInt(m[3]);
-    if (!chapter || !verse || verse > 176 || chapter > 150) continue;
-    return { book: book.name, chapter, verse, translation: detectedTranslation, confidence: 0.85, raw: m[0].trim() };
-  }
+  const all = parseAll(text, fallbackTranslation);
+  if (all.length) return all.length > 1 ? { ...all[0], more: all.slice(1) } : all[0];
 
   // Translation-only — preacher switching translation without stating a reference
   // Also catches "King James Version" explicitly since KJV === fallback but still a signal
+  const clean = cleanText(text);
   const rawTranslation = detectTranslation(clean);
   if (rawTranslation && (rawTranslation !== fallbackTranslation || text.toLowerCase().includes('king james'))) {
     return { translationOnly: true, translation: rawTranslation, confidence: 0.95 };
   }
-
   return null;
 }
 
-module.exports = { parse, detectTranslation, resolveBook, normaliseNumbers };
+module.exports = { parse, parseAll, looksLikeReference, detectTranslation, resolveBook, normaliseNumbers, CHAPTERS };

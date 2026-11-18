@@ -29,6 +29,7 @@ function isOperator(req) {
   const token = process.env.OPERATOR_TOKEN;
   return Boolean(token) && (req.get('x-diverse-token') === token || req.query.token === token);
 }
+app.locals.isOperator = isOperator;
 app.use('/api', (req, res, next) => {
   if (req.method === 'GET' || isOperator(req)) return next();
   res.status(403).json({ error: 'Only the operator laptop can control Di.Verse' });
@@ -163,6 +164,7 @@ app.get('/api/version', (req, res) => res.json({ version: VERSION }));
 // ── Routes ──
 app.use('/api', require('./routes/bible'));
 app.use('/api', require('./routes/library'));
+app.use('/api', require('./routes/diag'));
 app.use('/api', require('./routes/songs'));
 app.use('/api', require('./routes/transcribe'));
 app.use('/api', require('./routes/detect'));
@@ -212,6 +214,7 @@ app.get('/about', (req, res) => page(res, 'about'));
 // at startup (so next week doesn't open on last week's verse).
 const STATE_FILE = paths.STATE_FILE;
 let screenState = {};
+app.locals.screen = () => screenState.screen; // what's on screen now (routes/detect.js: the preacher's cues)
 try {
   screenState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
   if (!screenState.savedAt || Date.now() - screenState.savedAt > 30 * 60000) delete screenState.screen;
@@ -353,6 +356,11 @@ function broadcast(payload) {
       client.send(message);
     }
   });
+  // Every operator page learns what's on screen, whichever page put it there,
+  // so Next / Previous on the Mac continue from a verse PC 2 pushed (and back)
+  if (['SHOW_VERSE', 'SHOW_LYRICS', 'CLEAR'].includes(payload.action)) {
+    alertOperator({ action: 'ON_SCREEN', screen: payload.action === 'CLEAR' ? null : { action: payload.action, verse: payload.verse, lyrics: payload.lyrics } });
+  }
 }
 
 function alertOperator(payload) {

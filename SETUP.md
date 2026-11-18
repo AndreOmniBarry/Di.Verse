@@ -155,6 +155,8 @@ If something's wrong, the red **ALERT** box on the Operator page says exactly wh
 
 ## Before each service
 
+**After the service:** **Settings → Session report** shows how listening went: the success rate (verses from speech against verses typed), any references that were heard but missed, word for word, sound health, and what to fix next. Click **Export** to save it as a text file to send to your helper. Reports are kept on the Di.Verse computer, one per day, so they survive the listening PC restarting.
+
 **Quickest check:** open **Settings** (top right of the Operator page). The **System check** at the top shows, in one list, whether the internet, listening keys, AI, API.Bible, the vMix link, the screens and the Bibles are ready, and what to do about anything marked ⚠️ or ❌.
 
 Load the sermon's verses the night before, so they're instant and work even if the church internet drops:
