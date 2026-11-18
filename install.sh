@@ -37,6 +37,8 @@ if [ -n "$OLD" ]; then
   for f in "$OLD"/db/bible.db* "$OLD"/db/songs.db*; do
     [ -f "$f" ] && cp "$f" "$SRC/db/" && echo "  ✓ $(basename "$f")"
   done
+  # session reports (Settings → Session report)
+  if [ -d "$OLD/logs" ]; then cp -R "$OLD/logs" "$SRC/" && echo "  ✓ session reports"; fi
 else
   [ -f "$SRC/.env" ] || cp "$SRC/.env.example" "$SRC/.env"
   echo "  ! No previous copy found — you'll need to add your keys: open -e ~/Desktop/Di.Verse/.env"

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { parse } = require('../services/parser');
+const { parse, looksLikeReference: parserLooks } = require('../services/parser');
+const diag = require('../services/diagnostics');
 const { detectScripture } = require('../services/claude');
 const { validateReference, normaliseBook } = require('../services/validation');
 const { getPassage } = require('../services/bibleDb');
@@ -19,8 +20,30 @@ router.post('/detect', async (req, res) => {
   // preacher is still talking); the AI layer runs on finished sentences
   // current: the verse on screen, for the preacher's cues ("next verse",
   // "take it back", "verse 17"); interim: words still being spoken
-  const { text, context = '', activeTranslation = 'KJV', fast = false, current = null, interim = false } = req.body;
+  const { text, context = '', activeTranslation = 'KJV', fast = false, interim = false } = req.body;
   if (!text || text.trim().length < 3) return res.json({ type: 'none' });
+
+  // Every answer also goes to the session report (services/diagnostics.js):
+  // what was heard, and what came of it
+  const answer = result => {
+    try {
+      const finished = !interim && !req.body.ai && req.body.via;
+      if (finished) diag.record('heard', { text: String(text).slice(0, 300), via: req.body.via, words: String(text).trim().split(/\s+/).length });
+      if (result.type === 'explicit' && result.verseData) diag.record('found', { ref: result.verseData.reference, source: result.source || 'ai' });
+      else if (result.type === 'navigate' && result.verseData) diag.record('cue', { cue: String(text).slice(-60), ref: result.verseData.reference });
+      else if (result.type === 'implicit' && result.source === 'nearest' && !req.body.ai) diag.record('nearest', { said: String(text).slice(0, 120) });
+      else if (finished && (result.type === 'none' || result.type === 'implicit') && parserLooks(text)) diag.record('missed', { text: String(text).slice(0, 300) });
+    } catch (e) {}
+    return res.json(result);
+  };
+  // The verse on screen: from the page that's listening, or else whatever is
+  // really on screen (another operator page may have put it there)
+  let current = req.body.current || null;
+  if (!current && req.body.cues !== false && req.app.locals.screen) {
+    const on = req.app.locals.screen();
+    const v = on && on.action === 'SHOW_VERSE' && on.verse;
+    if (v && v.book && v.chapter && v.verse) current = { book: v.book, chapter: v.chapter, verse: v.verse, verseEnd: v.verseEnd, translation: String(v.translation || activeTranslation).split('/')[0] };
+  }
 
   try {
     // ── LAYER 1: Local parser — fast, offline, zero cost ──
@@ -37,7 +60,7 @@ router.post('/detect', async (req, res) => {
           const verseData = await getPassage(target.book, target.chapter, target.verse, target.verseEnd, current.translation || activeTranslation, { live: true });
           if (verseData) {
             console.log(`[Cue] ${command.kind === 'step' ? command.dir + ' ' + command.unit : 'verse ' + command.verse} → ${verseData.reference}`);
-            return res.json({ type: 'navigate', command: { kind: command.kind, dir: command.dir, unit: command.unit, verse: command.verse, chapter: command.chapter }, verseData, confidence: 0.95, source: 'cue' });
+            return answer({ type: 'navigate', command: { kind: command.kind, dir: command.dir, unit: command.unit, verse: command.verse, chapter: command.chapter }, verseData, confidence: 0.95, source: 'cue' });
           }
         }
       }
@@ -58,7 +81,7 @@ router.post('/detect', async (req, res) => {
       // Translation-only change
       // The operator handles this from the response; a WebSocket copy as well alerted twice
       if (parsed.translationOnly) {
-        return res.json({ type: 'translation_change', new_translation: parsed.translation, confidence: parsed.confidence });
+        return answer({ type: 'translation_change', new_translation: parsed.translation, confidence: parsed.confidence });
       }
 
       // Full explicit reference — validate then fetch
@@ -66,14 +89,29 @@ router.post('/detect', async (req, res) => {
 
       // Hard gate: reject NaN or non-positive integers
       if (!Number.isInteger(chapter) || !Number.isInteger(verse) || chapter < 1 || verse < 1) {
-        return res.json({ type: 'none' });
+        return answer({ type: 'none' });
       }
 
       const validation = validateReference(book, chapter, verse);
 
-      // The operator alerts from this response (a WebSocket copy as well showed it twice)
+      // A reference that doesn't exist ("Matthew 11:35" — chapter 11 ends at 30)
+      // is nearly always a misheard number. No red error mid-sermon: the
+      // verse the quoted words point to if there is one, otherwise the closest
+      // real verses go to the queue for the operator.
       if (!validation.valid) {
-        return res.json({ type: 'validation_error', message: validation.message });
+        if (validation.code === 'BOOK_NOT_FOUND') return answer({ type: 'none' });
+        const strongQuote = quoted.find(q => q.strong);
+        if (strongQuote) {
+          const verseData = await getPassage(strongQuote.book, strongQuote.chapter, strongQuote.verse, undefined, translation, { live: true });
+          if (verseData) {
+            console.log(`[Parser] ${book} ${chapter}:${verse} doesn't exist — the quoted words are ${verseData.reference}`);
+            return answer({ type: 'explicit', verseData, confidence: 0.93, source: 'quote', notice: `${book} ${chapter}:${verse} doesn't exist — showing ${verseData.reference}, which matches the words quoted` });
+          }
+        }
+        const near = navigation.nearest(validation.normalised || book, chapter, verse);
+        console.log(`[Parser] ${book} ${chapter}:${verse} doesn't exist — suggesting ${near.map(n => n.chapter + ':' + n.verse).join(', ')}`);
+        return answer({ type: 'implicit', source: 'nearest', notice: `${validation.message.replace(/ Verse \d+ does not exist\.| Chapter \d+ does not exist\./, '')} — the closest verses are in the queue`,
+          candidates: near.map(n => ({ book: n.book, chapter: n.chapter, verse: n.verse, confidence: 0.6, snippet: n.why })) });
       }
 
       // The words quoted in the same breath point at a different verse
@@ -88,18 +126,32 @@ router.post('/detect', async (req, res) => {
         const fixed = await getPassage(conflict.book, chapter, verse, verseEnd, translation, { live: true });
         if (fixed) {
           console.log('[Parser] ' + named + ' corrected to ' + conflict.book + ' from the quoted words');
-          return res.json({ type: 'explicit', reference: { book: conflict.book, chapter, verse, verseEnd, translation }, verseData: fixed, confidence: 0.95, source: 'quote' });
+          return answer({ type: 'explicit', reference: { book: conflict.book, chapter, verse, verseEnd, translation }, verseData: fixed, confidence: 0.95, source: 'quote' });
         }
       }
 
       const verseData = await getPassage(named, chapter, verse, verseEnd, translation, { live: true });
-      if (!verseData) return res.json({ type: 'none' });
+      if (!verseData) return answer({ type: 'none' });
 
-      // Otherwise offer the quoted verse alongside the named one
-      const alsoQuoted = conflict ? [{ book: conflict.book, chapter: conflict.chapter, verse: conflict.verse, confidence: 0.9, snippet: 'quoted words match' }] : undefined;
+      // Also offered: the quoted verse if it differs, and for "Psalm 11" the
+      // run-together reading "Psalm 1:1"
+      const offers = [];
+      if (conflict) offers.push({ book: conflict.book, chapter: conflict.chapter, verse: conflict.verse, confidence: 0.9, snippet: 'quoted words match' });
+      for (const alt of parsed.alternatives || []) offers.push({ book: named, chapter: alt.chapter, verse: alt.verse, confidence: 0.7, snippet: `or ${named} ${alt.chapter}:${alt.verse}` });
 
-      console.log('[Parser] ' + verseData.reference + ' (' + translation + ') conf:' + confidence + (conflict ? ' — quote matches ' + conflict.book + ' ' + conflict.chapter + ':' + conflict.verse : ''));
-      return res.json({ type: 'explicit', reference: { book, chapter, verse, verseEnd, translation }, verseData, confidence, source: 'parser', candidates: alsoQuoted });
+      // More references in the same breath ("Romans 8:28 and Philippians 4:13"):
+      // the first goes up, the others wait in the queue, ready to push
+      const also = [];
+      for (const more of (parsed.more || []).slice(0, 4)) {
+        const v = validateReference(more.book, more.chapter, more.verse);
+        if (!v.valid) continue;
+        const d = await getPassage(v.normalised || more.book, more.chapter, more.verse, more.verseEnd, more.translation || translation, { live: true });
+        if (d) also.push(d);
+      }
+
+      console.log('[Parser] ' + verseData.reference + ' (' + translation + ') conf:' + confidence + (conflict ? ' — quote matches ' + conflict.book + ' ' + conflict.chapter + ':' + conflict.verse : '') + (also.length ? ' + ' + also.map(d => d.reference).join(', ') : ''));
+      return answer({ type: 'explicit', reference: { book, chapter, verse, verseEnd, translation }, verseData, confidence, source: 'parser',
+        candidates: offers.length ? offers : undefined, also: also.length ? also : undefined });
     }
 
     // A clearly quoted verse: show it like a named reference
@@ -108,12 +160,12 @@ router.post('/detect', async (req, res) => {
       const verseData = await getPassage(q.book, q.chapter, q.verse, undefined, quoteTranslation, { live: true });
       if (verseData) {
         console.log('[Quote] ' + verseData.reference + ' (' + q.hits + ' phrases)');
-        return res.json({ type: 'explicit', reference: { book: q.book, chapter: q.chapter, verse: q.verse, translation: quoteTranslation }, verseData, confidence: 0.92, source: 'quote' });
+        return answer({ type: 'explicit', reference: { book: q.book, chapter: q.chapter, verse: q.verse, translation: quoteTranslation }, verseData, confidence: 0.92, source: 'quote' });
       }
     }
     // Partly quoted: suggest, the operator decides
     if (quoted.length) {
-      return res.json({ type: 'implicit', candidates: quoted.map(q => ({ book: q.book, chapter: q.chapter, verse: q.verse, confidence: 0.7 })), source: 'quote' });
+      return answer({ type: 'implicit', candidates: quoted.map(q => ({ book: q.book, chapter: q.chapter, verse: q.verse, confidence: 0.7 })), source: 'quote' });
     }
 
     // ── LAYER 1c: the verse being talked about, from its telling words —
@@ -129,16 +181,16 @@ router.post('/detect', async (req, res) => {
         const verseData = await getPassage(f.book, f.chapter, f.verse, undefined, quoteTranslation, { live: true });
         if (verseData) {
           console.log(`[Finder] ${verseData.reference} (${f.words} words, score ${f.score})`);
-          return res.json({ type: 'explicit', reference: { book: f.book, chapter: f.chapter, verse: f.verse, translation: quoteTranslation }, verseData, confidence: 0.9, source: 'finder' });
+          return answer({ type: 'explicit', reference: { book: f.book, chapter: f.chapter, verse: f.verse, translation: quoteTranslation }, verseData, confidence: 0.9, source: 'finder' });
         }
       }
       if (verdict === 'suggest' && !req.body.ai) {
         const close = found.filter(f => f.score >= found[0].score * 0.85).slice(0, 2);
-        return res.json({ type: 'implicit', candidates: close.map(f => ({ book: f.book, chapter: f.chapter, verse: f.verse, confidence: Math.min(0.8, f.confidence) })), source: 'finder' });
+        return answer({ type: 'implicit', candidates: close.map(f => ({ book: f.book, chapter: f.chapter, verse: f.verse, confidence: Math.min(0.8, f.confidence) })), source: 'finder' });
       }
     }
 
-    if (fast) return res.json({ type: 'none' });
+    if (fast) return answer({ type: 'none' });
 
     // ── LAYER 2 budget: free AI tiers have daily limits, and a long service
     // has thousands of sentences. Only sentences that sound like they involve
@@ -146,8 +198,8 @@ router.post('/detect', async (req, res) => {
     // one every few seconds; named references and quotes never need it.
     // ai: the operator page's rolling window, already paced to the free
     // limits; anything else only when it sounds like scripture
-    if (!req.body.ai && !SCRIPTURE_CUE.test(text) && text.trim().split(/\s+/).length < 14) return res.json({ type: 'none' });
-    if (Date.now() - lastAiCheck < (req.body.ai ? 2000 : AI_MIN_GAP_MS)) return res.json({ type: 'none' });
+    if (!req.body.ai && !SCRIPTURE_CUE.test(text) && text.trim().split(/\s+/).length < 14) return answer({ type: 'none' });
+    if (Date.now() - lastAiCheck < (req.body.ai ? 2000 : AI_MIN_GAP_MS)) return answer({ type: 'none' });
     lastAiCheck = Date.now();
 
     // ── LAYER 2: Claude — implicit quotes, ambiguous speech, hard cases ──
@@ -167,12 +219,14 @@ router.post('/detect', async (req, res) => {
       if (!Number.isInteger(parseInt(chapter)) || !Number.isInteger(parseInt(verse)) ||
           isNaN(parseInt(chapter)) || isNaN(parseInt(verse)) ||
           parseInt(chapter) < 1 || parseInt(verse) < 1) {
-        return res.json({ type: 'none' });
+        return answer({ type: 'none' });
       }
 
       const validation = validateReference(book, parseInt(chapter), parseInt(verse));
       if (!validation.valid) {
-        return res.json({ type: 'validation_error', message: validation.message });
+        if (validation.code === 'BOOK_NOT_FOUND') return answer({ type: 'none' });
+        const near = navigation.nearest(validation.normalised || book, parseInt(chapter), parseInt(verse));
+        return answer({ type: 'implicit', source: 'nearest', candidates: near.map(n => ({ book: n.book, chapter: n.chapter, verse: n.verse, confidence: 0.55, snippet: n.why })) });
       }
 
       const start = parseInt(verse);
@@ -182,11 +236,11 @@ router.post('/detect', async (req, res) => {
       if (verseData) detection.verseData = verseData;
     }
 
-    return res.json(detection);
+    return answer(detection);
 
   } catch (err) {
     console.error('[Detect Error]', err.message);
-    return res.json({ type: 'none' });
+    return answer({ type: 'none' });
   }
 });
 

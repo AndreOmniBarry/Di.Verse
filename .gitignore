@@ -6,3 +6,4 @@ db/*.db-wal
 .DS_Store
 db/screen-state.json
 dist/
+logs/
