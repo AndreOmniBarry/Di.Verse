@@ -326,6 +326,17 @@ function connectWS() {
     var msg = JSON.parse(e.data);
     if (msg.action === 'VALIDATION_ALERT') showAlert(msg.message);
     // On (re)connect: what the screens are showing now, e.g. after a restart
+    // Another operator page (or this one) changed the screen: keep "On Screen
+    // Now" and Next / Previous in step with what's really showing
+    if (msg.action === 'ON_SCREEN') {
+      var sc = msg.screen;
+      if (!sc) { currentVerse = null; onScreen = null; }
+      else if (sc.action === 'SHOW_VERSE' && sc.verse) {
+        if (!currentVerse || currentVerse.reference !== sc.verse.reference || currentVerse.translation !== sc.verse.translation) currentVerse = sc.verse;
+        onScreen = { type: 'verse', item: currentVerse };
+      } else if (sc.action === 'SHOW_LYRICS' && !(onScreen && onScreen.type === 'slide')) { currentVerse = null; onScreen = { type: 'lyrics' }; }
+      renderNowPlaying();
+    }
     if (msg.action === 'STATE' && msg.state) {
       var st = msg.state;
       if (st.screen && st.screen.action === 'SHOW_VERSE') { currentVerse = st.screen.verse; onScreen = { type: 'verse', item: st.screen.verse }; renderNowPlaying(); }
@@ -446,7 +457,7 @@ function setMode(mode, fromOperator) {
   document.getElementById('modeBtn').textContent = m[1];
   savePref('mode', displayMode);
   if (!fromOperator || !onScreen) return;
-  if (onScreen.type === 'verse') pushVerse(onScreen.item, true);
+  if (onScreen.type === 'verse') pushVerse(onScreen.item, true, 'mode');
   else if (onScreen.type === 'slide') pushSlide(onScreen.index);
 }
 
@@ -468,7 +479,7 @@ async function manualSearch() {
     // never waits on a slow online translation: KJV first, the translation when it comes
     var data = await fetchVerseFast('/api/verse?book=' + encodeURIComponent(book) + '&chapter=' + chapter + '&verse=' + verse + (verseEnd ? '&verseEnd=' + verseEnd : ''), activeTranslation, function(late) {
       addToQueue(Object.assign({}, late, { confidence: 1.0, type: 'manual' }));
-      if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true);
+      if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true, 'upgrade');
     });
     if (!data) return;
     if (data.fallback) showAlert(data.requestedTranslation + ' unavailable: ' + data.fallbackReason + ' — showing KJV where needed.');
@@ -494,7 +505,7 @@ async function quickGo() {
   if (!m) return phraseSearch(box);
   var url = '/api/verse?book=' + encodeURIComponent(m[1].replace(/\.$/, '').trim()) + '&chapter=' + m[2] + '&verse=' + (m[3] || 1) + (m[4] ? '&verseEnd=' + m[4] : '');
   var item = await fetchVerseFast(url, activeTranslation, function(late) {
-    if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true);
+    if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true, 'upgrade');
   });
   if (!item) return;
   item = Object.assign({}, item, { confidence: 1, type: 'manual' });
@@ -728,9 +739,22 @@ async function doStep(dir, unit) {
     (cur.verseEnd ? '&verseEnd=' + cur.verseEnd : '') + '&dir=' + dir + '&unit=' + unit;
   var item = await fetchVerseFast('/api/verse/step?' + q, baseTranslation(cur.translation), function(late) {
     // the requested translation arrived after KJV went up: swap it in if that verse is still showing
-    if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true);
+    if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true, 'upgrade');
   });
-  if (item) await pushVerse(Object.assign({}, item, { type: 'manual', confidence: 1 }));
+  if (item) await pushVerse(Object.assign({}, item, { type: 'manual', confidence: 1 }), false, 'step');
+}
+// A reference that doesn't exist: say so, and queue the closest real verses
+// (e.g. Matthew 11:35 → 11:25, 11:30, 11:15) to pick from
+async function offerNearest(err) {
+  var list = err.suggestions || [];
+  if (!list.length) { showAlert(err.message); return; }
+  for (var i = list.length - 1; i >= 0; i--) {
+    try {
+      var r = await fetch('/api/verse?book=' + encodeURIComponent(list[i].book) + '&chapter=' + list[i].chapter + '&verse=' + list[i].verse + '&translation=' + activeTranslation);
+      if (r.ok) addToQueue(Object.assign({}, await r.json(), { confidence: 0.6, type: 'implicit', note: list[i].why }));
+    } catch (e) {}
+  }
+  showAlert(err.message + ' The closest verses are in the queue: ' + list.map(function(x) { return x.reference; }).join(', ') + '.');
 }
 function baseTranslation(t) { return String(t || activeTranslation).split('/')[0]; }
 
@@ -741,17 +765,17 @@ async function fetchVerseFast(url, translation, onLate) {
   var withT = function(t) { return url + (url.indexOf('?') < 0 ? '?' : '&') + 'translation=' + encodeURIComponent(t) + '&manual=1'; };
   var main = fetch(withT(translation)).then(async function(r) {
     var d = await r.json().catch(function() { return {}; });
-    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    if (!r.ok) { var e = new Error(d.error || ('HTTP ' + r.status)); e.suggestions = d.suggestions; throw e; }
     return d;
   });
   if (/^KJV$/i.test(translation)) {
-    try { return await main; } catch (err) { showAlert(err.message); return null; }
+    try { return await main; } catch (err) { offerNearest(err); return null; }
   }
   var settled = false, timer;
   var quick = new Promise(function(resolve) { timer = setTimeout(function() { resolve('slow'); }, 2500); });
   var first;
   try { first = await Promise.race([main.then(function(d) { return { d: d }; }), quick]); }
-  catch (err) { clearTimeout(timer); first = { err: err }; }
+  catch (err) { clearTimeout(timer); if (err.suggestions && err.suggestions.length) { offerNearest(err); return null; } first = { err: err }; }
   clearTimeout(timer);
   if (first && first.d) return first.d;
   // slow (or failed): KJV now
@@ -770,12 +794,17 @@ async function fetchVerseFast(url, translation, onLate) {
 // What the screens show right now, so a mode change can re-show it
 var onScreen = null; // { type: 'verse', item } | { type: 'slide', index }
 
-async function pushVerse(item, sameVerse) {
+// why: auto | cue | queue | step | manual | mode | upgrade — for the session report
+async function pushVerse(item, sameVerse, why) {
   if (followSinger && !sameVerse) { setFollow(false); noteOnce('Follow the singer paused while a verse is on screen — tick it again for the next song.'); }
   try {
     var res = await broadcast({
       action: 'SHOW_VERSE',
-      verse: { reference: item.reference, translation: item.translation, text: item.text, displayMode: displayMode },
+      why: why || (sameVerse ? 'mode' : (item.type === 'manual' ? 'manual' : 'queue')),
+      listening: isListening,
+      detected: item.type !== 'manual',
+      verse: { reference: item.reference, translation: item.translation, text: item.text, displayMode: displayMode,
+               book: item.book, chapter: item.chapter, verse: item.verse, verseEnd: item.verseEnd },
       theme: THEMES[currentTheme],
       fontSize: currentFontSize
     });
@@ -836,14 +865,24 @@ async function handleDetection(detection, meta) {
       // During worship, songs quote scripture all the time: keep those in
       // the queue instead of covering the lyrics
       else if (followSinger && activeSong && detection.source === 'quote') appendTranscription('[ ' + v.reference + ' quoted in the song — in the queue ]', false, true);
-      else if (autoPush && (item.confidence || 0) >= 0.85) await pushVerse(item);
+      else if (autoPush && (item.confidence || 0) >= 0.85) await pushVerse(item, false, 'auto');
     }
+  }
+
+  // A note for the operator (e.g. "Matthew 11 ends at verse 30 — the closest verses are in the queue")
+  if (detection.notice) appendTranscription('[ ' + detection.notice + ' ]', false, true);
+
+  // More references said in the same breath: queued, ready to push (newest first, so in spoken order)
+  if (detection.also && detection.also.length) {
+    for (var a = detection.also.length - 1; a >= 0; a--) addToQueue(Object.assign({}, detection.also[a], { confidence: 0.9, type: 'explicit', source: 'parser' }));
+    appendTranscription('[ also said: ' + detection.also.map(function(d) { return d.reference; }).join(', ') + ' — in the queue ]', false, true);
   }
 
   // Suggestions: implicit quotes, or the verse whose words were quoted when the
   // spoken reference pointed somewhere else
   if (detection.candidates && detection.candidates.length > 0) {
-    for (var i = 0; i < Math.min(3, detection.candidates.length); i++) {
+    // last first, so the likeliest ends up on top of the queue
+    for (var i = Math.min(3, detection.candidates.length) - 1; i >= 0; i--) {
       var c = detection.candidates[i];
       try {
         var res = await fetch('/api/verse?book=' + encodeURIComponent(c.book) + '&chapter=' + c.chapter + '&verse=' + c.verse + '&translation=' + activeTranslation);
@@ -865,7 +904,7 @@ async function handleDetection(detection, meta) {
     var said = cmd.kind === 'step' ? (cmd.dir === 'next' ? 'next ' : 'previous ') + cmd.unit : 'verse ' + cmd.verse;
     var nav = Object.assign({}, detection.verseData, { confidence: 0.95, type: 'explicit', source: 'cue' });
     appendTranscription('[ "' + said + '" → ' + nav.reference + ' ]', false, true);
-    if (autoPush) await pushVerse(nav); else addToQueue(nav);
+    if (autoPush) await pushVerse(nav, false, 'cue'); else addToQueue(nav);
     return;
   }
 
@@ -982,7 +1021,7 @@ function setApiStatus(state, message) {
           var pct = Math.min(100, Math.round(e.data.level / 0.1 * 100));
           document.getElementById('vadFill').style.width = pct + '%';
           document.getElementById('vadLabel').textContent = 'VAD: ' + (e.data.speech ? 'SPEECH' : 'silence');
-          watchCaptions(e.data.speech, mySession);
+          watchCaptions(e.data.speech, mySession, e.data.level);
           return;
         }
 
@@ -1109,7 +1148,7 @@ var base64 = btoa(binary);
 
       // Detection runs alongside: a slow verse lookup must never hold up the
       // transcription of what the preacher says next
-      detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession, true, { utt: 'w' + (whisperUtt++) });
+      detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession, true, { utt: 'w' + (whisperUtt++), via: 'whisper' });
       queueForAI(text, mySession);
 
     } catch(err) {
@@ -1133,7 +1172,8 @@ var base64 = btoa(binary);
       var detectRes = await fetch('/api/detect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, context: context, activeTranslation: translation, fast: !!fast, current: cur, interim: !!opts.interim })
+        body: JSON.stringify({ text: text, context: context, activeTranslation: translation, fast: !!fast, current: cur, interim: !!opts.interim,
+          cues: opts.utt != null, via: opts.via || null })
       });
       if (sessionId !== mySession) return;
       if (!detectRes.ok) { setApiStatus('fail'); return; }
@@ -1176,7 +1216,7 @@ var base64 = btoa(binary);
     var text = words.slice(-70).join(' ');
     try {
       var res = await fetch('/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, context: '', activeTranslation: activeTranslation, ai: true }) });
+        body: JSON.stringify({ text: text, context: '', activeTranslation: activeTranslation, ai: true, cues: false }) });
       if (sessionId === mySession && res.ok) await handleDetection(await res.json());
     } catch (e) {}
     aiBusy = false;
@@ -1205,13 +1245,31 @@ var base64 = btoa(binary);
   // speech for 3 s and the captions write nothing, rebuild them (at most
   // every 8 s); Whisper covers those sentences meanwhile.
   var lastSpeechAt = 0, speechSinceCaption = 0, lastCaptionRebuild = 0;
-  function watchCaptions(speaking, mySession) {
+  // Sound health for the session report, sent once a minute while listening
+  var health = { ok: 0, whisper: 0, speech: 0, rebuilds: 0, levelSum: 0, levelN: 0, since: Date.now() };
+  function noteHealth(speaking, level) {
+    if (speaking) {
+      health.speech++;
+      if (captionsHealthy() && !captionsBlocked) health.ok++; else health.whisper++;
+      if (level != null) { health.levelSum += level; health.levelN++; }
+    }
+    if (Date.now() - health.since >= 60000) {
+      var h = health;
+      health = { ok: 0, whisper: 0, speech: 0, rebuilds: 0, levelSum: 0, levelN: 0, since: Date.now() };
+      // ticks arrive about 10 times a second
+      fetch('/api/diag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'audio',
+        okSec: h.ok / 10, whisperSec: h.whisper / 10, speechSec: h.speech / 10, rebuilds: h.rebuilds, level: h.levelN ? h.levelSum / h.levelN : null }) }).catch(function() {});
+    }
+  }
+  function watchCaptions(speaking, mySession, level) {
+    noteHealth(speaking, level);
     if (speaking) { lastSpeechAt = Date.now(); speechSinceCaption += 100; }
     updateEngineLabel();
     if (!SpeechRec || !isListening || sessionId !== mySession || captionsBlocked) return;
     if (speechSinceCaption >= 3000 && Date.now() - captionsLastResult > 5000 && Date.now() - lastCaptionRebuild > 8000) {
       lastCaptionRebuild = Date.now();
       speechSinceCaption = 0;
+      health.rebuilds++;
       console.log('[Captions] no words for ' + Math.round((Date.now() - captionsLastResult) / 1000) + ' s while speech is heard — restarting them');
       stopCaptions();
       startCaptions(mySession);
@@ -1293,7 +1351,7 @@ var base64 = btoa(binary);
     if (transcriptionContext.length > 3) transcriptionContext.shift();
     lastFastText = '';
     // Finished sentence: parser + quotes + (for longer sentences) AI
-    detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession, true, { utt: captionUtt });
+    detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation, mySession, true, { utt: captionUtt, via: 'captions' });
     captionUtt++;
     queueForAI(text, mySession); // implicit / paraphrased verses: checked over the last few sentences
   }

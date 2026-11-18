@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { parse, normaliseNumbers } = require('../services/parser');
+const { parse, parseAll, normaliseNumbers } = require('../services/parser');
 
 function ref(text) {
   const r = parse(text);
@@ -71,4 +71,29 @@ test('everyday sermon words do not switch the translation', () => {
   assert.strictEqual(parse('read it from the Passion Translation').translation, 'TPT');
   assert.strictEqual(parse('the good news translation says').translation, 'GNT');
   assert.strictEqual(parse('John 3 16 NKJV').translation, 'NKJV');
+});
+
+test('the many ways a reference is said (live testing, Nov 2026)', () => {
+  const r = t => { const p = parse(t); return p && `${p.book} ${p.chapter}:${p.verse}${p.verseEnd ? '-' + p.verseEnd : ''}`; };
+  const cases = {
+    'Psalm 1:1': 'Psalms 1:1', 'Psalm 1 1': 'Psalms 1:1', 'psalm one one': 'Psalms 1:1', 'Psalm 1 verse 1': 'Psalms 1:1', 'Psalm 1-1': 'Psalms 1:1', 'Psalm 1.1': 'Psalms 1:1',
+    'Psalm 23': 'Psalms 23:1', 'John 3 vs 16': 'John 3:16', 'John 3 versus 16': 'John 3:16', 'Romans chapter eight from verse twenty eight': 'Romans 8:28',
+    'Romans 8 28 to 30': 'Romans 8:28-30', 'Proverbs 3:5 and 6': 'Proverbs 3:5-6', 'Proverbs 3 verse 5 and 6': 'Proverbs 3:5-6',
+    'I Corinthians 13:4': '1 Corinthians 13:4', 'II Kings 5:1': '2 Kings 5:1', 'Jude 3': 'Jude 1:3', 'Jude verse 3': 'Jude 1:3', '3 John 2': '3 John 1:2', 'third John verse 2': '3 John 1:2',
+    'John 316': 'John 3:16', 'Romans 828': 'Romans 8:28', 'Matthew 1128': 'Matthew 11:28', 'turn to Mark 2': 'Mark 2:1', 'James chapter 4': 'James 4:1',
+  };
+  for (const [said, want] of Object.entries(cases)) assert.strictEqual(r(said), want, said);
+});
+
+test('every reference in a sentence, in order', () => {
+  const all = t => parseAll(t).map(p => `${p.book} ${p.chapter}:${p.verse}${p.verseEnd ? '-' + p.verseEnd : ''}`);
+  assert.deepStrictEqual(all('Romans 8:28 and Philippians 4:13'), ['Romans 8:28', 'Philippians 4:13']);
+  assert.deepStrictEqual(all('read Psalm 23:1 and 2 Kings 5:1'), ['Psalms 23:1', '2 Kings 5:1']);
+  assert.deepStrictEqual(all('Genesis 1:1 John 1:1 and Hebrews 11:3'), ['Genesis 1:1', 'John 1:1', 'Hebrews 11:3']);
+});
+
+test('book names that are everyday words need a cue when they come with one number', () => {
+  for (const t of ['I want you to mark 2 things today', 'John 3 times told me', 'my job 1 is to pray', 'the numbers 5 and 6 are on the board',
+    'James 4 kids are here', 'Ruth 2 years ago', 'luke 1 more time', 'song 1 is next', 'daniel 3 of you come', 'James 4 and 5 kids'])
+    assert.strictEqual(parse(t), null, t);
 });

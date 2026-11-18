@@ -19,7 +19,10 @@ router.get('/verse', async (req, res) => {
 
   const validation = validateReference(book, parseInt(chapter), parseInt(verse));
   if (!validation.valid) {
-    return res.status(422).json({ error: validation.message, code: validation.code });
+    // the closest real verses, so the operator can pick one instead of retyping
+    const suggestions = validation.normalised ? require('../services/navigation').nearest(validation.normalised, parseInt(chapter), parseInt(verse))
+      .map(n => ({ reference: `${n.book} ${n.chapter}:${n.verse}`, book: n.book, chapter: n.chapter, verse: n.verse, why: n.why })) : [];
+    return res.status(422).json({ error: validation.message, code: validation.code, suggestions });
   }
 
   // Use normalised book name for DB lookup

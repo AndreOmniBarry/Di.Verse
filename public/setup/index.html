@@ -33,6 +33,13 @@
   .chk b { color: var(--white); display: block; font-weight: bold; }
   .chk span.d { color: #99a; font-size: 0.78rem; line-height: 1.45; word-break: break-word; }
   .summary { margin: 4px 0 6px; font-size: 0.85rem; }
+  .stats { display: flex; flex-wrap: wrap; margin: 6px -5px 10px; }
+  .stat { flex: 1 1 140px; margin: 5px; background: var(--surface); border: 1px solid var(--surface2); border-radius: 8px; padding: 10px 12px; }
+  .stat .v { font-size: 1.4rem; font-weight: bold; color: var(--white); }
+  .stat .k { font-size: 0.7rem; color: #99a; margin-top: 2px; }
+  .advice li { font-size: 0.83rem; line-height: 1.5; margin: 0 0 6px 18px; color: #ccd; }
+  .ex { font-size: 0.78rem; color: #aab; line-height: 1.5; margin: 2px 0; }
+  .ex b { color: #889; font-weight: normal; margin-right: 6px; }
   code { background: var(--surface2); padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; }
 </style>
 </head>
@@ -44,6 +51,10 @@
 <main>
   <h2 style="margin-top:4px;">System check <button class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:8px;letter-spacing:0;text-transform:none;" onclick="check()">Check again</button></h2>
   <div id="health"><p>Checking…</p></div>
+
+  <h2>Session report <select id="repDay" onchange="loadReport()" style="margin-left:8px;background:var(--brand);color:var(--text);border:1px solid var(--mid);border-radius:4px;font-size:0.72rem;padding:2px 6px;letter-spacing:0;text-transform:none;"></select>
+    <a id="repExport" href="/api/diag/export" class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:6px;letter-spacing:0;text-transform:none;text-decoration:none;">Export</a></h2>
+  <div id="report"><p>Loading…</p></div>
 
   <h2>Keys and links</h2>
   <p>Keys are stored only on this computer and are never shown again here: only whether each one is set. Paste a new one to replace it. Several keys for the same service (backups) go on one line separated by commas.</p>
@@ -81,6 +92,32 @@
     } catch (err) { el.innerHTML = '<p class="err">Couldn\'t run the check: ' + esc(err.message) + '</p>'; }
   }
   check();
+
+  // How listening went today (or an earlier day), and what to fix next
+  async function loadReport() {
+    var el = document.getElementById('report'), sel = document.getElementById('repDay');
+    try {
+      var d = await (await fetch('/api/diag/report' + (sel.value ? '?day=' + sel.value : ''))).json();
+      if (!sel.options.length) sel.innerHTML = (d.days.length ? d.days : [d.day]).map(function(x) { return '<option>' + x + '</option>'; }).join('');
+      document.getElementById('repExport').href = '/api/diag/export?day=' + d.day;
+      var n = d.numbers, v = function(x, suffix) { return x == null ? '—' : x + (suffix || ''); };
+      var stat = function(value, label) { return '<div class="stat"><div class="v">' + value + '</div><div class="k">' + label + '</div></div>'; };
+      var time = function(t) { return new Date(t).toTimeString().slice(0, 5); };
+      var ex = function(title, list, show) { return list.length ? '<div style="margin-top:10px;font-size:0.72rem;color:var(--mid);letter-spacing:1px;text-transform:uppercase;">' + title + '</div>' +
+        list.map(function(x) { return '<div class="ex"><b>' + time(x.t) + '</b>' + esc(show(x)) + '</div>'; }).join('') : ''; };
+      el.innerHTML = '<div class="stats">' +
+        stat(v(n.successRate, ' %'), 'from speech (vs typed)') + stat(n.fromSpeech + ' / ' + n.typedWhileListening, 'verses from speech / typed') +
+        stat(n.missed, 'references heard but missed') + stat(n.cues, 'voice cues acted on') +
+        stat(v(n.captionsWorking, ' %'), 'live captions working') + stat(v(n.micLevel, ' %'), 'average mic level') + '</div>' +
+        '<ul class="advice">' + d.advice.map(function(a) { return '<li>' + esc(a) + '</li>'; }).join('') + '</ul>' +
+        ex('Heard but missed (word for word)', d.examples.missed, function(x) { return '"' + x.text + '"'; }) +
+        ex('Typed while listening', d.examples.typed, function(x) { return x.ref; }) +
+        ex('Cleared within seconds (possible false alarms)', d.examples.falseAlarms, function(x) { return x.ref || '?'; }) +
+        ex('Numbers that don\'t exist (misheard)', d.examples.nearest, function(x) { return '"' + x.said + '"'; }) +
+        '<p style="margin-top:10px;font-size:0.75rem;color:#889;">Kept on this computer only, one file per day. <b>Export</b> saves it as a text file to send to your helper.</p>';
+    } catch (err) { el.innerHTML = '<p class="err">Couldn\'t load the report: ' + esc(err.message) + '</p>'; }
+  }
+  loadReport();
 
   async function load() {
     var d = await (await fetch('/api/setup')).json();

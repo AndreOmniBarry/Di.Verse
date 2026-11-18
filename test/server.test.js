@@ -66,7 +66,7 @@ test('saving a song that was deleted elsewhere says so (404, not a crash)', asyn
   assert.match((await res.json()).error, /no longer exists/);
 });
 
-test('an invalid reference is reported once (response only, no WebSocket copy)', async () => {
+test('a reference that doesn\'t exist gets the closest verses offered, once, with no red error', async () => {
   const ws = new WebSocket(`ws://localhost:${PORT}?type=operator`);
   await new Promise(r => ws.on('open', r));
   const pushed = [];
@@ -74,8 +74,41 @@ test('an invalid reference is reported once (response only, no WebSocket copy)',
   const d = await (await fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Jude chapter 2 verse 1' }) })).json();
   await new Promise(r => setTimeout(r, 200));
   ws.close();
-  assert.strictEqual(d.type, 'validation_error');
+  assert.strictEqual(d.type, 'implicit');
+  assert.strictEqual(d.source, 'nearest');
+  assert.match(d.notice, /Jude only has 1 chapter/);
+  assert.ok(d.candidates.length >= 1 && d.candidates.every(c => c.book === 'Jude' && c.chapter === 1));
   assert.strictEqual(pushed.length, 0);
+  // Matthew 11 ends at verse 30: the likeliest mishearings first
+  const m = await (await fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Matthew 11:35' }) })).json();
+  assert.match(m.notice, /Matthew chapter 11 ends at verse 30/);
+  assert.deepStrictEqual(m.candidates.map(c => c.chapter + ':' + c.verse), ['11:25', '11:30', '11:15']);
+  // and in the manual box
+  const r = await fetch(base + '/api/verse?book=Matthew&chapter=11&verse=35');
+  assert.strictEqual(r.status, 422);
+  assert.deepStrictEqual((await r.json()).suggestions.map(x => x.reference), ['Matthew 11:25', 'Matthew 11:30', 'Matthew 11:15']);
+});
+
+test('several references in one breath: the first is shown, the others queued; "Psalm 11" also offers 1:1', async () => {
+  const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+  const d = await detect({ text: 'turn to Romans 8:28 and also Philippians 4:13 and Jude 24' });
+  assert.strictEqual(d.verseData.reference, 'Romans 8:28');
+  assert.deepStrictEqual(d.also.map(v => v.reference), ['Philippians 4:13', 'Jude 1:24']);
+  const p = await detect({ text: 'Psalm 11' });
+  assert.strictEqual(p.verseData.reference, 'Psalms 11:1');
+  assert.ok(p.candidates.some(c => c.chapter === 1 && c.verse === 1));
+  const j = await detect({ text: 'John 316' });   // captions running the numbers together
+  assert.strictEqual(j.verseData.reference, 'John 3:16');
+});
+
+test('the preacher\'s cues follow what is really on screen, even when another operator page put it there', async () => {
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'SHOW_VERSE', verse: { reference: 'Esther 8:9', translation: 'KJV', text: 'x', book: 'Esther', chapter: 8, verse: 9 } }) });
+  const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+  let d = await detect({ text: 'the next one please', fast: true });   // no `current` from this page
+  assert.strictEqual(d.type, 'navigate'); assert.strictEqual(d.verseData.reference, 'Esther 8:10');
+  d = await detect({ text: 'take it back', fast: true });
+  assert.strictEqual(d.verseData.reference, 'Esther 8:8');
 });
 
 test('a quoted verse is shown without a reference; a misheard reference gets the quoted verse offered', async () => {
@@ -315,4 +348,45 @@ test('system check lists what a service depends on, each with a state and what t
   assert.strictEqual(d.checks.find(c => c.name === 'Listening backup (Whisper)').state, 'fail');
   assert.match(d.checks.find(c => c.name === 'Bibles on this computer').detail, /KJV/);
   assert.ok(['ok', 'warn', 'fail'].includes(d.worst));
+});
+
+test('session report: success rate, missed references word for word, false alarms, sound health and advice', async () => {
+  const os = require('os'), fs = require('fs');
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'diverse-diag-'));
+  const srv = spawn(process.execPath, [path.join(__dirname, '../server.js')], { env: { ...process.env, PORT: '3939', DIVERSE_DATA: data,
+    DIVERSE_BUNDLED_DB: path.join(__dirname, '../db/bible.db'), DIVERSE_NO_BROWSER: '1', DIVERSE_STATE_FILE: '', GROQ_API_KEY: '', OPENAI_API_KEY: '', GEMINI_API_KEY: '', ANTHROPIC_API_KEY: '', APIBIBLE_KEY: '' }, stdio: 'pipe' });
+  const B = 'http://localhost:3939';
+  const post = (u, body) => fetch(B + u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+  try {
+    for (let i = 0; i < 80; i++) { try { await fetch(B + '/api/version'); break; } catch (e) { await new Promise(r => setTimeout(r, 100)); } }
+    await post('/api/detect', { text: 'turn with me to John 3:16', fast: true, via: 'captions' });                 // found
+    await post('/api/detect', { text: 'turn with me to John 3:16', fast: true, interim: true });                 // same verse mid-sentence: counted once
+    await post('/api/detect', { text: 'let us look at romance 8:28 this morning', fast: true, via: 'captions' }); // misheard book: missed
+    await post('/api/detect', { text: 'good morning church', fast: true, via: 'captions' });                      // just talk: not missed
+    await post('/api/detect', { text: 'Matthew 11:35', fast: true, via: 'whisper' });                            // doesn't exist: nearest
+    const v = r => ({ reference: r, translation: 'KJV', text: 'x' });
+    await post('/api/push', { action: 'SHOW_VERSE', verse: v('John 3:16'), why: 'auto', listening: true, detected: true });
+    await post('/api/push', { action: 'SHOW_VERSE', verse: v('Romans 8:28'), why: 'manual', listening: true });
+    await post('/api/push', { action: 'SHOW_VERSE', verse: v('Psalms 23:1'), why: 'auto', listening: true, detected: true });
+    await post('/api/push', { action: 'CLEAR' });                                                                  // right after an automatic push
+    await post('/api/push', { action: 'SHOW_VERSE', verse: v('Psalms 23:1'), why: 'mode' });                      // not counted
+    await post('/api/diag', { kind: 'audio', okSec: 20, whisperSec: 30, speechSec: 50, rebuilds: 1, level: 0.01 });
+    const r = await (await fetch(B + '/api/diag/report')).json();
+    assert.strictEqual(r.numbers.found, 1);
+    assert.strictEqual(r.numbers.fromSpeech, 2);
+    assert.strictEqual(r.numbers.typedWhileListening, 1);
+    assert.strictEqual(r.numbers.successRate, 67);
+    assert.strictEqual(r.numbers.missed, 1);
+    assert.match(r.examples.missed[0].text, /romance 8:28/);
+    assert.strictEqual(r.numbers.nearest, 1);
+    assert.strictEqual(r.numbers.falseAlarms, 1);
+    assert.strictEqual(r.examples.falseAlarms[0].ref, 'Psalms 23:1');
+    assert.strictEqual(r.numbers.captionsWorking, 40);
+    assert.ok(r.advice.some(a => /mic level was low/.test(a)), r.advice.join(' | '));
+    assert.ok(r.advice.some(a => /named a book and a number/.test(a)));
+    const txt = await (await fetch(B + '/api/diag/export')).text();
+    assert.match(txt, /MISSED: "let us look at romance 8:28 this morning"/);
+    assert.match(txt, /on screen: John 3:16 \(auto\)/);
+    assert.ok(fs.readdirSync(path.join(data, 'logs', 'sessions')).some(f => f.endsWith('.jsonl')), 'kept on the Di.Verse computer');
+  } finally { srv.kill(); fs.rmSync(data, { recursive: true, force: true }); }
 });
