@@ -561,3 +561,23 @@ test('Windows audio connector is paired, loopback-only and streams PCM through W
 
   bridge.close(); operator.close();
 });
+
+test('listening harder: a book now and its numbers next are joined; an unclear reference asks for a second listen and is completed by what follows; reading holds the screen', async () => {
+  const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fast: true, via: 'captions', ...body }) }).then(r => r.json());
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'SHOW_VERSE', verse: { reference: 'Genesis 1:1', translation: 'KJV', text: 'x', book: 'Genesis', chapter: 1, verse: 1 } }) });
+  let d = await detect({ text: 'turn with me to Romans' });
+  assert.strictEqual(d.type, 'none'); assert.strictEqual(d.listenAgain, true);
+  d = await detect({ text: 'chapter eight verse twenty eight' });          // not Genesis 8:28 (the book on screen)
+  assert.strictEqual(d.verseData.reference, 'Romans 8:28');
+  d = await detect({ text: 'that is the book of Genesis 32:36' });         // doesn't exist
+  assert.strictEqual(d.source, 'nearest'); assert.strictEqual(d.listenAgain, true);
+  d = await detect({ text: 'I will not let thee go' });                    // a loose match to a likely reading
+  assert.strictEqual(d.type, 'explicit'); assert.strictEqual(d.verseData.reference, 'Genesis 32:26');
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'SHOW_VERSE', verse: { reference: 'Mark 9:9', translation: 'KJV', text: 'x', book: 'Mark', chapter: 9, verse: 9 } }) });
+  d = await detect({ text: 'and as they came down from the mountain Jesus charged them saying tell the vision to no man' });
+  assert.strictEqual(d.type, 'reading');                                   // not Matthew 17:9, whose words these are
+  d = await detect({ text: 'and they kept that saying with themselves questioning one with another' });
+  assert.strictEqual(d.type, 'navigate'); assert.strictEqual(d.verseData.reference, 'Mark 9:10');
+});

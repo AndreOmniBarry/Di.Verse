@@ -1,12 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { parse, looksLikeReference: parserLooks } = require('../services/parser');
+const { parse, looksLikeReference: parserLooks, danglingBook, normaliseNumbers } = require('../services/parser');
+const attention = require('../services/attention');
 const diag = require('../services/diagnostics');
 const { detectScripture } = require('../services/claude');
 const { validateReference, normaliseBook } = require('../services/validation');
 const { getPassage } = require('../services/bibleDb');
 const quotes = require('../services/quoteMatch');
 const navigation = require('../services/navigation');
+const reading = require('../services/reading');
 const finder = require('../services/verseFinder');
 finder.warmUp();
 quotes.warmUp();
@@ -25,6 +27,7 @@ router.post('/detect', async (req, res) => {
 
   // Every answer also goes to the session report (services/diagnostics.js):
   // what was heard, and what came of it
+  let dangling = null;
   const answer = result => {
     try {
       const finished = !interim && !req.body.ai && req.body.via;
@@ -33,22 +36,56 @@ router.post('/detect', async (req, res) => {
       else if (result.type === 'navigate' && result.verseData) diag.record('cue', { cue: String(text).slice(-60), ref: result.verseData.reference });
       else if (result.type === 'implicit' && result.source === 'nearest' && !req.body.ai) diag.record('nearest', { said: String(text).slice(0, 120) });
       else if (finished && (result.type === 'none' || result.type === 'implicit') && parserLooks(text)) diag.record('missed', { text: String(text).slice(0, 300) });
+      // something sounded like a reference but wasn't clear: the listening
+      // page sends that moment's audio to Whisper again, with Bible vocabulary
+      if (!req.body.ai && (result.source === 'nearest' || (result.type === 'none' && (dangling || (finished && parserLooks(text)))))) result.listenAgain = true;
     } catch (e) {}
     return res.json(result);
   };
   // The verse on screen: from the page that's listening, or else whatever is
   // really on screen (another operator page may have put it there)
   let current = req.body.current || null;
-  if (!current && req.body.cues !== false && req.app.locals.screen) {
+  let onScreen = current;                         // for "is this being read?" — every request
+  if (req.app.locals.screen) {
     const on = req.app.locals.screen();
     const v = on && on.action === 'SHOW_VERSE' && on.verse;
-    if (v && v.book && v.chapter && v.verse) current = { book: v.book, chapter: v.chapter, verse: v.verse, verseEnd: v.verseEnd,
-      translation: String(v.requestedTranslation || v.translation || activeTranslation).split('/')[0] };
+    // the translation the operator chose, even while a KJV fallback is on screen (requestedTranslation)
+    const real = v && v.book && v.chapter && v.verse ? { book: v.book, chapter: v.chapter, verse: v.verse, verseEnd: v.verseEnd,
+      translation: String(v.requestedTranslation || v.translation || activeTranslation).split('/')[0] } : null;
+    if (!onScreen) onScreen = real;
+    if (!current && req.body.cues !== false) current = real;
   }
 
   try {
     // ── LAYER 1: Local parser — fast, offline, zero cost ──
     const parsed = parse(text, activeTranslation);
+
+    // ── LAYER 1·: a book said just before, its numbers now ──
+    // "turn to Romans" … "chapter eight verse twenty eight" → Romans 8:28,
+    // whatever book is on screen
+    const waiting = !parsed && attention.pendingBook();
+    if (waiting) {
+      const cmd = navigation.cue(text);
+      const flat = normaliseNumbers(String(text)).toLowerCase();
+      let ch, vs, ve;
+      const colon = flat.match(/\b(\d{1,3})\s*[:.]\s*(\d{1,3})\b/);
+      if (cmd && cmd.kind === 'goto' && cmd.chapter) { ch = cmd.chapter; vs = cmd.verse; ve = cmd.verseEnd; }
+      else if (colon) { ch = +colon[1]; vs = +colon[2]; }
+      else { const c = flat.match(/\bchapters?\s+(\d{1,3})\b/); if (c) { ch = +c[1]; vs = 1; } }
+      if (ch && vs) {
+        attention.clearBook();
+        const v = validateReference(waiting, ch, vs);
+        if (v.valid) {
+          const verseData = await getPassage(v.normalised || waiting, ch, vs, ve, activeTranslation, { live: true });
+          if (verseData) {
+            console.log(`[Parser] ${verseData.reference} — joined with "${waiting}" said just before`);
+            return answer({ type: 'explicit', verseData, confidence: 0.92, source: 'parser', notice: `${waiting} (said just before) + ${ch}:${vs} → ${verseData.reference}` });
+          }
+        }
+      }
+    }
+    // a book named without its numbers yet: remember it for the next words
+    if (!parsed) { dangling = danglingBook(text); if (dangling) attention.noteBook(dangling); }
 
     // ── LAYER 1a: the preacher moving through the passage on screen ──
     if (!parsed && current && current.book) {
@@ -115,6 +152,7 @@ router.post('/detect', async (req, res) => {
           }
         }
         const near = navigation.nearest(validation.normalised || book, chapter, verse);
+        attention.noteCandidates(near);
         console.log(`[Parser] ${book} ${chapter}:${verse} doesn't exist — suggesting ${near.map(n => n.chapter + ':' + n.verse).join(', ')}`);
         return answer({ type: 'implicit', source: 'nearest', notice: `${validation.message.replace(/ Verse \d+ does not exist\.| Chapter \d+ does not exist\./, '')} — the closest verses are in the queue`,
           candidates: near.map(n => ({ book: n.book, chapter: n.chapter, verse: n.verse, confidence: 0.6, snippet: n.why })) });
@@ -160,6 +198,22 @@ router.post('/detect', async (req, res) => {
         candidates: offers.length ? offers : undefined, also: also.length ? also : undefined });
     }
 
+    // ── LAYER 1b': reading through the passage on screen ──
+    // While it's being read aloud nothing else may replace it (its words
+    // also appear in parallel passages); when the reading moves into the next
+    // verse, the screen follows.
+    if (onScreen && onScreen.book) {
+      const rel = reading.relation(text, { ...onScreen, book: normaliseBook(onScreen.book) || onScreen.book });
+      if (rel.state === 'next' && req.body.cues !== false && !req.body.ai) {
+        const verseData = await getPassage(rel.next.book, rel.next.chapter, rel.next.verse, undefined, onScreen.translation || activeTranslation, { live: true });
+        if (verseData) {
+          console.log(`[Reading] moved on to ${verseData.reference}`);
+          return answer({ type: 'navigate', command: { kind: 'step', dir: 'next', unit: 'verse', follow: true }, verseData, confidence: 0.95, source: 'reading' });
+        }
+      }
+      if (rel.state === 'current' || rel.state === 'next') return answer({ type: 'reading', reference: `${onScreen.book} ${onScreen.chapter}:${onScreen.verse}` });
+    }
+
     // A clearly quoted verse: show it like a named reference
     if (quoted.length && quoted[0].strong) {
       const q = quoted[0];
@@ -169,8 +223,28 @@ router.post('/detect', async (req, res) => {
         return answer({ type: 'explicit', reference: { book: q.book, chapter: q.chapter, verse: q.verse, translation: quoteTranslation }, verseData, confidence: 0.92, source: 'quote' });
       }
     }
+    // A half-heard reference completed by what came next: shown
+    const complete = async (refs, why) => {
+      const r = attention.completes(refs);
+      if (!r) return null;
+      const verseData = await getPassage(r.book, r.chapter, r.verse, undefined, quoteTranslation, { live: true });
+      if (!verseData) return null;
+      console.log(`[Attention] ${verseData.reference} — ${why} completed the unclear reference`);
+      return answer({ type: 'explicit', verseData, confidence: 0.9, source: 'attention', notice: `${verseData.reference} — ${why} matched the unclear reference heard just before` });
+    };
+
+    // Focusing harder on a half-heard reference: its few likely readings are
+    // compared directly with what's said now, so a short match is enough
+    const waitingFor = attention.pending();
+    if (waitingFor.length) {
+      const hit = waitingFor.find(c => reading.matches(text, c.book, c.chapter, c.verse, activeTranslation));
+      if (hit) { const done = await complete([hit], 'the words that followed'); if (done) return done; }
+    }
+
     // Partly quoted: suggest, the operator decides
     if (quoted.length) {
+      const done = await complete(quoted, 'the words quoted');
+      if (done) return done;
       return answer({ type: 'implicit', candidates: quoted.map(q => ({ book: q.book, chapter: q.chapter, verse: q.verse, confidence: 0.7 })), source: 'quote' });
     }
 
@@ -192,6 +266,10 @@ router.post('/detect', async (req, res) => {
           console.log(`[Finder] ${verseData.reference} (${f.words} words, score ${f.score})`);
           return answer({ type: 'explicit', reference: { book: f.book, chapter: f.chapter, verse: f.verse, translation: quoteTranslation }, verseData, confidence: 0.9, source: 'finder' });
         }
+      }
+      if (verdict === 'suggest') {
+        const done = await complete(found.slice(0, 3), 'what was said');
+        if (done) return done;
       }
       if (verdict === 'suggest' && !req.body.ai) {
         const close = found.filter(f => f.score >= found[0].score * 0.85).slice(0, 2);
@@ -235,6 +313,7 @@ router.post('/detect', async (req, res) => {
       if (!validation.valid) {
         if (validation.code === 'BOOK_NOT_FOUND') return answer({ type: 'none' });
         const near = navigation.nearest(validation.normalised || book, parseInt(chapter), parseInt(verse));
+        attention.noteCandidates(near);
         return answer({ type: 'implicit', source: 'nearest', candidates: near.map(n => ({ book: n.book, chapter: n.chapter, verse: n.verse, confidence: 0.55, snippet: n.why })) });
       }
 
@@ -245,6 +324,10 @@ router.post('/detect', async (req, res) => {
       if (verseData) detection.verseData = verseData;
     }
 
+    if (detection.candidates && detection.candidates.length) {
+      const done = await complete(detection.candidates.map(c => ({ book: normaliseBook(c.book) || c.book, chapter: parseInt(c.chapter), verse: parseInt(c.verse) })), 'the AI');
+      if (done) return done;
+    }
     return answer(detection);
 
   } catch (err) {
