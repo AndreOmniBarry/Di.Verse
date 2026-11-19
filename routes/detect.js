@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { parse, looksLikeReference: parserLooks, danglingBook, normaliseNumbers } = require('../services/parser');
 const attention = require('../services/attention');
+const stories = require('../services/stories');
 const diag = require('../services/diagnostics');
 const { detectScripture } = require('../services/claude');
 const { validateReference, normaliseBook } = require('../services/validation');
@@ -39,6 +40,14 @@ router.post('/detect', async (req, res) => {
       // something sounded like a reference but wasn't clear: the listening
       // page sends that moment's audio to Whisper again, with Bible vocabulary
       if (!req.body.ai && (result.source === 'nearest' || (result.type === 'none' && (dangling || (finished && parserLooks(text)))))) result.listenAgain = true;
+      // A Bible story being told ("remember Abraham sacrificing Isaac?"): its
+      // reference is offered to the operator. Finished sentences only, never
+      // while a passage is being read, each story once in 3 minutes.
+      if (finished && result.type !== 'reading') {
+        const tail = String(context || '').split(/\s+/).slice(-20).join(' ');
+        const told = stories.fresh(stories.match(tail + ' ' + text));
+        if (told.length) result.stories = told.map(st => ({ title: st.title, reference: stories.display(st), book: st.book, chapter: st.chapter, verse: st.verse, endChapter: st.endChapter, endVerse: st.endVerse }));
+      }
     } catch (e) {}
     return res.json(result);
   };
