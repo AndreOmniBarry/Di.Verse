@@ -306,7 +306,11 @@ function bookAt(tokens, i) {
     if (n > 1 && isNum(words[n - 1])) continue;
     if (isNum(words[0]) && !(n > 1 && /^[1-3]$/.test(words[0]))) continue; // a number only as "1 John"
     const book = resolveBook(words.join(' '));
-    if (book) return { book: { ...book, spoken: words.join(' ').replace(/^(the|book of|the book of)\s+/, '') }, next: i + n };
+    if (book) {
+      const said = words.join(' ');
+      // "the book of Job" announces a book: as good as a cue
+      return { book: { ...book, spoken: said.replace(/^(the book of|book of|the)\s+/, ''), announced: /^(the\s+)?book\s+of\s/.test(said) }, next: i + n };
+    }
   }
   return null;
 }
@@ -414,7 +418,7 @@ function parseAll(text, fallbackTranslation = 'KJV') {
   for (let i = 0; i < tokens.length; i++) {
     const hit = bookAt(tokens, i);
     if (!hit) continue;
-    const cued = i > 0 && cuedAt(tokens, i);
+    const cued = (i > 0 && cuedAt(tokens, i)) || hit.book.announced;
     const r = readNumbers(tokens, hit.next, hit.book, cued);
     if (!r) continue;
     const key = `${hit.book.name} ${r.chapter}:${r.verse}`;
@@ -442,6 +446,26 @@ function looksLikeReference(text) {
   return false;
 }
 
+// A book named without its numbers yet ("turn to Romans", "the book of
+// Hebrews chapter…"): the last one in the text, or null. Everyday-word books
+// only with a cue.
+function danglingBook(text) {
+  const tokens = tokenize(cleanText(text || ''));
+  let found = null;
+  for (let i = 0; i < tokens.length; i++) {
+    const hit = bookAt(tokens, i);
+    if (!hit) continue;
+    const cued = (i > 0 && cuedAt(tokens, i)) || hit.book.announced;
+    const r = readNumbers(tokens, hit.next, hit.book, cued);
+    if (r) { found = null; i = r.next - 1; continue; }
+    const after = tokens[hit.next];
+    const open = after === undefined || CHAPTER_WORD.has(after) || VERSE_WORD.has(after);
+    if ((cued || open) && (cued || !COMMON_WORD_BOOKS.has(hit.book.spoken))) found = hit.book.name;
+    i = hit.next - 1;
+  }
+  return found;
+}
+
 function parse(text, fallbackTranslation = 'KJV') {
   if (!text || text.trim().length < 3) return null;
   const all = parseAll(text, fallbackTranslation);
@@ -457,4 +481,4 @@ function parse(text, fallbackTranslation = 'KJV') {
   return null;
 }
 
-module.exports = { parse, parseAll, looksLikeReference, detectTranslation, resolveBook, normaliseNumbers, CHAPTERS };
+module.exports = { parse, parseAll, danglingBook, looksLikeReference, detectTranslation, resolveBook, normaliseNumbers, CHAPTERS };
