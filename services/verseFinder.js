@@ -25,16 +25,36 @@ let avgLen = 1;
 
 function contentWords(text) { return words(text).filter(w => w.length > 1 && !STOP.has(w) && !/^\d+$/.test(w)); }
 
+// Modern wording too: preachers quote the NIV / NKJV as often as the KJV.
+// A free modern translation stored on this computer (BSB reads close to the
+// NIV; WEB otherwise) adds its words to each verse, so "who gives me
+// strength" finds Philippians 4:13 as well as "which strengtheneth me".
+function modernTexts() {
+  const db = getDb();
+  for (const code of ['BSB', 'WEB', 'MSB']) {
+    const n = db.prepare('SELECT COUNT(*) AS n FROM verses WHERE translation = ?').get(code).n;
+    if (n > 30000) {
+      const map = new Map();
+      for (const r of db.prepare('SELECT book, chapter, verse, text FROM verses WHERE translation = ?').all(code)) map.set(r.book + '|' + r.chapter + '|' + r.verse, r.text);
+      return { code, map };
+    }
+  }
+  return null;
+}
+
 function build() {
   const rows = getDb().prepare(`SELECT book, chapter, verse, text FROM verses WHERE translation = 'KJV' ORDER BY book_num, chapter, verse`).all();
+  const modern = modernTexts();
   verses = [];
   const lists = new Map();
   let total = 0;
   for (const r of rows) {
     const id = verses.length;
-    const ws = contentWords(r.text);
-    verses.push({ book: r.book, chapter: r.chapter, verse: r.verse, len: ws.length || 1 });
-    total += ws.length;
+    const extra = modern && modern.map.get(r.book + '|' + r.chapter + '|' + r.verse);
+    const ws = contentWords(r.text + (extra ? ' ' + extra : ''));
+    const distinct = new Set(ws).size;          // KJV and modern wording share most words: count each once
+    verses.push({ book: r.book, chapter: r.chapter, verse: r.verse, len: distinct || 1 });
+    total += distinct;
     for (const w of new Set(ws)) { const l = lists.get(w); if (l) l.push(id); else lists.set(w, [id]); }
   }
   avgLen = total / Math.max(1, verses.length);
@@ -45,7 +65,7 @@ function build() {
     idf.set(w, Math.log(1 + (N - l.length + 0.5) / (l.length + 0.5)));
   }
   vocab = [...postings.keys()];
-  console.log(`[Finder] Indexed ${N} KJV verses, ${vocab.length} word stems`);
+  console.log(`[Finder] Indexed ${N} verses (KJV${modern ? ' + ' + modern.code : ''} wording), ${vocab.length} word stems`);
 }
 
 function warmUp() { setImmediate(() => { try { if (!postings) build(); } catch (err) { console.error('[Finder] Index failed:', err.message); } }); }
@@ -124,7 +144,7 @@ function find(text, limit = 5) {
   }
   ranked.sort((a, b) => b.score - a.score);
   return ranked.slice(0, limit).map(r => ({ book: verses[r.id].book, chapter: verses[r.id].chapter, verse: verses[r.id].verse,
-    score: Math.round(r.score * 100) / 100, confidence: Math.round(Math.min(1, r.raw / possible) * 100) / 100, words: r.n }));
+    score: Math.round(r.score * 100) / 100, confidence: Math.round(Math.min(1, r.raw / possible) * 100) / 100, words: r.n, len: verses[r.id].len }));
 }
 
 // How sure a result is, for live use:
@@ -141,6 +161,8 @@ function judge(results) {
   if (a.score >= 22 && a.confidence >= 0.85 && a.words >= 5 && margin >= 1.5) return 'strong';
   if (a.score >= 14.5 && a.confidence >= 0.75 && a.words >= 3) return 'suggest';
   if (a.words === 2 && a.confidence === 1 && a.score >= 12 && margin >= 1.2) return 'suggest'; // short verses: "Jesus wept"
+  // the whole of a very short verse was said ("Jesus wept" is all of John 11:35)
+  if (a.words >= 2 && a.confidence === 1 && a.len <= a.words && a.score >= 9) return 'suggest';
   return null;
 }
 

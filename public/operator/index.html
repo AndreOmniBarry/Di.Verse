@@ -40,6 +40,11 @@
     .btn-dim { background: var(--surface2); color: var(--text); border: 1px solid var(--mid); }
     .btn-dim:hover { border-color: var(--accent); }
     .nav-row { display: flex; margin-top: 8px; min-width: 0; max-width: 100%; }
+    .queue-item.story { border-left: 3px solid #8fb3ff; }
+    .q-actions { display: flex; margin: 6px 0 2px; }
+    .q-actions .btn { margin-right: 6px; padding: 5px 10px; font-size: 0.74rem; }
+    .q-ref-btn { float: right; background: none; border: 1px solid var(--mid); color: var(--text); border-radius: 3px; font-size: 0.62rem; padding: 0 6px; cursor: pointer; }
+    .q-ref-btn:hover { border-color: var(--accent); }
     .nav-row .btn { margin-right: 5px; padding: 8px 7px; white-space: nowrap; flex: 0 0 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .nav-row .btn:last-child { margin-right: 0; }
     .nav-row .nav-main { flex: 1 1 0; font-size: 0.8rem; }
@@ -189,7 +194,7 @@
         <input type="text" id="verseInput" placeholder="Vs (16 or 16-18)" inputmode="numeric" style="flex:1;min-width:70px;">
         <button class="btn btn-dim" onclick="manualSearch()">Find</button>
       </div>
-      <div class="hint">← → = previous/next verse (Shift = chapter; clicker works too) · ↑ ↓ = queue · Space = push · Esc = clear · M = mode · +/- = font</div>
+      <div class="hint">← → = previous/next verse (Shift = chapter; clicker works too) · ↑ ↓ = queue · Space = push · R = reference only · O = open a story's passage · Esc = clear · M = mode · +/- = font</div>
       <div class="label" style="margin-top:12px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;">
         <span>Songs <span style="text-transform:none;letter-spacing:0;">— click a slide · ↑/↓ or clicker to move · <a href="/admin" style="color:var(--mid);">manage songs</a></span></span>
         <label style="text-transform:none;letter-spacing:0;font-size:0.72rem;color:var(--text);cursor:pointer;" title="Listen to the worship leader and move to the right slide automatically">
@@ -336,7 +341,9 @@ function connectWS() {
       else if (sc.action === 'SHOW_VERSE' && sc.verse) {
         if (!currentVerse || currentVerse.reference !== sc.verse.reference || currentVerse.translation !== sc.verse.translation) currentVerse = sc.verse;
         onScreen = { type: 'verse', item: currentVerse };
-      } else if (sc.action === 'SHOW_LYRICS' && !(onScreen && onScreen.type === 'slide')) { currentVerse = null; onScreen = { type: 'lyrics' }; }
+      } else if (sc.action === 'SHOW_LYRICS' && !(onScreen && onScreen.type === 'slide')) { currentVerse = null; refOnScreen = null; onScreen = { type: 'lyrics' }; }
+      else if (sc.action === 'SHOW_REFERENCE') { currentVerse = null; refOnScreen = sc.reference; onScreen = { type: 'reference' }; }
+      if (!sc) refOnScreen = null;
       renderNowPlaying();
     }
     if (msg.action === 'STATE' && msg.state) {
@@ -684,7 +691,7 @@ var recentlyQueued = {};
 // but a suggestion never blocks the reference the preacher then names).
 function surety(item) {
   if (item.type === 'manual') return 4;
-  if (item.type === 'implicit') return 1;
+  if (item.type === 'implicit' || item.type === 'story') return 1;
   return item.source === 'parser' || item.source === 'cue' ? 3 : 2;
 }
 function addToQueue(item) {
@@ -721,6 +728,15 @@ function renderQueue() {
     return;
   }
   el.innerHTML = queue.slice(0, 8).map(function(item, i) {
+    // A Bible story being told: show its reference for note-takers, or open the passage
+    if (item.type === 'story') {
+      return '<div class="queue-item story' + (i===selectedIndex?' selected':'') + '" onclick="selectItem(' + i + ')">' +
+        '<div class="q-ref">📖 ' + escapeHTML(item.story.title) + '</div>' +
+        '<div class="q-text" style="font-style:italic;">' + escapeHTML(item.reference) + '</div>' +
+        '<div class="q-actions"><button class="btn btn-dim" onclick="event.stopPropagation();pushReference(' + i + ')">Ref on screen</button>' +
+        '<button class="btn btn-dim" onclick="event.stopPropagation();openPassage(' + i + ')">Open passage</button></div>' +
+        '<div class="q-meta">Bible story · R = reference on screen · O = open the passage</div></div>';
+    }
     var meta = item.type === 'manual' ? 'Manual' :
       item.type === 'implicit' ? 'Implicit — confirm before pushing' :
       ({ parser: 'Said', quote: 'Quoted' }[item.source] || 'AI') + ' · ' + Math.round((item.confidence||0)*100) + '%';
@@ -730,7 +746,7 @@ function renderQueue() {
     return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + (item.verification==='unverified'?' unverified':'') + '" onclick="selectItem(' + i + ')">' +
       '<div class="q-ref">' + escapeHTML(item.reference) + ' <span class="q-trans">' + escapeHTML(item.translation) + '</span></div>' +
       '<div class="q-text">' + escapeHTML(item.text.slice(0,180)) + (item.text.length>180?'...':'') + '</div>' +
-      '<div class="q-meta">' + escapeHTML(meta) + '</div></div>';
+      '<div class="q-meta">' + escapeHTML(meta) + '<button class="q-ref-btn" title="Show just the reference, for note-takers (R)" onclick="event.stopPropagation();pushReference(' + i + ')">Ref</button></div></div>';
   }).join('');
 }
 
@@ -814,6 +830,30 @@ async function fetchVerseFast(url, translation, onLate) {
   } catch (err) { showAlert(err.message); return null; }
 }
 
+// ===== Reference only (for note-takers) and Bible stories =====
+// "Scriptural Reference — Genesis 22:1–19" as a lower third; the passage
+// itself isn't shown. Any queue card's reference, or a story's.
+var refOnScreen = null;
+async function pushReference(i) {
+  var item = queue[i];
+  if (!item) return;
+  try {
+    var res = await broadcast({ action: 'SHOW_REFERENCE', reference: item.reference, title: item.story ? item.story.title : '', label: 'Scriptural Reference', theme: THEMES[currentTheme] });
+    if (!res.ok) throw new Error('Push HTTP ' + res.status);
+    screenChanged(null);
+    currentVerse = null; refOnScreen = item.reference; onScreen = { type: 'reference' };
+    renderNowPlaying();
+  } catch (err) { showAlert('Push failed: ' + err.message); }
+}
+// A story's passage on screen, from its first verse (the screen follows the reading)
+async function openPassage(i) {
+  var item = queue[i];
+  if (!item || !item.story) return;
+  var st = item.story;
+  var v = await fetchVerseFast('/api/verse?book=' + encodeURIComponent(st.book) + '&chapter=' + st.chapter + '&verse=' + st.verse, activeTranslation);
+  if (v) await pushVerse(Object.assign({}, v, { type: 'manual', confidence: 1 }), false, 'manual');
+}
+
 // ===== Screen guard: an older result never replaces a newer screen =====
 // Several listening paths report on the same speech — live words, the
 // finished sentence, Whisper's double-check, the AI window — and some answer
@@ -860,7 +900,7 @@ async function pushVerse(item, sameVerse, why) {
     });
     if (!res.ok) throw new Error('Push HTTP ' + res.status);
     if (why !== 'mode' && why !== 'upgrade') screenChanged(item.reference);
-    currentVerse = item;
+    currentVerse = item; refOnScreen = null;
     onScreen = { type: 'verse', item: item };
     renderNowPlaying();
     setApiStatus('ok');
@@ -873,11 +913,13 @@ async function pushVerse(item, sameVerse, why) {
 async function pushSelected() {
   if (queue.length === 0) return;
   var item = queue[selectedIndex] || queue[0];
+  if (item.type === 'story') return pushReference(queue.indexOf(item)); // a story: its reference, not a passage
   await pushVerse(item);
 }
 
 function renderNowPlaying() {
   var el = document.getElementById('nowPlaying');
+  if (!currentVerse && refOnScreen) { el.innerHTML = '<div class="verse-card"><div class="ref">Scriptural Reference</div><div class="txt" style="font-style:italic;">' + escapeHTML(refOnScreen) + ' <span style="opacity:0.6;font-style:normal;">(reference only)</span></div></div>'; return; }
   if (!currentVerse) { el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>'; return; }
   el.innerHTML = '<div class="verse-card"><div class="ref">' + escapeHTML(currentVerse.reference) +
     ' <span class="trans">' + escapeHTML(currentVerse.translation) + '</span></div>' +
@@ -887,7 +929,7 @@ function renderNowPlaying() {
 async function clearScreen() {
   try { await broadcast({ action: 'CLEAR' }); } catch(e) {}
   screenChanged(null);
-  currentVerse = null;
+  currentVerse = null; refOnScreen = null;
   onScreen = null;
   renderNowPlaying();
 }
@@ -903,7 +945,7 @@ async function handleDetection(detection, meta) {
   if (detection.listenAgain) listenAgain(sessionId);
   if (detection.error) reportProblem('AI detection unavailable: ' + detection.error);
   if (detection.warning) noteOnce(detection.warning);
-  if (detection.type === 'none') return;
+  if (detection.type === 'none' && !(detection.stories && detection.stories.length)) return; // stories ride on any answer
   console.log('[Detection]', detection.type, detection.verseData ? detection.verseData.reference : '');
 
   if (detection.type === 'explicit' && detection.verseData) {
@@ -940,6 +982,14 @@ async function handleDetection(detection, meta) {
         else await pushVerse(item, false, 'auto');
       }
     }
+  }
+
+  // A Bible story being told: its reference, ready to show or open
+  if (detection.stories && detection.stories.length) {
+    detection.stories.slice().reverse().forEach(function(st) {
+      if (addToQueue({ type: 'story', reference: st.reference, translation: '', text: st.title, story: st, confidence: 0.6 }))
+        appendTranscription('[ Bible story: ' + st.title + ' — ' + st.reference + ' (in the queue: R shows the reference, O opens it) ]', false, true);
+    });
   }
 
   // A note for the operator (e.g. "Matthew 11 ends at verse 30 — the closest verses are in the queue")
@@ -1512,6 +1562,8 @@ var base64 = btoa(binary);
     if ((tag === 'INPUT' && e.target.type !== 'checkbox') || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.key === '/')           { e.preventDefault(); document.getElementById('quickRef').focus(); return; }
     if (e.code === 'Space')      { e.preventDefault(); pushSelected(); }
+    if (e.code === 'KeyR')       { pushReference(selectedIndex); }
+    if (e.code === 'KeyO' && queue[selectedIndex] && queue[selectedIndex].type === 'story') { openPassage(selectedIndex); }
     if (e.code === 'Escape')     { clearScreen(); }
     if (e.code === 'KeyM')       { toggleMode(); }
     // A verse on screen: ← → (or a clicker's Page Up / Page Down) move verse
