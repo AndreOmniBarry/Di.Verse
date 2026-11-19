@@ -689,7 +689,12 @@ function surety(item) {
 }
 function addToQueue(item) {
   var key = item.reference + '|' + item.translation, prev = recentlyQueued[key];
-  if (item.type !== 'manual' && prev && Date.now() - prev.t < 30000 && surety(item) <= prev.s) return false;
+  // 8 s: long enough for captions and Whisper reporting the same words; the
+  // screen guard (holdBack) handles anything later
+  // (and only while the screen hasn't since been changed by something else —
+  // after a clear, the preacher saying it again must show it)
+  var screenMovedSince = prev && lastScreenChange > prev.t && lastScreenRef !== item.reference;
+  if (item.type !== 'manual' && prev && !screenMovedSince && Date.now() - prev.t < 8000 && surety(item) <= prev.s) return false;
   recentlyQueued[key] = { t: Date.now(), s: surety(item) };
   // forget old entries so a long service doesn't grow this forever
   for (var k in recentlyQueued) if (Date.now() - recentlyQueued[k].t > 60000) delete recentlyQueued[k];
@@ -815,12 +820,12 @@ async function fetchVerseFast(url, translation, onLate) {
 // seconds later about speech that's already past. Every result carries the
 // time its words were heard (heardAt); it may only change the screen if the
 // screen hasn't changed since. A verse shown in the last 10 minutes isn't
-// brought back by a quote, paraphrase or AI match (only by naming it again),
-// and never within 20 s of leaving the screen. Anything held back goes to
-// the queue, so nothing is lost.
-var lastScreenChange = 0, shownAt = {};
+// brought back by a quote, paraphrase or AI match — only by naming it again.
+// Anything held back goes to the queue, so nothing is lost.
+var lastScreenChange = 0, lastScreenRef = null, shownAt = {}, readingUntil = 0;
 function screenChanged(reference) {
   lastScreenChange = Date.now();
+  lastScreenRef = reference || null;
   if (reference) shownAt[reference] = Date.now();
   for (var r in shownAt) if (Date.now() - shownAt[r] > 3600000) delete shownAt[r];
 }
@@ -828,9 +833,10 @@ function screenChanged(reference) {
 function holdBack(item, source, heardAt) {
   if (currentVerse && currentVerse.reference === item.reference) return 'already on screen';
   if (heardAt && heardAt < lastScreenChange) return 'the screen changed after these words were heard';
+  if (Date.now() < readingUntil && source !== 'parser' && source !== 'cue') return 'the verse on screen is being read';
   var since = shownAt[item.reference] ? Date.now() - shownAt[item.reference] : Infinity;
-  if (since < 20000) return 'shown moments ago';
-  if (source !== 'parser' && source !== 'cue' && since < 600000) return 'shown in the last 10 minutes — say it again to bring it back';
+  var named = source === 'parser' || source === 'cue';   // the preacher said it (again): always allowed
+  if (!named && since < 600000) return 'shown in the last 10 minutes — say it again to bring it back';
   return null;
 }
 
@@ -894,6 +900,7 @@ var handledInUtt = {}; // sentence number → verses already shown or queued fro
 async function handleDetection(detection, meta) {
   meta = meta || {};
   if (!detection) return;
+  if (detection.listenAgain) listenAgain(sessionId);
   if (detection.error) reportProblem('AI detection unavailable: ' + detection.error);
   if (detection.warning) noteOnce(detection.warning);
   if (detection.type === 'none') return;
@@ -926,7 +933,7 @@ async function handleDetection(detection, meta) {
       // the queue instead of covering the lyrics
       else if (followSinger && activeSong && detection.source === 'quote') appendTranscription('[ ' + v.reference + ' quoted in the song — in the queue ]', false, true);
       // the AI window looks back over several sentences: its finds wait in the queue
-      else if (!/^(parser|quote|finder)$/.test(detection.source || '')) appendTranscription('[ ' + v.reference + ' — AI suggestion, in the queue ]', false, true);
+      else if (!/^(parser|quote|finder|attention)$/.test(detection.source || '')) appendTranscription('[ ' + v.reference + ' — AI suggestion, in the queue ]', false, true);
       else if (autoPush && (item.confidence || 0) >= 0.85) {
         var why = holdBack(item, detection.source, meta.heardAt);
         if (why) appendTranscription('[ ' + v.reference + ' in the queue — ' + why + ' ]', false, true);
@@ -960,14 +967,19 @@ async function handleDetection(detection, meta) {
     }
   }
 
-  // The preacher moving through the passage: "next verse", "take it back", "verse 17"
+  // The verse on screen is being read aloud: nothing else replaces it meanwhile
+  if (detection.type === 'reading') { readingUntil = Date.now() + 12000; return; }
+
+  // The preacher moving through the passage: "next verse", "take it back", "verse 17",
+  // or simply reading on into the next verse (follow)
   if (detection.type === 'navigate' && detection.verseData) {
     var cmd = detection.command || {};
-    var sig = cmd.kind === 'step' ? 'step:' + cmd.dir + ':' + cmd.unit : 'goto:' + (cmd.chapter || '') + ':' + cmd.verse;
+    var sig = cmd.follow ? 'follow:' + detection.verseData.reference : cmd.kind === 'step' ? 'step:' + cmd.dir + ':' + cmd.unit : 'goto:' + (cmd.chapter || '') + ':' + cmd.verse;
     var done = cuesDone[meta.utt] || (cuesDone[meta.utt] = {});
     if (meta.utt == null || done[sig]) return; // the same cue heard again in the same sentence
     done[sig] = true;
-    var said = cmd.kind === 'step' ? (cmd.dir === 'next' ? 'next ' : 'previous ') + cmd.unit : 'verse ' + cmd.verse;
+    var said = cmd.follow ? 'reading on' : cmd.kind === 'step' ? (cmd.dir === 'next' ? 'next ' : 'previous ') + cmd.unit : 'verse ' + cmd.verse;
+    if (cmd.follow) readingUntil = Date.now() + 12000;
     var nav = Object.assign({}, detection.verseData, { confidence: 0.95, type: 'explicit', source: 'cue' });
     appendTranscription('[ "' + said + '" → ' + nav.reference + ' ]', false, true);
     if (meta.heardAt && meta.heardAt < lastScreenChange) { appendTranscription('[ "' + said + '" ignored — the screen changed after it was said ]', false, true); return; }
@@ -1077,6 +1089,7 @@ function setApiStatus(state, message) {
       var tconf = { chunk: {} };
       try { tconf = await (await fetch('/api/transcribe/config')).json(); } catch (e) {}
       if (!tconf.provider) reportProblem('No listening key yet — add a free Groq key in Settings (top right)');
+      whisperReady = !!tconf.provider;
       workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor', { processorOptions: tconf.chunk || {} });
 
       workletNode.port.onmessage = function(e) {
@@ -1102,9 +1115,13 @@ function setApiStatus(state, message) {
         var rate = e.data.sampleRate;
         var saidFrom = Date.now() - pcm.length / rate * 1000 - 600;
         var captionsCovered = !!recognition && captionsLastResult > saidFrom;
-        if (!whisperAlways && captionsCovered) return;
         var heardAt = Date.now(); // when this sentence ended — the queue to Whisper can lag behind
-        transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(pcm, rate, mySession, !captionsCovered, heardAt); });
+        lastChunk = { pcm: pcm, rate: rate, at: heardAt, sent: false };
+        // listening harder: right after something unclear, Whisper hears it too
+        var focusing = whisperReady && Date.now() < focusUntil;
+        if (!whisperAlways && captionsCovered && !focusing) return;
+        lastChunk.sent = true;
+        transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(pcm, rate, mySession, !captionsCovered, heardAt, focusing && captionsCovered); });
       };
 
       sourceNode.connect(workletNode);
@@ -1172,7 +1189,8 @@ function setApiStatus(state, message) {
   }
 
   // primary: the captions missed this sentence, so Whisper's text is the transcript
-  async function sendPCMToWhisper(pcmInt16, rate, mySession, primary, heardAt) {
+  // focus: a second listen to an unclear moment the captions already wrote
+  async function sendPCMToWhisper(pcmInt16, rate, mySession, primary, heardAt, focus) {
     try {
       // Convert Int16Array to base64
       var uint8 = new Uint8Array(pcmInt16.buffer);
@@ -1204,6 +1222,11 @@ var base64 = btoa(binary);
 
       // While Chrome's live captions are working they lead (they're seconds
       // faster); Whisper then quietly double-checks for references they missed
+      if (focus) {
+        appendTranscription('[ listened again: "' + text + '" ]', false, true);
+        detectScripture(text, transcriptionContext.slice(-2).join(' '), activeTranslation, mySession, true, { utt: 'f' + (focusN++), via: 'focus', heardAt: heardAt });
+        return;
+      }
       if (!primary && captionsHealthy()) {
         detectScripture(text, '', activeTranslation, mySession, true, { heardAt: heardAt });
         return;
@@ -1307,7 +1330,19 @@ var base64 = btoa(binary);
   var captionsBlocked = false;
   var interimTimer = null;
   var lastFastText = '';
-  var captionUtt = 0, whisperUtt = 0;
+  var captionUtt = 0, whisperUtt = 0, focusN = 0;
+  // Listening harder: the last sentence's audio, and until when every
+  // sentence also goes to Whisper (after something sounded unclear)
+  var lastChunk = null, focusUntil = 0, whisperReady = false;
+  function listenAgain(mySession) {
+    if (!isListening || !whisperReady) return;
+    focusUntil = Date.now() + 8000;
+    // the unclear sentence itself, if it ended moments ago and Whisper hasn't heard it
+    if (lastChunk && !lastChunk.sent && Date.now() - lastChunk.at < 6000) {
+      var c = lastChunk; c.sent = true;
+      transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(c.pcm, c.rate, mySession, false, c.at, true); });
+    }
+  }
 
   function captionsHealthy() {
     // Healthy = wrote something recently, or nobody is talking
