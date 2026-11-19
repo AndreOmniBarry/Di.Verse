@@ -410,3 +410,18 @@ test('listening harder: a book now and its numbers next are joined; an unclear r
   d = await detect({ text: 'and they kept that saying with themselves questioning one with another' });
   assert.strictEqual(d.type, 'navigate'); assert.strictEqual(d.verseData.reference, 'Mark 9:10');
 });
+
+test('a story told across two sentences is offered once; a reference-only note goes to the screens', async () => {
+  const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fast: true, via: 'captions', ...body }) }).then(r => r.json());
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'CLEAR' }) });
+  let d = await detect({ text: 'up the mountain to offer him on the altar', context: 'remember Moses? no, remember when Abraham took his son Isaac' });
+  assert.deepStrictEqual((d.stories || []).map(s => s.reference), ['Genesis 22:1–19']);
+  d = await detect({ text: 'and Abraham took the knife to sacrifice Isaac', context: '' });   // same story, moments later: not offered again
+  assert.strictEqual(d.stories, undefined);
+  const ws = new WebSocket(`ws://localhost:${PORT}?type=projection`);
+  await new Promise(r => ws.on('open', r));
+  const got = new Promise(r => ws.on('message', m => { const msg = JSON.parse(m); if (msg.action === 'SHOW_REFERENCE') r(msg); }));
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'SHOW_REFERENCE', reference: 'Genesis 22:1–19', title: 'Abraham offers Isaac' }) });
+  const msg = await got; ws.close();
+  assert.strictEqual(msg.reference, 'Genesis 22:1–19');
+});

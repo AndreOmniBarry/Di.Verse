@@ -222,7 +222,7 @@ try {
 
 function rememberScreen(payload) {
   switch (payload.action) {
-    case 'SHOW_VERSE': case 'SHOW_LYRICS': screenState.screen = payload; break;
+    case 'SHOW_VERSE': case 'SHOW_LYRICS': case 'SHOW_REFERENCE': screenState.screen = payload; break;
     case 'CLEAR': delete screenState.screen; break;
     case 'APPLY_THEME': screenState.theme = payload; break;
     case 'APPLY_BACKGROUND': screenState.background = payload; break;
@@ -358,8 +358,8 @@ function broadcast(payload) {
   });
   // Every operator page learns what's on screen, whichever page put it there,
   // so Next / Previous on the Mac continue from a verse PC 2 pushed (and back)
-  if (['SHOW_VERSE', 'SHOW_LYRICS', 'CLEAR'].includes(payload.action)) {
-    alertOperator({ action: 'ON_SCREEN', screen: payload.action === 'CLEAR' ? null : { action: payload.action, verse: payload.verse, lyrics: payload.lyrics } });
+  if (['SHOW_VERSE', 'SHOW_LYRICS', 'SHOW_REFERENCE', 'CLEAR'].includes(payload.action)) {
+    alertOperator({ action: 'ON_SCREEN', screen: payload.action === 'CLEAR' ? null : { action: payload.action, verse: payload.verse, lyrics: payload.lyrics, reference: payload.reference } });
   }
 }
 
