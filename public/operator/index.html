@@ -465,17 +465,71 @@ if (!window.__translationRefresh) {
   setInterval(function() { if (!document.hidden) loadTranslations(); }, 30000);
 }
 
-// Spoken requests ("in the Amplified") land here too
-function setTranslation(code, fromSpeech) {
-  if (fromSpeech && code === activeTranslation) return; // heard again while still being said
-  var t = translations[code];
-  if (t && !t.available) {
-    showAlert(code + ' requested but unavailable: ' + t.reason + '. Staying on ' + activeTranslation + '.');
-    return;
-  }
+// The translation for new verses. Picking one in the dropdown only changes
+// what comes next; a spoken request ("can we have that in the NKJV?") also
+// re-shows the verse on screen in that translation (switchTranslation).
+function adoptTranslation(code) {
   activeTranslation = code;
   document.getElementById('translationSelect').value = code;
-  if (fromSpeech) appendTranscription('[ Translation: ' + code + ' ]', false, true);
+}
+
+function setTranslation(code, fromSpeech) {
+  if (fromSpeech) return switchTranslation(code);
+  var t = translations[code];
+  if (t && !t.available) { showAlert(code + ' is unavailable: ' + t.reason + '. Staying on ' + activeTranslation + '.'); return; }
+  adoptTranslation(code);
+}
+
+// Spoken translation change. The verse on screen (with its range) is fetched
+// in the new translation and re-shown, so Now Playing and the projection
+// change, not just the dropdown. Nothing changes unless the real text of that
+// translation arrives: no KJV stand-in under another name. A newer request
+// always wins over an older one still loading, and if the screen moves on
+// while it loads, the new translation applies from the next verse.
+var switchSeq = 0, switchingTo = null;
+async function switchTranslation(code) {
+  code = String(code || '').toUpperCase();
+  if (!code || code === switchingTo) return; // heard again (captions and Whisper) while loading
+  var mine = ++switchSeq;
+  switchingTo = code;
+  try {
+    if (!translations[code]) await loadTranslations(); // imported a moment ago?
+    if (mine !== switchSeq) return;
+    var t = translations[code];
+    if (!t || !t.available) {
+      showAlert(code + ' requested, but ' + (t ? 'it is unavailable: ' + t.reason : 'it is not on this computer') + '. Staying on ' + activeTranslation + '; the screen is unchanged.');
+      return;
+    }
+    var cur = onScreen && onScreen.type === 'verse' && currentVerse && currentVerse.book && currentVerse.chapter && currentVerse.verse ? currentVerse : null;
+    if (!cur || baseTranslation(cur.translation) === code) {
+      if (code !== activeTranslation) appendTranscription('[ Translation: ' + code + (cur ? ' ]' : ' — from the next verse ]'), false, true);
+      adoptTranslation(code);
+      return;
+    }
+    var ref = cur.reference, screenAt = lastScreenChange;
+    appendTranscription('[ Translation: ' + code + ' — ' + ref + ' ]', false, true);
+    var data = null, err = null;
+    try {
+      var r = await fetch('/api/verse?book=' + encodeURIComponent(cur.book) + '&chapter=' + cur.chapter + '&verse=' + cur.verse +
+        (cur.verseEnd && cur.verseEnd > cur.verse ? '&verseEnd=' + cur.verseEnd : '') + '&translation=' + encodeURIComponent(code));
+      data = await r.json().catch(function() { return {}; });
+      if (!r.ok) err = data.error || ('HTTP ' + r.status);
+    } catch (e) { err = e.message; }
+    if (mine !== switchSeq) return; // a newer request came in while this one loaded
+    if (!err && (data.fallback || baseTranslation(data.translation) !== code)) err = data.fallbackReason || (code + ' text is not available');
+    if (err) {
+      showAlert(code + ' could not be loaded for ' + ref + ' (' + err + '). Staying on ' + activeTranslation + '; the screen is unchanged.');
+      return;
+    }
+    adoptTranslation(code);
+    if (lastScreenChange !== screenAt || !currentVerse || currentVerse.reference !== ref) {
+      appendTranscription('[ ' + code + ' ready — the screen moved on, so it applies from the next verse ]', false, true);
+      return;
+    }
+    await pushVerse(Object.assign({}, data, { type: 'explicit', confidence: 1, source: 'translation' }), true, 'translation');
+  } finally {
+    if (mine === switchSeq) switchingTo = null;
+  }
 }
 
 document.getElementById('translationSelect').addEventListener('change', function(e) {
@@ -907,7 +961,7 @@ function screenChanged(reference) {
 }
 // Why not to push automatically (null = fine to push)
 function holdBack(item, source, heardAt) {
-  if (currentVerse && currentVerse.reference === item.reference) return 'already on screen';
+  if (currentVerse && currentVerse.reference === item.reference && baseTranslation(currentVerse.translation) === baseTranslation(item.translation)) return 'already on screen';
   if (heardAt && heardAt < lastScreenChange) return 'the screen changed after these words were heard';
   if (Date.now() < readingUntil && source !== 'parser' && source !== 'cue') return 'the verse on screen is being read';
   var since = shownAt[item.reference] ? Date.now() - shownAt[item.reference] : Infinity;
@@ -1000,6 +1054,12 @@ async function handleDetection(detection, meta) {
       (detection.also || []).forEach(function(d) { seenInUtt[d.reference] = true; });
     }
     var item = Object.assign({}, v, { confidence: detection.confidence || 0.9, type: 'explicit', source: detection.source || v.source, textSource: v.source });
+    // "Genesis 4:3 TPT": that translation, now real text is in hand, carries on for the next verses
+    var said = detection.reference && detection.reference.translation;
+    if (said && said !== activeTranslation && !v.fallback && baseTranslation(v.translation) === said && translations[said] && translations[said].available) {
+      adoptTranslation(said);
+      appendTranscription('[ Translation: ' + said + ' ]', false, true);
+    }
     // Queued once even though live captions and Whisper both hear it
     if (addToQueue(item)) {
       appendTranscription(v.reference, true);
