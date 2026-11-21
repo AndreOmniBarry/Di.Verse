@@ -428,34 +428,70 @@ function broadcast(payload) {
 }
 
 // ===== Translations =====
-// Built from /api/translations so the list only offers what really works
+// Built from /api/translations so the list only offers what really works.
+// Refreshed when the page comes back into view and every 30 seconds, so a
+// translation imported or removed elsewhere shows up without reopening the
+// page. The selection is kept while it's still available; nothing on screen
+// is ever changed by a refresh.
 var translations = {};
+var translationsSig = '';
+var translationsLoading = null;
 
-async function loadTranslations() {
-  try {
-    var list = await (await fetch('/api/translations')).json();
-    var sel = document.getElementById('translationSelect');
-    sel.innerHTML = '';
-    var groups = { local: 'Stored on this computer', apibible: 'Licensed (API.Bible)', ai: 'AI beta — cross-checked' };
-    Object.keys(groups).forEach(function(provider) {
-      var og = document.createElement('optgroup');
-      og.label = groups[provider];
-      list.filter(function(t) { return t.provider === provider; })
-        .sort(function(a, b) { return (b.available - a.available) || a.code.localeCompare(b.code); })
-        .forEach(function(t) {
-          translations[t.code] = t;
-          var o = document.createElement('option');
-          o.value = t.code;
-          o.textContent = t.code + (t.available ? '' : ' (unavailable)');
-          o.title = t.name + (t.reason ? ' — ' + t.reason : '');
-          o.disabled = !t.available;
-          og.appendChild(o);
-        });
-      if (og.children.length) sel.appendChild(og);
-    });
-    sel.value = translations[activeTranslation] && translations[activeTranslation].available ? activeTranslation : 'KJV';
-    activeTranslation = sel.value;
-  } catch (e) { showAlert('Could not load translation list.'); }
+function loadTranslations() {
+  if (translationsLoading) return translationsLoading; // one request at a time
+  translationsLoading = (async function() {
+    try {
+      var list = await (await fetch('/api/translations')).json();
+      if (!Array.isArray(list)) throw new Error('bad list');
+      var sig = JSON.stringify(list.map(function(t) { return [t.code, t.provider, t.available, t.reason]; }));
+      var sel = document.getElementById('translationSelect');
+      // unchanged, or the operator has the dropdown open: leave it alone
+      if (sig === translationsSig) return;
+      if (translationsSig && document.activeElement === sel) return;
+      var next = {};
+      list.forEach(function(t) { next[t.code] = t; });
+      sel.innerHTML = '';
+      var groups = { local: 'Stored on this computer', apibible: 'Licensed (API.Bible)', ai: 'AI beta — cross-checked' };
+      Object.keys(groups).forEach(function(provider) {
+        var og = document.createElement('optgroup');
+        og.label = groups[provider];
+        list.filter(function(t) { return t.provider === provider; })
+          .sort(function(a, b) { return (b.available - a.available) || a.code.localeCompare(b.code); })
+          .forEach(function(t) {
+            var o = document.createElement('option');
+            o.value = t.code;
+            o.textContent = t.code + (t.available ? '' : ' (unavailable)');
+            o.title = t.name + (t.reason ? ' — ' + t.reason : '');
+            o.disabled = !t.available;
+            og.appendChild(o);
+          });
+        if (og.children.length) sel.appendChild(og);
+      });
+      var hadList = !!translationsSig;
+      translations = next;
+      translationsSig = sig;
+      if (translations[activeTranslation] && translations[activeTranslation].available) {
+        sel.value = activeTranslation;
+      } else {
+        var gone = activeTranslation;
+        activeTranslation = translations.KJV && translations.KJV.available ? 'KJV' : (list.find(function(t) { return t.available; }) || {}).code || 'KJV';
+        sel.value = activeTranslation;
+        if (hadList && gone !== activeTranslation) showAlert(gone + ' is no longer available, so new verses use ' + activeTranslation + '. What is on screen now is unchanged.');
+      }
+    } catch (e) {
+      if (!translationsSig) showAlert('Could not load translation list.');
+    } finally {
+      translationsLoading = null;
+    }
+  })();
+  return translationsLoading;
+}
+
+if (!window.__translationRefresh) {
+  window.__translationRefresh = true;
+  document.addEventListener('visibilitychange', function() { if (!document.hidden) loadTranslations(); });
+  window.addEventListener('focus', function() { loadTranslations(); });
+  setInterval(function() { if (!document.hidden) loadTranslations(); }, 30000);
 }
 
 // Spoken requests ("in the Amplified") land here too
