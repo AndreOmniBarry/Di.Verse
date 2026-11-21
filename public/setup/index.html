@@ -56,6 +56,12 @@
     <a id="repExport" href="/api/diag/export" class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:6px;letter-spacing:0;text-transform:none;text-decoration:none;">Export</a></h2>
   <div id="report"><p>Loading…</p></div>
 
+  <h2>Bible database <button class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:8px;letter-spacing:0;text-transform:none;" onclick="loadDb()">Check again</button>
+    <button class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:6px;letter-spacing:0;text-transform:none;" onclick="backupNow()">Back up now</button></h2>
+  <div id="dbHealth"><p>Checking…</p></div>
+  <div id="dbBackups"></div>
+  <div id="dbMsg" style="margin-top:8px;font-size:0.85rem;white-space:pre-line;"></div>
+
   <h2>Keys and links</h2>
   <p>Keys are stored only on this computer and are never shown again here: only whether each one is set. Paste a new one to replace it. Several keys for the same service (backups) go on one line separated by commas.</p>
   <div id="fields"></div>
@@ -118,6 +124,49 @@
     } catch (err) { el.innerHTML = '<p class="err">Couldn\'t load the report: ' + esc(err.message) + '</p>'; }
   }
   loadReport();
+
+  // Which Bible database is in use, whether it's healthy, what's in it, and its backups
+  function mb(b) { return b == null ? '—' : (b / 1048576).toFixed(1) + ' MB'; }
+  function dbSay(t, ok) { var m = document.getElementById('dbMsg'); m.className = ok ? 'ok' : 'err'; m.textContent = t; }
+  async function loadDb() {
+    var el = document.getElementById('dbHealth'), bl = document.getElementById('dbBackups');
+    try {
+      var h = await (await fetch('/api/db/health')).json();
+      if (h.error) throw new Error(h.error);
+      var good = h.exists && h.readable && h.integrity === 'ok';
+      var row = function(icon, name, detail) { return '<div class="chk"><div class="dot">' + icon + '</div><div><b>' + esc(name) + '</b><span class="d">' + detail + '</span></div></div>'; };
+      el.innerHTML =
+        row(good ? '✅' : '❌', good ? 'Healthy' : (!h.exists ? 'Database file not found' : !h.readable ? 'Database file can\'t be read' : 'Integrity check failed'),
+          '<code>' + esc(h.database) + '</code><br>' + (h.mode === 'packaged' ? 'Installed app (data kept outside the app)' : 'Running from the code folder (development)') +
+          ' · ' + mb(h.bytes) + (h.walBytes ? ' + ' + mb(h.walBytes) + ' not yet written in' : '') + ' · engine ' + esc(h.engine) +
+          (h.integrity && h.integrity !== 'ok' ? '<br><span class="err">' + esc(h.integrity) + '</span>' : '')) +
+        row('📖', h.translations.length + ' translation' + (h.translations.length === 1 ? '' : 's') + ' stored',
+          h.translations.map(function(t) { return '<b style="display:inline;color:var(--white)">' + esc(t.code) + '</b> ' + t.verses.toLocaleString() + ' verses' + (t.coverage && t.coverage !== 'Full Bible' ? ' (' + esc(t.coverage) + ')' : ''); }).join(' · ') || 'None');
+      var b = (await (await fetch('/api/db/backups')).json()).backups || [];
+      bl.innerHTML = '<div style="margin-top:10px;font-size:0.72rem;color:var(--mid);letter-spacing:1px;text-transform:uppercase;">Backups (' + b.length + ') in <code style="text-transform:none;letter-spacing:0">' + esc(h.backupsFolder) + '</code></div>' +
+        (b.length ? b.slice(0, 10).map(function(x) {
+          return '<div class="ex" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;"><span><b>' + esc(new Date(x.createdAt).toLocaleString()) + '</b>' + esc(x.label === 'before-restore' ? 'saved before a restore' : x.label || '') + ' · ' + mb(x.bytes) + '</span>' +
+            '<button class="btn btn-dim" style="padding:3px 10px;font-size:0.72rem;" onclick="restoreDb(\'' + esc(x.name) + '\', \'' + esc(new Date(x.createdAt).toLocaleString()) + '\')">Restore</button></div>';
+        }).join('') + (b.length > 10 ? '<p class="ex">…and ' + (b.length - 10) + ' older</p>' : '') : '<p class="ex">No backups yet. Make one before importing or removing a translation.</p>');
+    } catch (err) { el.innerHTML = '<p class="err">Couldn\'t check the database: ' + esc(err.message) + '</p>'; }
+  }
+  async function backupNow() {
+    dbSay('Backing up…', true);
+    var r = await fetch('/api/db/backups', { method: 'POST' }), d = await r.json();
+    if (!r.ok) return dbSay('✗ ' + d.error);
+    dbSay('✓ Backed up (' + mb(d.bytes) + ', checked).', true);
+    loadDb();
+  }
+  async function restoreDb(name, when) {
+    if (!confirm('Restore the Bible database from the backup of ' + when + '?\n\nEverything stored since then (imported or removed translations) will be undone. The current database is backed up first, so this can be reversed.')) return;
+    dbSay('Restoring…', true);
+    var r = await fetch('/api/db/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, confirm: name }) });
+    var d = await r.json();
+    if (!r.ok) { dbSay('✗ ' + d.error); return loadDb(); }
+    dbSay('✓ Restored. ' + d.verses.toLocaleString() + ' verses stored, integrity checked. The database from before is kept as a backup. Open Operator pages pick up the translation list within 30 seconds.', true);
+    loadDb();
+  }
+  loadDb();
 
   async function load() {
     var d = await (await fetch('/api/setup')).json();
