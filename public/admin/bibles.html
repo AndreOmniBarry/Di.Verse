@@ -42,7 +42,7 @@
   <div><a href="/admin">← Songs</a> &nbsp; · &nbsp; <a href="/operator">Operator</a></div>
 </header>
 <main>
-  <p class="lead">Translations stored on this computer show instantly and work without internet. Free translations download in about a second each. Copyrighted ones (NKJV, AMP, TPT, GNT…) can be imported from a file you're licensed to use.</p>
+  <p class="lead">Translations stored on this computer show instantly and work without internet. Add free translations or import Bible files and chapter-based ZIP archives.</p>
 
   <h2>On this computer</h2>
   <table><thead><tr><th>Code</th><th>Translation</th><th>Covers</th><th>From</th><th></th></tr></thead><tbody id="installed"></tbody></table>
@@ -51,16 +51,27 @@
   <table><tbody id="free"></tbody></table>
   <p class="small" style="margin-top:8px;">From bible.helloao.org: public domain or openly licensed, commercial use allowed, no credit line needed. Checked again before each download.</p>
 
-  <h2>Import a licensed file</h2>
+  <h2>Import a ZIP archive</h2>
   <div class="card">
-    <div class="small">JSON, USFM (one file per book is fine — select them all), OSIS XML or Zefania XML. Only import a translation you're allowed to display; where it came from is recorded with it.</div>
+    <div class="small">Select a ZIP with paths such as AMP/old/Genesis/1.json and AMP/new/Matthew/1.json. Preview the detected translations before importing.</div>
+    <label>ZIP archive</label><input type="file" id="archiveFile" accept=".zip,application/zip">
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-dim" id="archivePreviewBtn" onclick="previewArchiveZip()">Preview archive</button>
+      <button class="btn btn-accent" id="archiveImportBtn" onclick="importArchiveZip()" disabled>Import selected translations</button>
+    </div>
+    <div id="archivePreview" class="small" style="margin-top:12px;white-space:pre-line;"></div>
+  </div>
+
+  <h2>Import a Bible file</h2>
+  <div class="card">
+    <div class="small">JSON, USFM (one file per book is fine — select them all), OSIS XML or Zefania XML. An optional source note can be recorded.</div>
     <label>File(s)</label><input type="file" id="file" multiple accept=".json,.usfm,.sfm,.xml,.osis,.txt">
     <div class="row">
       <div><label>Code</label><input id="code" placeholder="NKJV" maxlength="12"></div>
       <div style="flex:3"><label>Full name</label><input id="name" placeholder="New King James Version"></div>
     </div>
-    <label>Where it comes from and on what terms</label>
-    <textarea id="obtained" rows="2" placeholder="e.g. Licensed from the publisher for church display — permission letter of 12 Nov 2026"></textarea>
+    <label>Optional source note</label>
+    <textarea id="obtained" rows="2" placeholder="Optional source or edition note"></textarea>
     <div style="margin-top:12px;"><button class="btn btn-accent" id="importBtn" onclick="doImport()">Import</button></div>
   </div>
   <div id="msg"></div>
@@ -121,6 +132,11 @@
         obtained: document.getElementById('obtained').value, filename: files[0].name });
       var r = await fetch('/api/library/import?' + q, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: body });
       var d = await r.json();
+      if (r.status === 409 && d.replaceRequired && d.replaceRequired.length && confirm(d.error + '\nReplace the existing translation?')) {
+        q.set('replace', d.replaceRequired[0]);
+        r = await fetch('/api/library/import?' + q, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: body });
+        d = await r.json();
+      }
       if (!r.ok) throw new Error(d.error);
       say('✓ ' + d.code + ' imported (' + d.format + '): ' + d.coverage + ', ' + d.verses.toLocaleString() + ' verses' +
         (d.missingBooks.length && d.missingBooks.length < 66 ? '\nBooks not in the file: ' + d.missingBooks.join(', ') : '') +
@@ -131,6 +147,87 @@
     load();
   }
   load();
+</script>
+<script>
+  var archivePreviewReport = null;
+  var archiveInput = document.getElementById('archiveFile');
+  if (archiveInput) archiveInput.addEventListener('change', function() {
+    archivePreviewReport = null;
+    document.getElementById('archivePreview').textContent = 'Selection changed. Preview the archive again.';
+    document.getElementById('archiveImportBtn').disabled = true;
+  });
+
+  async function previewArchiveZip() {
+    var file = document.getElementById('archiveFile').files[0];
+    if (!file) return say('Choose a ZIP archive first.');
+    if (file.size > 250 * 1024 * 1024) return say('ZIP archive exceeds the 250 MB upload limit.');
+    var btn = document.getElementById('archivePreviewBtn');
+    var importBtn = document.getElementById('archiveImportBtn');
+    btn.disabled = true; btn.textContent = 'Scanning…'; importBtn.disabled = true;
+    archivePreviewReport = null;
+    try {
+      var response = await fetch('/api/library/archive/preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: file
+      });
+      var data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not read this ZIP archive.');
+      archivePreviewReport = data;
+      var html = '<div><strong>' + data.translations.length + ' translation(s)</strong> · ' + data.chapterFiles + ' chapter files · ' + data.archiveEntries + ' ZIP entries</div>';
+      html += '<table style="margin-top:8px"><thead><tr><th>Select</th><th>Code</th><th>Books</th><th>Chapters</th><th>Verses</th><th>Notes</th></tr></thead><tbody>';
+      data.translations.forEach(function(t) {
+        var flags = [];
+        if (t.alreadyInstalled) flags.push('already installed; replacement confirmation required');
+        if (t.invalidFiles) flags.push(t.invalidFiles + ' invalid file(s)');
+        if (t.invalidVerses) flags.push(t.invalidVerses + ' invalid verse record(s) skipped');
+        if (t.duplicateChapterFiles) flags.push(t.duplicateChapterFiles + ' duplicate chapter(s)');
+        if (t.testamentMismatches) flags.push(t.testamentMismatches + ' testament path mismatch(es)');
+        if (t.code === 'KJV') flags.push('built-in KJV is protected');
+        if (!t.verses) flags.push('no valid verses found');
+        html += '<tr><td><input type="checkbox" style="width:auto" data-archive-code="' + esc(t.code) + '" ' + (t.canImport ? 'checked' : 'disabled') + '></td>';
+        html += '<td><strong>' + esc(t.code) + '</strong><div class="small">' + esc(t.name) + '</div></td><td>' + t.books + '</td><td>' + t.chapters + '</td><td>' + t.verses.toLocaleString() + '</td><td>' + esc(flags.join('; ') || 'Ready') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      document.getElementById('archivePreview').innerHTML = html;
+      importBtn.disabled = !data.translations.some(function(t) { return t.canImport; });
+      say('Archive preview complete. No database changes have been made.', true);
+    } catch (error) {
+      document.getElementById('archivePreview').textContent = '';
+      say('✗ ' + error.message);
+    } finally { btn.disabled = false; btn.textContent = 'Preview archive'; }
+  }
+
+  async function importArchiveZip() {
+    var file = document.getElementById('archiveFile').files[0];
+    if (!file || !archivePreviewReport) return say('Preview the selected ZIP archive first.');
+    var selected = Array.prototype.slice.call(document.querySelectorAll('[data-archive-code]:checked'));
+    var codes = selected.map(function(input) { return input.getAttribute('data-archive-code'); });
+    if (!codes.length) return say('Select at least one importable translation.');
+    var conflicts = archivePreviewReport.translations.filter(function(t) { return codes.indexOf(t.code) >= 0 && t.alreadyInstalled; }).map(function(t) { return t.code; });
+    var replace = [];
+    if (conflicts.length) {
+      if (!confirm('These translations are already installed: ' + conflicts.join(', ') + '. Replace their existing local data?')) return;
+      replace = conflicts;
+    }
+    if (!confirm('Import ' + codes.length + ' selected translation(s) into the local Di.Verse database?')) return;
+
+    var btn = document.getElementById('archiveImportBtn');
+    btn.disabled = true; btn.textContent = 'Importing…';
+    try {
+      var query = new URLSearchParams({ codes: codes.join(','), replace: replace.join(','), hash: archivePreviewReport.archiveHash });
+      var response = await fetch('/api/library/archive/import?' + query.toString(), {
+        method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: file
+      });
+      var data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Archive import failed.');
+      var lines = data.translations.map(function(t) { return t.code + ': ' + t.coverage + ', ' + t.verses.toLocaleString() + ' verses'; });
+      if (data.failed && data.failed.length) lines.push('Failed: ' + data.failed.map(function(f) { return f.code + ' (' + f.error + ')'; }).join('; '));
+      say('✓ Imported ' + data.imported + ' translation(s).\n' + lines.join('\n'), data.failed && data.failed.length ? false : true);
+      archivePreviewReport = null;
+      document.getElementById('archivePreview').textContent = 'Import finished. Refreshing installed translations…';
+      load();
+    } catch (error) { say('✗ ' + error.message); }
+    finally { btn.disabled = !archivePreviewReport; btn.textContent = 'Import selected translations'; }
+  }
 </script>
 </body>
 </html>
