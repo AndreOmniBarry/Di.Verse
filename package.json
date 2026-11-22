@@ -1,7 +1,7 @@
 {
   "name": "diverse",
   "version": "1.10.1",
-  "description": "Di.Verse \u2014 live scripture and lyrics display for church services",
+  "description": "Di.Verse — live scripture and lyrics display for church services",
   "main": "server.js",
   "scripts": {
     "start": "node scripts/supervisor.js",
@@ -22,7 +22,8 @@
     "express": "^5.2.1",
     "open": "^11.0.0",
     "openai": "^6.45.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "yauzl": "^3.4.0"
   },
   "engines": {
     "node": ">=20"

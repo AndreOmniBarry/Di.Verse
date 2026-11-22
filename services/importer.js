@@ -1,8 +1,6 @@
 // Reads a Bible file into rows Di.Verse can store: [{ book, chapter, verse, text }]
 //
-// For translations you're licensed to use (from the publisher, a ministry
-// partner or Bible software you own) — Di.Verse can't check where a file came
-// from, so the operator states it when importing, and it's recorded.
+// Supports existing standalone scripture formats. Optional source notes are recorded when provided.
 //
 // Formats:
 //  · JSON — bible.helloao.org complete.json; a flat list of
@@ -155,21 +153,18 @@ function parse(content, filename = '') {
 
 module.exports = { parse };
 
-// Import a file into the library. `obtained` — where the file came from and
-// on what terms (e.g. "Licensed from HarperCollins for church display,
-// letter 2026-11") — is required and stored with the translation.
-function importFile({ content, filename = '', code, name, obtained }) {
-  const { store, LICENSED_ONLY } = require('./library');
+// Import a single file into the local library. A source note is optional metadata.
+function importFile({ content, filename = '', code, name, obtained = '' }) {
+  const { store } = require('./library');
   code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!code) throw new Error('Give the translation a code, e.g. NKJV');
   if (!name || !String(name).trim()) throw new Error('Give the translation its full name, e.g. New King James Version');
-  if (!obtained || String(obtained).trim().length < 8) {
-    throw new Error(LICENSED_ONLY.has(code)
-      ? `${code} is copyrighted: say where this file comes from and on what terms (e.g. "licensed from the publisher for church display")`
-      : 'Say where this file comes from and on what terms (it is recorded with the translation)');
-  }
   const { format, rows } = parse(content, filename);
-  const report = store(code, String(name).trim(), rows, { source: 'import:' + format, licence: String(obtained).trim(), note: filename });
+  const report = store(code, String(name).trim(), rows, {
+    source: 'import:' + format,
+    licence: String(obtained || '').trim(),
+    note: filename,
+  });
   return { ...report, format };
 }
 

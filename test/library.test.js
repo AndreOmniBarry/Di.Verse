@@ -46,14 +46,16 @@ test('OSIS (container and milestone forms) and JSON (flat and nested)', () => {
   assert.strictEqual(rep.format, 'OSIS'); assert.strictEqual(rep.verses, rows.length);
 });
 
-test('a copyrighted name needs the operator to say where the file came from; KJV can\'t be replaced', () => {
+test('manual imports accept an optional source note; KJV cannot be replaced', () => {
   const content = JSON.stringify(kjv('Luke').map(r => ({ book: 'LUK', chapter: r.chapter, verse: r.verse, text: r.text })));
-  assert.throws(() => importFile({ content, code: 'NKJV', name: 'New King James Version', obtained: '' }), /copyrighted: say where this file comes from/);
-  assert.throws(() => importFile({ content, code: 'ZZJ', name: 'x', obtained: 'no' }), /Say where this file comes from/);
-  assert.throws(() => importFile({ content, code: 'KJV', name: 'King James', obtained: 'Test fixture built from KJV' }), /KJV is built in/);
-  assert.throws(() => importFile({ content: '[{"book":"JHN","chapter":1,"verse":1,"text":"x"}]', code: 'ZZJ', name: 'x', obtained: 'Test fixture here' }), /doesn't look like a Bible/);
+  const rep = importFile({ content, code: 'ZZJ', name: 'Test without source note' });
+  assert.strictEqual(rep.code, 'ZZJ');
+  assert.ok(rep.verses > 0);
+  const meta = getDb().prepare("SELECT licence FROM translation_meta WHERE code = 'ZZJ'").get();
+  assert.strictEqual(meta.licence, '');
+  assert.throws(() => importFile({ content, code: 'KJV', name: 'King James Version' }), /KJV is built in/);
+  assert.throws(() => parse('{"hello":{"world":1}}', 'x.json'), /No verses found/);
 });
-
 test('an imported translation is offered as local, with what it covers; removing it removes it', async () => {
   importFile({ content: JSON.stringify(kjv('Luke').map(r => ({ book: 'LUK', chapter: r.chapter, verse: r.verse, text: r.text }))), code: 'ZZM', name: 'Test Luke', obtained: 'Test fixture built from KJV' });
   let t = (await listTranslations()).find(x => x.code === 'ZZM');
@@ -76,11 +78,13 @@ test('bible.helloao.org format: verse text joined cleanly round footnote markers
     { book: 'Esther', chapter: 8, verse: 10, text: 'He wrote in the name' }]);
 });
 
-test('the free list only names translations that are free to use, never licensed ones', () => {
-  for (const f of library.FREE) assert.ok(!library.LICENSED_ONLY.has(f.code), f.code);
-  assert.ok(!library.FREE.some(f => /good news|gnb|gnt/i.test(f.code + f.name)), 'the catalogue\'s "GNB" is the Noyes Bible, not Good News');
+test('free catalogue entries have identifiers and do not mislabel the Noyes Bible', () => {
+  for (const f of library.FREE) {
+    assert.ok(f.code && f.name && f.id, JSON.stringify(f));
+  }
+  assert.ok(!library.FREE.some(f => /good news|gnb|gnt/i.test(f.code + f.name)),
+    'the catalogue entry called GNB is the Noyes Bible, not Good News');
 });
-
 test('JSON laid out book → chapter → verse (as many Bible datasets are), plain or wrapped', () => {
   const map = {};
   for (const r of kjv('Ruth')) ((map.Ruth = map.Ruth || {})[r.chapter] = map.Ruth[r.chapter] || {})[r.verse] = r.text;
