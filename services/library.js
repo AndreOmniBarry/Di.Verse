@@ -32,8 +32,6 @@ const FREE = [
   { code: 'WEBSTER', id: 'eng_wbs', name: 'Webster Bible (1833)', note: 'Classic, KJV revision' },
 ];
 
-// Copyrighted translations: only from a file the operator is licensed to use
-const LICENSED_ONLY = new Set(['NKJV', 'AMP', 'AMPC', 'TPT', 'GNT', 'GNB', 'NIV', 'ESV', 'NLT', 'MSG', 'NASB', 'CSB', 'HCSB', 'CEV', 'NCV', 'TLB', 'NRSV', 'RSV', 'NET', 'LEB', 'CJB', 'ERV', 'ICB', 'NIRV']);
 
 function meta() {
   return getDb().prepare('SELECT * FROM translation_meta ORDER BY code').all();
@@ -47,8 +45,7 @@ function layout() {
 }
 
 // rows: [{ book (our name), chapter, verse, text }]
-// Returns the coverage report; throws (and stores nothing) if the text is
-// empty or clearly not a Bible.
+// Returns a coverage report; throws (and stores nothing) if no non-empty verse records are supplied.
 function store(code, name, rows, info = {}) {
   code = String(code).toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!code || code.length > 12) throw new Error('A translation code is 1–12 letters or digits, e.g. BSB');
@@ -71,7 +68,7 @@ function store(code, name, rows, info = {}) {
     }
     clean.push({ book: r.book, chapter: r.chapter, verse: r.verse, text });
   }
-  if (clean.length < 100) throw new Error(`Only ${clean.length} verses found — this doesn't look like a Bible file`);
+  if (!clean.length) throw new Error('No non-empty verses found in this import.');
 
   // Coverage, book by book, against the KJV layout
   const perBook = [];
@@ -191,4 +188,4 @@ function list() {
   };
 }
 
-module.exports = { install, store, remove, list, rowsFromHelloao, FREE, LICENSED_ONLY };
+module.exports = { install, store, remove, list, rowsFromHelloao, FREE };
