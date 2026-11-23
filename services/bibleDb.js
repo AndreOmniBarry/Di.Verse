@@ -33,6 +33,7 @@ function initSchema() {
       book_num    INTEGER NOT NULL,
       chapter     INTEGER NOT NULL,
       verse       INTEGER NOT NULL,
+      verse_end   INTEGER NOT NULL DEFAULT 0,
       text        TEXT NOT NULL,
       source      TEXT DEFAULT 'seed'
     );
@@ -62,6 +63,18 @@ function initSchema() {
       PRIMARY KEY (book_num, chapter)
     );
   `);
+  // Upgrade databases created before range-block imports. Existing records
+  // remain single verses because a zero verse_end is interpreted as verse.
+  const verseColumns = new Set(db.prepare('PRAGMA table_info(verses)').all().map(column => column.name));
+  if (!verseColumns.has('verse_end')) {
+    try {
+      db.exec('ALTER TABLE verses ADD COLUMN verse_end INTEGER NOT NULL DEFAULT 0');
+    } catch (error) {
+      // Test workers or two app processes may race to apply the same migration.
+      const refreshedColumns = new Set(db.prepare('PRAGMA table_info(verses)').all().map(column => column.name));
+      if (!refreshedColumns.has('verse_end')) throw error;
+    }
+  }
 }
 
 // Translations stored in bible.db by `npm run seed` (all public domain)
@@ -133,19 +146,26 @@ async function listTranslations() {
 // API.Bible text, once a key is added, takes precedence over them
 function localVerse(book, chapter, verse, translation, { ai = false } = {}) {
   const row = getDb().prepare(`
-    SELECT text, book, chapter, verse, translation, source
+    SELECT text, book, chapter, verse,
+      COALESCE(NULLIF(verse_end, 0), verse) AS verse_end,
+      translation, source
     FROM verses
-    WHERE book = ? AND chapter = ? AND verse = ? AND translation = ?
+    WHERE book = ? AND chapter = ? AND translation = ?
+      AND verse <= ? AND COALESCE(NULLIF(verse_end, 0), verse) >= ?
       AND (substr(source, 1, 3) = 'ai_') = ?
-  `).get(book, chapter, verse, translation, ai ? 1 : 0);
+    ORDER BY (COALESCE(NULLIF(verse_end, 0), verse) - verse) ASC, verse DESC
+    LIMIT 1
+  `).get(book, chapter, translation, verse, verse, ai ? 1 : 0);
   if (!row) return null;
+  const verseEnd = Number(row.verse_end || row.verse);
   return {
-    reference: `${row.book} ${row.chapter}:${row.verse}`,
+    reference: `${row.book} ${row.chapter}:${row.verse}${verseEnd > row.verse ? `-${verseEnd}` : ''}`,
     translation: row.translation,
     text: row.text,
     book: row.book,
     chapter: row.chapter,
     verse: row.verse,
+    ...(verseEnd > row.verse ? { verseEnd } : {}),
     source: row.source || 'local',
     ...(AI_NOTES[row.source] ? { verification: row.source.replace('ai_', ''), note: AI_NOTES[row.source] } : {})
   };
@@ -270,17 +290,31 @@ async function getPassage(book, chapter, verse, verseEnd, translation = 'KJV', o
       results[i] = await getVerse(book, chapter, verses[i], translation, opts);
     }
   }));
-  const parts = results.filter(Boolean);
-  if (!parts.length) return null;
+  const found = results.filter(Boolean);
+  if (!found.length) return null;
+  const seenBlocks = new Set();
+  const parts = found.filter(p => {
+    const end = p.verseEnd || p.verse;
+    const key = [p.translation, p.book, p.chapter, p.verse, end, p.source || '', p.fallback ? 'fallback' : 'local'].join('|');
+    if (seenBlocks.has(key)) return false;
+    seenBlocks.add(key);
+    return true;
+  }).sort((a, b) => a.verse - b.verse);
 
   const fallbacks = parts.filter(p => p.fallback);
   const worst = parts.filter(p => p.verification).sort((a, b) => VERIFY_RANK[b.verification] - VERIFY_RANK[a.verification])[0];
   const shownTranslations = [...new Set(parts.map(p => p.translation))];
+  const firstVerse = parts[0].verse;
+  const lastVerse = Math.max(...parts.map(p => p.verseEnd || p.verse));
   return {
-    reference: `${book} ${chapter}:${verse}-${last}`,
+    reference: `${book} ${chapter}:${firstVerse}${lastVerse > firstVerse ? `-${lastVerse}` : ''}`,
     translation: shownTranslations.join('/'),
-    text: parts.map(p => sup(p.verse) + '\u2009' + p.text).join(' '),
-    book, chapter, verse, verseEnd: last,
+    text: parts.map(p => {
+      const end = p.verseEnd || p.verse;
+      const marker = sup(p.verse) + (end > p.verse ? '–' + sup(end) : '');
+      return marker + '\u2009' + p.text;
+    }).join(' '),
+    book, chapter, verse: firstVerse, verseEnd: lastVerse,
     source: parts[0].source,
     ...(fallbacks.length ? { fallback: true, requestedTranslation: String(translation).toUpperCase(),
       fallbackReason: `${fallbacks.length} of ${parts.length} verses: ${fallbacks[0].fallbackReason}` } : {}),
