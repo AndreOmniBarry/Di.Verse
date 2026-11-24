@@ -366,13 +366,15 @@ function connectWS() {
       remoteAudioBridgeConnected = !!msg.connected;
       remoteAudioBridgeInput = msg.inputLabel || '';
       if (remoteAudioBridgeConnected) {
+        if (isListening) stopListening();
         transcriptionContext = [];
         appendTranscription('[ Windows audio connected: ' + remoteAudioBridgeInput + ' ]', false, true);
-        noteOnce('Windows audio is feeding Di.Verse. Use this as the sermon input; do not start the Mac microphone as well.');
+        noteOnce('Windows audio is feeding Di.Verse. Use this as the sermon input; the Mac microphone is disabled while this link is active.');
       } else {
         appendTranscription('[ Windows audio link disconnected ]', false, true);
       }
       updateEngineLabel();
+      updateListeningUI(isListening ? 'active' : 'off');
     }
     if (msg.action === 'AUDIO_TRANSCRIPT') handleRemoteAudioTranscript(msg);
     if (msg.action === 'AUDIO_BRIDGE_ERROR') {
@@ -1207,6 +1209,7 @@ function setApiStatus(state, message) {
       }
 
     } catch(err) {
+      activeUsesCustomAudioInput = false;
       updateListeningUI('off');
       if (err.name === 'NotAllowedError') {
         showAlert('Microphone access denied. Allow in Chrome and try again.');
@@ -1543,6 +1546,15 @@ var base64 = btoa(binary);
     var dot = document.getElementById('dot');
     var label = document.getElementById('listenLabel');
     var btn = document.getElementById('listenBtn');
+    if (remoteAudioBridgeConnected && !isListening) {
+      dot.className = 'status-dot active';
+      label.className = 'listening-label active';
+      label.textContent = 'Windows audio';
+      btn.textContent = 'Start';
+      btn.disabled = true;
+      return;
+    }
+    btn.disabled = false;
     dot.className = 'status-dot' + (state==='active'?' active':state==='warn'?' warn':state==='error'?' error':'');
     label.className = 'listening-label' + (state==='active'?' active':state==='warn'?' warn':state==='error'?' error':'');
     label.textContent = state==='active'?'Listening...':state==='warn'?'Slow...':state==='error'?'Recovering...':'Not listening';
