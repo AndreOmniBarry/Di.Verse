@@ -101,6 +101,36 @@ test('several references in one breath: the first is shown, the others queued; "
   assert.strictEqual(j.verseData.reference, 'John 3:16');
 });
 
+test('spoken MSG and PHILLIPS references preserve translation and verse range', async () => {
+  const detect = body => fetch(base + '/api/detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+
+  const phillips = await detect({
+    text: 'Turn to Titus 3:3-11 in J. B. Phillips',
+    activeTranslation: 'KJV',
+    fast: true,
+  });
+  assert.strictEqual(phillips.type, 'explicit');
+  assert.strictEqual(phillips.reference.translation, 'PHILLIPS');
+  assert.strictEqual(phillips.verseData.reference, 'Titus 3:3-11');
+  assert.ok(phillips.verseData.translation === 'PHILLIPS' ||
+    (phillips.verseData.fallback && phillips.verseData.requestedTranslation === 'PHILLIPS'));
+
+  const msg = await detect({
+    text: 'Zephaniah chapter three verses one to five',
+    activeTranslation: 'MSG',
+    fast: true,
+  });
+  assert.strictEqual(msg.type, 'explicit');
+  assert.strictEqual(msg.reference.translation, 'MSG');
+  assert.strictEqual(msg.verseData.reference, 'Zephaniah 3:1-5');
+  assert.ok(msg.verseData.translation === 'MSG' ||
+    (msg.verseData.fallback && msg.verseData.requestedTranslation === 'MSG'));
+});
+
 test('the preacher\'s cues follow what is really on screen, even when another operator page put it there', async () => {
   await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'SHOW_VERSE', verse: { reference: 'Esther 8:9', translation: 'KJV', text: 'x', book: 'Esther', chapter: 8, verse: 9 } }) });
