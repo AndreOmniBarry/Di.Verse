@@ -219,6 +219,14 @@ async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
   const registered = getDb().prepare('SELECT code FROM translation_meta WHERE code = ?').get(translation);
   if (localName && storedCount > 0) {
     reason = `${book} ${chapter}:${verse} is not part of the ${translation} text`;
+    // A partial local import remains authoritative for the passages it has.
+    // For a named licensed edition, allow API.Bible to fill uncovered verses
+    // when the operator's plan actually includes that edition.
+    if (LICENSED_NAMES[translation]) {
+      const remote = await apiBible.getVerse(getBookNum(book), book, chapter, verse, translation);
+      if (!remote.error) return remote;
+      reason += `; API.Bible: ${remote.error}`;
+    }
   } else if (registered && !LICENSED_NAMES[translation]) {
     reason = `${translation} is registered but has no verse text stored. Import an authorised ${translation} archive; npm run seed does not install it.`;
   } else {
