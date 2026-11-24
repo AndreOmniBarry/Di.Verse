@@ -3,7 +3,7 @@
 // translation in this computer's bible.db.
 const test = require('node:test');
 const assert = require('node:assert');
-const { getDb, getVerse, getPassage, listTranslations } = require('../services/bibleDb');
+const { getDb, getVerse, getPassage, listTranslations, invalidateTranslations } = require('../services/bibleDb');
 const library = require('../services/library');
 const { parse, importFile } = require('../services/importer');
 
@@ -81,6 +81,29 @@ test('range-based scripture remains one block in storage and lookup', async () =
   const stored = getDb().prepare('SELECT verse, verse_end FROM verses WHERE translation = ? AND chapter = ? ORDER BY verse').all('ZZR', 3);
   assert.deepEqual(stored.map(row => [row.verse, row.verse_end]), [[1, 2], [3, 11], [12, 13], [14, 14], [15, 15]]);
   library.remove('ZZR');
+});
+
+test('empty translation metadata is reported honestly and never recommends the seed script for licensed text', async () => {
+  const db = getDb();
+  db.prepare(`INSERT OR REPLACE INTO translation_meta
+    (code, name, source, licence, coverage, verses, books, missing, installed_at, note)
+    VALUES ('ZZT', 'Test licensed translation', 'zip-import', '', 'New Testament', 0, 0, 0, ?, 'empty fixture')`)
+    .run(new Date().toISOString());
+  invalidateTranslations();
+  try {
+    const item = (await listTranslations()).find(t => t.code === 'ZZT');
+    assert.ok(item);
+    assert.strictEqual(item.available, false);
+    assert.match(item.reason, /no verse text is stored/i);
+    assert.doesNotMatch(item.reason, /npm run seed/i);
+
+    const verse = await getVerse('John', 3, 16, 'ZZT');
+    assert.strictEqual(verse.translation, 'KJV');
+    assert.match(verse.fallbackReason, /npm run seed does not install it/i);
+  } finally {
+    db.prepare("DELETE FROM translation_meta WHERE code = 'ZZT'").run();
+    invalidateTranslations();
+  }
 });
 
 test('an imported translation is offered as local, with what it covers; removing it removes it', async () => {
