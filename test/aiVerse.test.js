@@ -218,7 +218,7 @@ test('Gemini model list too slow → known model names are tried', { skip: !seed
 test('two Groq models with the same wording → verified on their own', { skip: !seeded }, async () => {
   process.env.GROQ_API_KEY = 'q';
   replies = { groq: TEST_EDITION_TEXT };
-  const v = await getVerse('John', 3, 16, 'TPT');
+  const v = await aiVerse.getVerse('John', 3, 16, 'TPT');
   assert.strictEqual(v.verification, 'verified');
   assert.match(v.note, /compound \+ llama-3.3-70b-versatile|llama-3.3-70b-versatile \+ compound/);
 });
