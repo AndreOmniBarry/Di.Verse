@@ -132,6 +132,29 @@ test('an authorised local partial TPT import is available for its stored passage
   assert.match(missing.fallbackReason, /not part of the TPT text/i);
 });
 
+test('API.Bible fills TPT passages missing from an authorised partial local import', { skip: !seeded }, async () => {
+  const { store } = require('../services/library');
+  store('TPT', 'The Passion Translation', [
+    { book: 'John', chapter: 3, verse: 16, text: 'Authorised local TPT passage.' },
+  ], { source: 'import:authorised-partial', licence: 'User supplied authorised copy' });
+
+  process.env.APIBIBLE_KEY = 'k';
+  global.fetch = async url => {
+    const u = String(url);
+    if (u.includes('/bibles?language=eng')) return json({ data: [{ id: 'tpt-id', abbreviation: 'TPT' }] });
+    if (u.includes('/verses/GEN.1.1')) return json({ data: { content: 'API.Bible authorised TPT passage for the missing verse.' }, meta: {} });
+    return new Response('unexpected ' + u, { status: 500 });
+  };
+
+  const local = await getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(local.source, 'import:authorised-partial');
+  assert.strictEqual(local.text, 'Authorised local TPT passage.');
+
+  const remote = await getVerse('Genesis', 1, 1, 'TPT');
+  assert.strictEqual(remote.source, 'apibible');
+  assert.strictEqual(remote.text, 'API.Bible authorised TPT passage for the missing verse.');
+});
+
 test('an empty TPT catalogue record does not block exact API.Bible text when the plan includes it', { skip: !seeded }, async () => {
   const { store } = require('../services/library');
   store('TPT', 'The Passion Translation', [
