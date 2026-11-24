@@ -168,10 +168,14 @@
 <main>
   <div class="left">
     <div class="transcription-panel">
-      <div class="label">
-        Live Transcription
-        <span style="float:right;">
-          <span id="engineLabel" style="font-size:0.6rem;color:#7a7aa8;margin-right:8px;" title="Which speech engine is writing the transcript right now"></span><span id="vadLabel" style="font-size:0.6rem;color:#555577;">VAD: ready</span>
+      <div class="label" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <span>Live Transcription</span>
+        <span style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+          <select id="audioInputSelect" title="Choose the microphone or virtual audio input (e.g. BlackHole for direct Mac audio)" onchange="savePref('audioInput', this.value)" style="max-width:220px;padding:3px 6px;font-size:0.62rem;background:var(--surface2);border:1px solid var(--mid);border-radius:4px;color:var(--text);">
+            <option value="">Audio input: System default</option>
+          </select>
+          <button type="button" onclick="refreshAudioInputs()" title="Refresh available audio inputs" style="padding:2px 6px;background:var(--surface2);border:1px solid var(--mid);border-radius:4px;color:var(--text);cursor:pointer;">↻</button>
+          <span id="engineLabel" style="font-size:0.6rem;color:#7a7aa8;margin-right:4px;" title="Which speech engines are actively writing or checking the transcript"></span><span id="vadLabel" style="font-size:0.6rem;color:#555577;">VAD: ready</span>
         </span>
       </div>
       <div class="vad-bar"><div class="vad-fill" id="vadFill"></div></div>
@@ -1049,21 +1053,62 @@ function setApiStatus(state, message) {
     if (isListening) { stopListening(); } else { await startListening(); }
   }
 
+  var audioInputRefreshInFlight = false;
+  async function refreshAudioInputs() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    var select = document.getElementById('audioInputSelect');
+    if (!select || audioInputRefreshInFlight) return;
+    audioInputRefreshInFlight = true;
+    var selected = select.value || loadPref('audioInput') || '';
+    try {
+      var devices = await navigator.mediaDevices.enumerateDevices();
+      var inputs = devices.filter(function(d) { return d.kind === 'audioinput'; });
+      select.innerHTML = '';
+      var def = document.createElement('option');
+      def.value = '';
+      def.textContent = 'Audio input: System default';
+      select.appendChild(def);
+      inputs.forEach(function(d, i) {
+        var option = document.createElement('option');
+        option.value = d.deviceId;
+        option.textContent = d.label || ('Audio input ' + (i + 1));
+        select.appendChild(option);
+      });
+      select.value = inputs.some(function(d) { return d.deviceId === selected; }) ? selected : '';
+      if (selected && !select.value) savePref('audioInput', '');
+    } catch (err) {
+      console.warn('[Audio] Could not list input devices:', err.message);
+    } finally {
+      audioInputRefreshInFlight = false;
+    }
+  }
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', refreshAudioInputs);
+  }
+
   async function startListening() {
     stopListening();
     var mySession = ++sessionId;
 
     try {
-      audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          // church PA / mixer feeds: noise suppression and echo cancellation
-          // can swallow the preacher's voice; automatic gain keeps it level
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: true
-        }
-      });
+      var audioConstraints = {
+        channelCount: 1,
+        // Preserve the preacher's natural voice; PA/mixer inputs can be harmed
+        // by browser echo cancellation and aggressive noise suppression.
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: true
+      };
+      var audioInputId = document.getElementById('audioInputSelect').value || loadPref('audioInput') || '';
+      if (audioInputId) audioConstraints.deviceId = { exact: audioInputId };
+      audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      await refreshAudioInputs();
+      var inputTrack = audioStream.getAudioTracks()[0];
+      if (inputTrack) {
+        var inputSettings = inputTrack.getSettings ? inputTrack.getSettings() : {};
+        var inputName = inputTrack.label || 'System default input';
+        appendTranscription('[ Audio input: ' + inputName + (inputSettings.sampleRate ? ' · ' + inputSettings.sampleRate + ' Hz' : '') + ' ]', false, true);
+      }
 
       // Native rate; the worklet downsamples to 16 kHz itself
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1205,11 +1250,14 @@ var base64 = btoa(binary);
       // While Chrome's live captions are working they lead (they're seconds
       // faster); Whisper then quietly double-checks for references they missed
       if (!primary && captionsHealthy()) {
+        if (whisperAlways) {
+          appendTranscription('[WHISPER CHECK · ' + (result.provider || 'provider') + (result.model ? ' · ' + result.model : '') + '] ' + text, false, true);
+        }
         detectScripture(text, '', activeTranslation, mySession, true, { heardAt: heardAt });
         return;
       }
 
-      appendTranscription(text);
+      appendTranscription('[WHISPER · ' + (result.provider || 'provider') + (result.model ? ' · ' + result.model : '') + '] ' + text);
       followLyrics(text);
       transcriptionContext.push(text);
       if (transcriptionContext.length > 3) transcriptionContext.shift();
@@ -1350,7 +1398,9 @@ var base64 = btoa(binary);
   }
   var engineShown = '';
   function updateEngineLabel() {
-    var t = !isListening ? '' : captionsBlocked || !SpeechRec ? 'Whisper' : captionsHealthy() ? 'Live captions ✓' : 'Whisper covering';
+    var t = !isListening ? '' : whisperAlways
+      ? (captionsBlocked || !SpeechRec ? 'Whisper' : 'Captions + Whisper check')
+      : (captionsBlocked || !SpeechRec ? 'Whisper' : captionsHealthy() ? 'Live captions ✓ · Whisper standby' : 'Whisper covering');
     if (t !== engineShown) { engineShown = t; document.getElementById('engineLabel').textContent = t; }
   }
 
@@ -1516,6 +1566,7 @@ var base64 = btoa(binary);
   document.getElementById('cameraSelect').value = loadPref('camera') || '20';
     if (loadPref('mode')) setMode(loadPref('mode'));
     if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
+    refreshAudioInputs();
   }
   
   try { buildBackgroundList(); restorePrefs(); }
