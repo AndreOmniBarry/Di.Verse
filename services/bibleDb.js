@@ -215,8 +215,12 @@ async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
 
   let reason;
   const storedCount = localCounts()[translation] || 0;
-  if (localTranslations()[translation] && storedCount > 0) {
+  const localName = localTranslations()[translation];
+  const registered = getDb().prepare('SELECT code FROM translation_meta WHERE code = ?').get(translation);
+  if (localName && storedCount > 0) {
     reason = `${book} ${chapter}:${verse} is not part of the ${translation} text`;
+  } else if (registered && !LICENSED_NAMES[translation]) {
+    reason = `${translation} is registered but has no verse text stored. Import an authorised ${translation} archive; npm run seed does not install it.`;
   } else {
     const remote = await apiBible.getVerse(getBookNum(book), book, chapter, verse, translation);
     if (!remote.error) return remote;
