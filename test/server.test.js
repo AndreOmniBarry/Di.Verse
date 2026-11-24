@@ -439,7 +439,7 @@ test('Windows audio connector is paired, loopback-only and streams PCM through W
   assert.strictEqual(page.status, 200);
   assert.match(page.headers.get('content-type'), /text\/html/);
   assert.match(await page.text(), /Start sending audio/);
-  assert.strictEqual((await fetch(base + '/audio-bridge/')).status, 404, 'static hosting cannot bypass the pairing route');
+  assert.strictEqual((await fetch(base + '/audio-bridge/')).status, 403, 'the trailing-slash route still requires the pairing token');
 
   const bad = new WebSocket(`ws://localhost:${PORT}?type=audio-bridge&token=wrong`);
   const badCode = await new Promise(resolve => bad.on('close', resolve));
