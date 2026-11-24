@@ -41,6 +41,31 @@ test('translation requests', () => {
   assert.deepStrictEqual(parse('let us read from the amplified'), { translationOnly: true, translation: 'AMP', confidence: 0.95 });
 });
 
+test('MSG and PHILLIPS are recognised in spoken translation requests', () => {
+  const namedPhillips = parse('Titus chapter three verses three to eleven in J. B. Phillips');
+  assert.strictEqual(namedPhillips.translation, 'PHILLIPS');
+  assert.strictEqual(namedPhillips.book, 'Titus');
+  assert.strictEqual(namedPhillips.verseEnd, 11);
+
+  const abbreviatedPhillips = parse('Titus 3:3-11 in Phillips');
+  assert.strictEqual(abbreviatedPhillips.translation, 'PHILLIPS');
+  assert.strictEqual(abbreviatedPhillips.verseEnd, 11);
+
+  assert.deepStrictEqual(parse('let us read from the J. B. Phillips'), {
+    translationOnly: true, translation: 'PHILLIPS', confidence: 0.95
+  });
+
+  const selectedPhillips = parse('Titus 3:3-11', 'PHILLIPS');
+  assert.strictEqual(selectedPhillips.translation, 'PHILLIPS');
+  assert.strictEqual(selectedPhillips.verseEnd, 11);
+
+  const selectedMessage = parse('Zephaniah 3:1-5', 'MSG');
+  assert.strictEqual(selectedMessage.translation, 'MSG');
+  assert.strictEqual(selectedMessage.verseEnd, 5);
+
+  assert.strictEqual(parse('Zephaniah 3:1-5 in the Message').translation, 'MSG');
+});
+
 test('long sentences without numbers return instantly (old pattern froze the server)', () => {
   const sentence = 'for god so loved the world that he gave his only begotten son that whosoever believeth in him should not perish but have everlasting life';
   const t = Date.now();

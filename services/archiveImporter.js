@@ -156,12 +156,18 @@ function parseChapterJson(input) {
   const verses = [];
   let invalidVerses = 0;
   for (const [key, raw] of Object.entries(value)) {
-    if (!/^\d+$/.test(key)) {
+    // Some editions (notably MSG and PHILLIPS in this archive) group several
+    // numbered verses into one paragraph. Preserve that paragraph as a single
+    // range record; never fabricate verse-level boundaries or duplicate text.
+    const match = key.match(/^(\d+)(?:\s*[-–—]\s*(\d+))?$/u);
+    if (!match) {
       invalidVerses++;
       continue;
     }
-    const verse = Number(key);
-    if (!Number.isSafeInteger(verse) || verse < 1 || verse > LIMITS.verseNumber) {
+    const verse = Number(match[1]);
+    const verseEnd = match[2] ? Number(match[2]) : verse;
+    if (!Number.isSafeInteger(verse) || !Number.isSafeInteger(verseEnd) ||
+        verse < 1 || verseEnd < verse || verseEnd > LIMITS.verseNumber) {
       invalidVerses++;
       continue;
     }
@@ -172,10 +178,24 @@ function parseChapterJson(input) {
       invalidVerses++;
       continue;
     }
-    verses.push({ verse, text });
+    verses.push({ verse, ...(verseEnd > verse ? { verseEnd } : {}), text });
   }
 
-  verses.sort((a, b) => a.verse - b.verse);
+  verses.sort((a, b) => a.verse - b.verse || (b.verseEnd || b.verse) - (a.verseEnd || a.verse));
+  // Overlapping keys cannot both be represented faithfully. Keep the first
+  // sorted block and report each later overlapping block as an invalid entry.
+  const nonOverlapping = [];
+  let lastCoveredVerse = 0;
+  for (const item of verses) {
+    const end = item.verseEnd || item.verse;
+    if (item.verse <= lastCoveredVerse) {
+      invalidVerses++;
+      continue;
+    }
+    nonOverlapping.push(item);
+    lastCoveredVerse = end;
+  }
+  verses.splice(0, verses.length, ...nonOverlapping);
   if (!verses.length) throw new Error('No valid verse entries were found in this chapter.');
   return { verses, invalidVerses };
 }
@@ -332,7 +352,7 @@ async function inspectArchive(buffer, options = {}) {
         if (meta.testamentMismatch) testamentMismatches++;
         try {
           const parsed = parseChapterJson(await readEntry(zipfile, entry));
-          verses += parsed.verses.length;
+          verses += parsed.verses.reduce((sum, item) => sum + (item.verseEnd || item.verse) - item.verse + 1, 0);
           invalidVerses += parsed.invalidVerses;
         } catch (error) {
           invalidFiles++;
@@ -420,7 +440,8 @@ async function importArchive(buffer, options = {}) {
           chapterKeys.add(chapterKey);
           const parsed = parseChapterJson(await readEntry(zipfile, entry));
           for (const verse of parsed.verses) {
-            rows.push({ book: meta.book, chapter: meta.chapter, verse: verse.verse, text: verse.text });
+            rows.push({ book: meta.book, chapter: meta.chapter, verse: verse.verse,
+              ...(verse.verseEnd ? { verseEnd: verse.verseEnd } : {}), text: verse.text });
           }
         }
 
