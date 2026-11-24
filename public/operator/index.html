@@ -124,7 +124,7 @@
       <option value="33">Camera: 33%</option>
       <option value="46">Camera: 46% — preacher left, verse right</option>
     </select>
-      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Push confident explicit references straight to the screen">
+      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Auto-push only high-confidence scripture references (93% or higher); weaker matches stay in the queue for your review">
       <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
     </label>
       <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off (recommended): Whisper only listens when Chrome's live captions aren't working, so Groq's free limit lasts all day. On: Whisper double-checks everything too (uses about 4–5 hours of free Groq a day).">
@@ -267,6 +267,7 @@ var currentFontSize = 0; // relative offset in px sent to projection
 var apiFailCount = 0;
 var isOffline = false;
 var autoPush = true;
+var AUTO_PUSH_MIN_CONFIDENCE = 0.93;
 var whisperAlways = false; // see "Whisper double-check" 
 
 // ===== Themes =====
@@ -931,7 +932,7 @@ async function handleDetection(detection, meta) {
       else if (followSinger && activeSong && detection.source === 'quote') appendTranscription('[ ' + v.reference + ' quoted in the song — in the queue ]', false, true);
       // the AI window looks back over several sentences: its finds wait in the queue
       else if (!/^(parser|quote|finder)$/.test(detection.source || '')) appendTranscription('[ ' + v.reference + ' — AI suggestion, in the queue ]', false, true);
-      else if (autoPush && (item.confidence || 0) >= 0.85) {
+      else if (autoPush && (item.confidence || 0) >= AUTO_PUSH_MIN_CONFIDENCE) {
         var why = holdBack(item, detection.source, meta.heardAt);
         if (why) appendTranscription('[ ' + v.reference + ' in the queue — ' + why + ' ]', false, true);
         else await pushVerse(item, false, 'auto');
