@@ -127,7 +127,7 @@
       <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Auto-push only high-confidence scripture references (93% or higher); weaker matches stay in the queue for your review">
       <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
     </label>
-      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off (recommended): Whisper only listens when Chrome's live captions aren't working, so Groq's free limit lasts all day. On: Whisper double-checks everything too (uses about 4–5 hours of free Groq a day).">
+      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off: Whisper runs only when Chrome captions miss a sentence. On: send every speech chunk to Whisper as well and display its independent transcript for comparison; this uses more transcription quota.">
       <input type="checkbox" id="whisperToggle" onchange="whisperAlways = this.checked; savePref('whisperAlways', this.checked ? '1' : '')"> Whisper double-check
     </label>
       <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
