@@ -6,6 +6,7 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const crypto = require('crypto');
 
 // A crash must never leave the screen dark for long: log it and exit, and
 // the supervisor (npm start → scripts/supervisor.js) restarts the server in a
@@ -15,7 +16,8 @@ process.on('unhandledRejection', err => console.error('[Unhandled promise]', err
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, maxPayload: 1024 * 1024 });
+const AUDIO_BRIDGE_TOKEN = crypto.randomBytes(24).toString('hex');
 
 app.use(express.json({ limit: '5mb' })); // a 12 s audio chunk is ~0.5 MB
 
@@ -280,8 +282,68 @@ function replayScreen(ws) {
 // ── WebSocket ──
 const clients = new Set();
 
+async function handleAudioBridgeMessage(ws, data, isBinary) {
+  if (isBinary) {
+    const meta = ws.pendingAudioMeta;
+    ws.pendingAudioMeta = null;
+    if (!meta || !Number.isSafeInteger(meta.sequence) || meta.sampleRate !== 16000) return;
+    if (data.length < 1000 || data.length > 640000 || data.length % 2) {
+      alertOperator({ action: 'AUDIO_BRIDGE_ERROR', message: 'Audio bridge sent an invalid PCM chunk. Check the selected input and restart the bridge.' });
+      return;
+    }
+    if ((ws.audioQueueDepth || 0) >= 3) {
+      alertOperator({ action: 'AUDIO_BRIDGE_ERROR', message: 'The Windows audio link is falling behind transcription. Check the network connection.' });
+      return;
+    }
+
+    const pcm = Buffer.from(data);
+    ws.audioQueueDepth = (ws.audioQueueDepth || 0) + 1;
+    ws.audioQueue = (ws.audioQueue || Promise.resolve()).then(async () => {
+      if (ws.readyState !== 1) return;
+      const result = await require('./routes/transcribe').transcribePcmBuffer(pcm, 16000);
+      if (ws.readyState !== 1) return;
+      if (result.status !== 200) {
+        alertOperator({ action: 'AUDIO_BRIDGE_ERROR', message: result.body.error || 'Remote audio transcription failed.' });
+        return;
+      }
+      if (!result.body.text) return;
+      alertOperator({
+        action: 'AUDIO_TRANSCRIPT', text: result.body.text,
+        provider: result.body.provider, model: result.body.model, language: result.body.language,
+        elapsedMs: result.body.elapsedMs, audioDuration: result.body.audioDuration, warning: result.body.warning,
+        sequence: meta.sequence, heardAt: Date.now(), inputLabel: ws.audioInputLabel || 'Windows audio input',
+      });
+    }).catch(err => {
+      console.error('[Audio Bridge] Transcription queue failed:', err.message);
+      alertOperator({ action: 'AUDIO_BRIDGE_ERROR', message: 'Audio bridge transcription failed: ' + err.message });
+    }).finally(() => { ws.audioQueueDepth = Math.max(0, (ws.audioQueueDepth || 1) - 1); });
+    return;
+  }
+
+  if (data.length > 4000) return;
+  let msg;
+  try { msg = JSON.parse(data); } catch (_) { return; }
+  if (msg.action === 'AUDIO_BRIDGE_INFO') {
+    ws.audioInputLabel = typeof msg.inputLabel === 'string' ? msg.inputLabel.slice(0, 160) : 'Windows audio input';
+    ws.audioSampleRate = Number(msg.sampleRate) || null;
+    console.log('[Audio Bridge] Connected:', ws.audioInputLabel, ws.audioSampleRate ? ws.audioSampleRate + ' Hz' : '');
+    alertOperator({ action: 'AUDIO_BRIDGE_STATUS', connected: true, inputLabel: ws.audioInputLabel, sampleRate: ws.audioSampleRate });
+  } else if (msg.action === 'AUDIO_CHUNK') {
+    if (!Number.isSafeInteger(msg.sequence) || msg.sampleRate !== 16000) return;
+    ws.pendingAudioMeta = { sequence: msg.sequence, sampleRate: msg.sampleRate };
+  } else if (msg.action === 'AUDIO_BRIDGE_STOP') {
+    alertOperator({ action: 'AUDIO_BRIDGE_STATUS', connected: false, inputLabel: ws.audioInputLabel || 'Windows audio input' });
+    ws.pendingAudioMeta = null;
+  }
+}
+
 wss.on('connection', (ws, req) => {
-  const type = new URL(req.url, 'http://localhost').searchParams.get('type') || 'unknown';
+  const params = new URL(req.url, 'http://localhost').searchParams;
+  const type = params.get('type') || 'unknown';
+  if (type === 'audio-bridge' && params.get('token') !== AUDIO_BRIDGE_TOKEN) {
+    ws.close(1008, 'Invalid Di.Verse audio bridge token');
+    return;
+  }
   ws.clientType = type;
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
@@ -290,6 +352,12 @@ wss.on('connection', (ws, req) => {
   if (type === 'operator') {
     ws.send(JSON.stringify({ action: 'STATE', state: screenState }));
     for (const c of clients) if (c.stale) ws.send(JSON.stringify({ action: 'NOTICE', message: staleMessage(c) }));
+    const bridge = [...clients].find(c => c.clientType === 'audio-bridge' && c.readyState === 1 && c.audioInputLabel);
+    if (bridge) ws.send(JSON.stringify({ action: 'AUDIO_BRIDGE_STATUS', connected: true, inputLabel: bridge.audioInputLabel, sampleRate: bridge.audioSampleRate }));
+  } else if (type === 'audio-bridge') {
+    ws.audioQueue = Promise.resolve();
+    ws.audioQueueDepth = 0;
+    ws.pendingAudioMeta = null;
   } else replayScreen(ws);
   // Every current projection page introduces itself straight away. One that
   // doesn't is an old copy still open (e.g. in vMix): say so, and if vMix is
@@ -308,8 +376,12 @@ wss.on('connection', (ws, req) => {
   // Projection pages (the projector, vMix's Web Browser input) say which
   // browser they run in and report their own errors, so a problem inside
   // vMix shows up in this Terminal and on the Operator page
-  ws.on('message', (data) => {
-    if (type !== 'projection' || data.length > 4000) return;
+  ws.on('message', (data, isBinary) => {
+    if (type === 'audio-bridge') {
+      handleAudioBridgeMessage(ws, data, isBinary);
+      return;
+    }
+    if (type !== 'projection' || isBinary || data.length > 4000) return;
     let msg;
     try { msg = JSON.parse(data); } catch (e) { return; }
     if (msg.action === 'CLIENT_INFO') {
@@ -325,6 +397,10 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     clients.delete(ws);
+    if (type === 'audio-bridge') {
+      console.log('[Audio Bridge] Disconnected');
+      alertOperator({ action: 'AUDIO_BRIDGE_STATUS', connected: false, inputLabel: ws.audioInputLabel || 'Windows audio input' });
+    }
     console.log(`[WS] Client disconnected: ${type} (total: ${clients.size})`);
   });
 
@@ -428,6 +504,44 @@ function getLocalIP() {
 // ── Start ──
 const PORT = process.env.PORT || 3000;
 const IP = getLocalIP();
+
+// Windows Chrome grants microphone access on localhost. This connector uses
+// Windows' built-in loopback-only TCP port forwarding to reach the Mac app;
+// no separate audio driver or desktop audio utility is required.
+app.get('/audio-bridge', (req, res) => {
+  if (req.query.token !== AUDIO_BRIDGE_TOKEN) return res.status(403).send('Invalid or expired Di.Verse audio bridge link. Download a fresh connector from the Operator page.');
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', 'audio-bridge', 'index.html'));
+});
+
+app.get('/api/audio-bridge/connector.bat', (req, res) => {
+  if (!isOperator(req)) return res.status(403).send('Operator laptop only');
+  if (!IP || IP === 'localhost') return res.status(503).send('Di.Verse cannot identify its LAN address. Connect the Mac to the church network and restart Di.Verse.');
+  const localPort = 3001;
+  const bridgeUrl = `http://127.0.0.1:${localPort}/audio-bridge?token=${AUDIO_BRIDGE_TOKEN}`;
+  const script = [
+    '@echo off',
+    'setlocal',
+    'title Di.Verse Windows Audio Bridge',
+    'echo Setting up a loopback-only link to Di.Verse on the Mac...',
+    `netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=${localPort} >nul 2>&1`,
+    `netsh interface portproxy add v4tov4 listenaddress=127.0.0.1 listenport=${localPort} connectaddress=${IP} connectport=${PORT}`,
+    'if errorlevel 1 (',
+    '  echo.',
+    '  echo Could not create the local link. Run this file again using Run as administrator.',
+    '  pause',
+    '  exit /b 1',
+    ')',
+    'echo Link ready. Opening the Di.Verse audio input page...',
+    `start "" "${bridgeUrl}"`,
+    'echo Keep the browser tab open while the service is running.',
+    'endlocal',
+    '',
+  ].join('\\r\\n');
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="DiVerse-Windows-Audio-Bridge.bat"');
+  res.send(script);
+});
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('\n========================================');
