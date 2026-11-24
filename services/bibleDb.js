@@ -131,7 +131,6 @@ async function listTranslations() {
   }
   const remote = new Set(await apiBible.availableCodes());
   const st = apiBible.status();
-  const ai = aiVerse.isAvailable();
   for (const [code, name] of Object.entries(LICENSED_NAMES)) {
     if (local[code]) continue; // stored locally: that copy is used
     // A model-generated paraphrase is never the published wording of a named,
