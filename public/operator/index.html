@@ -175,6 +175,7 @@
             <option value="">Audio input: System default</option>
           </select>
           <button type="button" onclick="refreshAudioInputs()" title="Refresh available audio inputs" style="padding:2px 6px;background:var(--surface2);border:1px solid var(--mid);border-radius:4px;color:var(--text);cursor:pointer;">↻</button>
+          <a href="/api/audio-bridge/connector.bat" title="Download the built-in Windows browser connector. No VB-CABLE, SonoBus or third-party audio driver required." style="font-size:0.62rem;color:var(--accent);text-decoration:none;border:1px solid var(--mid);border-radius:4px;padding:3px 6px;">Link Windows audio</a>
           <span id="engineLabel" style="font-size:0.6rem;color:#7a7aa8;margin-right:4px;" title="Which speech engines are actively writing or checking the transcript"></span><span id="vadLabel" style="font-size:0.6rem;color:#555577;">VAD: ready</span>
         </span>
       </div>
@@ -268,7 +269,10 @@ var apiFailCount = 0;
 var isOffline = false;
 var autoPush = false;
 var AUTO_PUSH_MIN_CONFIDENCE = 0.93;
-var whisperAlways = false; // see "Whisper double-check" 
+var whisperAlways = false; // see "Whisper double-check"
+var activeUsesCustomAudioInput = false;
+var remoteAudioBridgeConnected = false;
+var remoteAudioBridgeInput = ''; 
 
 // ===== Themes =====
 var THEMES = {
@@ -358,6 +362,23 @@ function connectWS() {
     }
     if (msg.action === 'NOTICE') noteOnce(msg.message);
     if (msg.action === 'TRANSLATION_CHANGE') setTranslation(msg.translation, true);
+    if (msg.action === 'AUDIO_BRIDGE_STATUS') {
+      remoteAudioBridgeConnected = !!msg.connected;
+      remoteAudioBridgeInput = msg.inputLabel || '';
+      if (remoteAudioBridgeConnected) {
+        transcriptionContext = [];
+        appendTranscription('[ Windows audio connected: ' + remoteAudioBridgeInput + ' ]', false, true);
+        noteOnce('Windows audio is feeding Di.Verse. Use this as the sermon input; do not start the Mac microphone as well.');
+      } else {
+        appendTranscription('[ Windows audio link disconnected ]', false, true);
+      }
+      updateEngineLabel();
+    }
+    if (msg.action === 'AUDIO_TRANSCRIPT') handleRemoteAudioTranscript(msg);
+    if (msg.action === 'AUDIO_BRIDGE_ERROR') {
+      appendTranscription('[ AUDIO LINK ] ' + msg.message, false, true, true);
+      setApiStatus('fail', msg.message || 'Windows audio link error');
+    }
     if (msg.action === 'LATE_VERSE' && msg.verse) {
       addToQueue(Object.assign({}, msg.verse, { confidence: 0.9, type: 'explicit', note: msg.verse.note + ' (confirmed after a delay)' }));
     }
@@ -1098,9 +1119,10 @@ function setApiStatus(state, message) {
         // by browser echo cancellation and aggressive noise suppression.
         echoCancellation: false,
         noiseSuppression: false,
-        autoGainControl: true
+        autoGainControl: false
       };
       var audioInputId = document.getElementById('audioInputSelect').value || loadPref('audioInput') || '';
+      activeUsesCustomAudioInput = !!audioInputId;
       if (audioInputId) audioConstraints.deviceId = { exact: audioInputId };
       audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
       await refreshAudioInputs();
@@ -1147,7 +1169,7 @@ function setApiStatus(state, message) {
         var pcm = new Int16Array(e.data.pcm);
         var rate = e.data.sampleRate;
         var saidFrom = Date.now() - pcm.length / rate * 1000 - 600;
-        var captionsCovered = !!recognition && captionsLastResult > saidFrom;
+        var captionsCovered = !activeUsesCustomAudioInput && !!recognition && captionsLastResult > saidFrom;
         if (!whisperAlways && captionsCovered) return;
         var heardAt = Date.now(); // when this sentence ended — the queue to Whisper can lag behind
         transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(pcm, rate, mySession, !captionsCovered, heardAt); });
@@ -1155,7 +1177,7 @@ function setApiStatus(state, message) {
 
       sourceNode.connect(workletNode);
       workletNode.connect(audioCtx.destination);
-      startCaptions(mySession);
+      if (!activeUsesCustomAudioInput) startCaptions(mySession);
 
       isListening = true;
       updateListeningUI('active');
@@ -1213,6 +1235,7 @@ function setApiStatus(state, message) {
       audioStream = null;
     }
     updateListeningUI('off');
+    activeUsesCustomAudioInput = false;
     document.getElementById('vadFill').style.width = '0%';
     document.getElementById('vadLabel').textContent = 'VAD: ready';
   }
@@ -1276,6 +1299,22 @@ var base64 = btoa(binary);
         setApiStatus('fail');
       }
     }
+  }
+
+  function handleRemoteAudioTranscript(msg) {
+    var text = String(msg.text || '').trim();
+    setApiStatus('ok');
+    if (msg.warning) noteOnce(msg.warning);
+    if (text.length < 3) return;
+    appendTranscription('[WHISPER · Windows · ' + (msg.provider || 'provider') +
+      (msg.model ? ' · ' + msg.model : '') + '] ' + text);
+    followLyrics(text);
+    transcriptionContext.push(text);
+    if (transcriptionContext.length > 3) transcriptionContext.shift();
+    var remoteUtt = 100000000 + (Number(msg.sequence) || 0);
+    detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation,
+      sessionId, true, { utt: remoteUtt, via: 'whisper', heardAt: msg.heardAt || Date.now() });
+    queueForAI(text, sessionId);
   }
 
   // opts: { interim, utt } — utt numbers the sentence, so a cue like "next
@@ -1359,8 +1398,11 @@ var base64 = btoa(binary);
   var captionUtt = 0, whisperUtt = 0;
 
   function captionsHealthy() {
-    // Healthy = wrote something recently, or nobody is talking
-    return !!recognition && (Date.now() - captionsLastResult < 6000 || Date.now() - lastSpeechAt > 4000);
+    // SpeechRecognition always listens to the OS default microphone, not a
+    // selected getUserMedia device. Never let those captions mask Whisper when
+    // the operator has deliberately chosen a different audio input.
+    return !activeUsesCustomAudioInput && !!recognition &&
+      (Date.now() - captionsLastResult < 6000 || Date.now() - lastSpeechAt > 4000);
   }
 
   // Chrome's recogniser sometimes goes deaf without ending. If the mic hears
@@ -1387,7 +1429,7 @@ var base64 = btoa(binary);
     noteHealth(speaking, level);
     if (speaking) { lastSpeechAt = Date.now(); speechSinceCaption += 100; }
     updateEngineLabel();
-    if (!SpeechRec || !isListening || sessionId !== mySession || captionsBlocked) return;
+    if (!SpeechRec || activeUsesCustomAudioInput || !isListening || sessionId !== mySession || captionsBlocked) return;
     if (speechSinceCaption >= 3000 && Date.now() - captionsLastResult > 5000 && Date.now() - lastCaptionRebuild > 8000) {
       lastCaptionRebuild = Date.now();
       speechSinceCaption = 0;
@@ -1399,14 +1441,15 @@ var base64 = btoa(binary);
   }
   var engineShown = '';
   function updateEngineLabel() {
-    var t = !isListening ? '' : whisperAlways
-      ? (captionsBlocked || !SpeechRec ? 'Whisper' : 'Captions + Whisper check')
-      : (captionsBlocked || !SpeechRec ? 'Whisper' : captionsHealthy() ? 'Live captions ✓ · Whisper standby' : 'Whisper covering');
+    var t = remoteAudioBridgeConnected ? 'Windows audio · Whisper'
+      : !isListening ? '' : activeUsesCustomAudioInput || whisperAlways
+        ? (captionsBlocked || !SpeechRec || activeUsesCustomAudioInput ? 'Whisper' : 'Captions + Whisper check')
+        : (captionsBlocked || !SpeechRec ? 'Whisper' : captionsHealthy() ? 'Live captions ✓ · Whisper standby' : 'Whisper covering');
     if (t !== engineShown) { engineShown = t; document.getElementById('engineLabel').textContent = t; }
   }
 
   function startCaptions(mySession) {
-    if (!SpeechRec) return; // not Chrome: Whisper does everything
+    if (!SpeechRec || activeUsesCustomAudioInput) return; // custom devices go straight to Whisper
     var rec = new SpeechRec();
     rec.continuous = true;
     rec.interimResults = true;
