@@ -107,7 +107,10 @@ function localTranslations() {
 function invalidateTranslations() { localCache = null; }
 
 function localCounts() {
-  const rows = getDb().prepare(`SELECT translation, COUNT(*) AS c FROM verses GROUP BY translation`).all();
+  // AI beta cache rows are experimental wording, not installed Bible text.
+  // Never let an old AI paraphrase make a licensed edition look installed.
+  const rows = getDb().prepare(`SELECT translation, COUNT(*) AS c FROM verses
+    WHERE COALESCE(substr(source, 1, 3), '') != 'ai_' GROUP BY translation`).all();
   return Object.fromEntries(rows.map(r => [r.translation, r.c]));
 }
 
@@ -122,9 +125,12 @@ async function listTranslations() {
   for (const [code, name] of Object.entries(local)) {
     const m = metaRows[code];
     const count = counts[code] || 0;
+    // If a recognised licensed edition has only stale AI cache rows and no
+    // real imported text, let the API.Bible catalogue decide its availability.
+    if (m && count === 0 && LICENSED_NAMES[code]) continue;
     const ok = m ? count > 0 : count > 30000;
     const reason = ok ? null : m
-      ? 'Translation is listed, but no verse text is stored. Import a complete, authorised copy; npm run seed does not install this translation.'
+      ? 'Translation is listed, but no verse text is stored. Import an authorised copy; npm run seed does not install this translation.'
       : 'Not downloaded yet — run npm run seed';
     out.push({ code, name, provider: 'local', available: ok, ...(m && m.coverage !== 'Full Bible' ? { coverage: m.coverage } : {}),
       ...(m && { installedVerses: count }), reason });
@@ -132,7 +138,7 @@ async function listTranslations() {
   const remote = new Set(await apiBible.availableCodes());
   const st = apiBible.status();
   for (const [code, name] of Object.entries(LICENSED_NAMES)) {
-    if (local[code]) continue; // stored locally: that copy is used
+    if (local[code] && (counts[code] || 0) > 0) continue; // real stored text takes precedence
     // A model-generated paraphrase is never the published wording of a named,
     // copyrighted edition. Only the publisher-licensed API or an imported local
     // copy may make one of these translations selectable.
@@ -208,14 +214,9 @@ async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
   if (local) return local;
 
   let reason;
-  if (localTranslations()[translation]) {
-    const storedCount = localCounts()[translation] || 0;
-    const registered = getDb().prepare('SELECT code FROM translation_meta WHERE code = ?').get(translation);
-    reason = storedCount > 0
-      ? `${book} ${chapter}:${verse} is not part of the ${translation} text`
-      : registered
-        ? `${translation} is registered but has no verse text stored. Import a complete, authorised ${translation} archive; npm run seed does not install it.`
-        : `${translation} not downloaded yet — run npm run seed`;
+  const storedCount = localCounts()[translation] || 0;
+  if (localTranslations()[translation] && storedCount > 0) {
+    reason = `${book} ${chapter}:${verse} is not part of the ${translation} text`;
   } else {
     const remote = await apiBible.getVerse(getBookNum(book), book, chapter, verse, translation);
     if (!remote.error) return remote;
