@@ -12,7 +12,7 @@ const aiVerse = require('../services/aiVerse');
 const apiBible = require('../services/apiBible');
 const { getVerse, getDb, listTranslations } = require('../services/bibleDb');
 
-const TPT_JOHN_3_16 = 'For here is the way God loved the world—he gave his only, unique Son as a gift. So now everyone who believes in him will never perish but experience everlasting life.';
+const TEST_EDITION_TEXT = 'This is a deliberately fictional test-edition sentence for the John 3:16 fixture.';
 const realFetch = global.fetch;
 let replies;   // provider -> text | {status} | function
 const seen = [];
@@ -58,123 +58,138 @@ function mock() {
   };
 }
 
-function clearTpt() { if (seeded) getDb().prepare(`DELETE FROM verses WHERE translation = 'TPT'`).run(); }
+function clearFixtures() {
+  if (!seeded) return;
+  getDb().prepare(`DELETE FROM verses WHERE translation IN ('TPT','ZZT')`).run();
+  getDb().prepare(`DELETE FROM translation_meta WHERE code = 'TPT'`).run();
+  require('../services/bibleDb').invalidateTranslations();
+}
 
-test.beforeEach(() => { aiVerse._reset(); apiBible._reset(); seen.length = 0; clearTpt(); mock(); });
-test.afterEach(() => { global.fetch = realFetch; for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY']) process.env[k] = ''; clearTpt(); });
+test.beforeEach(() => { aiVerse._reset(); apiBible._reset(); seen.length = 0; clearFixtures(); mock(); });
+test.afterEach(() => { global.fetch = realFetch; for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'ANTHROPIC_API_KEY', 'APIBIBLE_KEY']) process.env[k] = ''; clearFixtures(); });
 
 test('parseReply copes with prose, footnotes and "not found"', () => {
   assert.strictEqual(aiVerse.parseReply('Sure! {"found": true, "text": "16 For God[a] so loved"}'), 'For God so loved');
   assert.strictEqual(aiVerse.parseReply('{"found": false, "text": ""}'), null);
 });
 
-test('two providers with the same wording → verified, saved, then served offline', { skip: !seeded }, async () => {
+test('TPT is never fabricated from agreeing AI providers', { skip: !seeded }, async () => {
   process.env.GEMINI_API_KEY = 'g'; process.env.GROQ_API_KEY = 'q';
-  replies = { gemini: TPT_JOHN_3_16, groq: TPT_JOHN_3_16.replace('—', ' - ') };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.translation, 'TPT');
-  assert.strictEqual(v.verification, 'verified');
-  assert.deepStrictEqual(v.aiSources.sort(), ['gemini', 'groq']);
-  assert.ok(seen.some(u => u.includes('gemini-3.5-flash:generateContent')), 'picks newest non-lite flash model');
-
-  global.fetch = async () => { throw new Error('offline'); };
-  const again = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(again.source, 'ai_verified');
-  assert.strictEqual(again.text, v.text);
-});
-
-test('one web-grounded answer → grounded and saved', { skip: !seeded }, async () => {
-  process.env.GEMINI_API_KEY = 'g';
-  replies = { gemini: TPT_JOHN_3_16 };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.verification, 'grounded');
-  assert.strictEqual(getDb().prepare(`SELECT source FROM verses WHERE translation='TPT'`).get().source, 'ai_grounded');
-});
-
-test('single recall, nobody confirms → unverified and NOT saved', { skip: !seeded }, async () => {
-  process.env.ANTHROPIC_API_KEY = 'a';
-  replies = { claude: TPT_JOHN_3_16 };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  // never shown: a single AI recollection can be invented text
-  assert.strictEqual(v.translation, 'KJV');
-  assert.match(v.fallbackReason, /could not be confirmed \(UNVERIFIED \(claude only\)/);
-  assert.strictEqual(getDb().prepare(`SELECT COUNT(*) c FROM verses WHERE translation='TPT'`).get().c, 0);
-});
-
-test('providers disagree → unverified, says they disagreed', { skip: !seeded }, async () => {
-  process.env.GEMINI_API_KEY = 'g'; process.env.ANTHROPIC_API_KEY = 'a';
-  replies = { gemini: TPT_JOHN_3_16, claude: 'God loved everyone so much that he sent his Son so that whoever trusts him has real life forever.' };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.translation, 'KJV');
-  assert.match(v.fallbackReason, /disagreed/);
-});
-
-test('one provider out of quota → the others still answer', { skip: !seeded }, async () => {
-  process.env.GEMINI_API_KEY = 'g'; process.env.GROQ_API_KEY = 'q'; process.env.ANTHROPIC_API_KEY = 'a';
-  replies = { gemini: { status: 429 }, groq: TPT_JOHN_3_16, claude: TPT_JOHN_3_16 };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.verification, 'verified');
-  assert.deepStrictEqual(v.aiSources.sort(), ['claude', 'groq']);
-});
-
-test('a whole paragraph instead of one verse is rejected; all fail → KJV with reason', { skip: !seeded }, async () => {
-  process.env.GROQ_API_KEY = 'q';
-  replies = { groq: (TPT_JOHN_3_16 + ' ').repeat(8) };
+  replies = { gemini: TEST_EDITION_TEXT, groq: TEST_EDITION_TEXT };
   const v = await getVerse('John', 3, 16, 'TPT');
   assert.strictEqual(v.translation, 'KJV');
   assert.strictEqual(v.fallback, true);
-  assert.match(v.fallbackReason, /No AI provider could find TPT/);
+  assert.match(v.fallbackReason, /licensed edition|not downloaded|not stored/i);
+  assert.equal(seen.some(u => u.includes('generativelanguage') || u.includes('api.groq.com')), false);
+  assert.strictEqual(getDb().prepare(`SELECT COUNT(*) c FROM verses WHERE translation='TPT'`).get().c, 0);
 });
 
-test('with an AI key every listed translation is selectable, marked as AI beta', { skip: !seeded }, async () => {
+test('TPT remains unavailable in the picker when only AI keys are configured', { skip: !seeded }, async () => {
   process.env.GROQ_API_KEY = 'q';
   const list = await listTranslations();
   const tpt = list.find(t => t.code === 'TPT');
-  assert.strictEqual(tpt.available, true);
-  assert.strictEqual(tpt.provider, 'ai');
+  assert.strictEqual(tpt.available, false);
+  assert.strictEqual(tpt.provider, 'apibible');
+  assert.match(tpt.reason, /authorised TPT file|API.Bible plan/i);
 });
 
-test('licensed API.Bible text takes over from saved AI text once a key is added', { skip: !seeded }, async () => {
-  process.env.GEMINI_API_KEY = 'g'; process.env.GROQ_API_KEY = 'q';
-  replies = { gemini: TPT_JOHN_3_16, groq: TPT_JOHN_3_16 };
-  assert.strictEqual((await getVerse('John', 3, 16, 'TPT')).verification, 'verified');   // saved from AI
+test('an authorised local partial TPT import is available for its stored passages', { skip: !seeded }, async () => {
+  const { store } = require('../services/library');
+  store('TPT', 'The Passion Translation', [
+    { book: 'John', chapter: 3, verse: 16, text: 'Authorised local TPT sample text.' },
+    { book: 'Psalms', chapter: 23, verse: 1, text: 'Authorised local TPT sample text for Psalm 23.' },
+  ], { source: 'import:authorised-user-copy', licence: 'User supplied authorised copy' });
 
+  const list = await listTranslations();
+  const tpt = list.find(t => t.code === 'TPT');
+  assert.strictEqual(tpt.available, true);
+  assert.strictEqual(tpt.provider, 'local');
+  assert.match(tpt.coverage, /2 books/);
+
+  const v = await getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.source, 'import:authorised-user-copy');
+  assert.strictEqual(v.text, 'Authorised local TPT sample text.');
+  const missing = await getVerse('Genesis', 1, 1, 'TPT');
+  assert.strictEqual(missing.translation, 'KJV');
+  assert.match(missing.fallbackReason, /not part of the TPT text/i);
+});
+
+test('API.Bible supplies exact TPT text when the account plan includes it', { skip: !seeded }, async () => {
+  process.env.GROQ_API_KEY = 'q';
   process.env.APIBIBLE_KEY = 'k';
-  const aiFetch = global.fetch;
+  const mocked = global.fetch;
   global.fetch = async (url, init) => {
     const u = String(url);
-    if (u.includes('api.bible') && u.endsWith('/bibles?language=eng')) return json({ data: [{ id: 'tpt-id', abbreviation: 'TPT' }] });
-    if (u.includes('api.bible')) return json({ data: { content: 'Licensed TPT wording.' }, meta: {} });
-    return aiFetch(url, init);
+    if (u.includes('api.bible') && u.endsWith('/bibles?language=eng')) {
+      return json({ data: [{ id: 'tpt-id', abbreviation: 'TPT' }] });
+    }
+    if (u.includes('api.bible')) return json({ data: { content: 'Exact publisher-supplied TPT wording.' }, meta: {} });
+    return mocked(url, init);
   };
   try {
     const v = await getVerse('John', 3, 16, 'TPT');
     assert.strictEqual(v.source, 'apibible');
-    assert.strictEqual(v.text, 'Licensed TPT wording.');
+    assert.strictEqual(v.text, 'Exact publisher-supplied TPT wording.');
+    assert.equal(seen.some(u => u.includes('generativelanguage') || u.includes('api.groq.com')), false);
   } finally { process.env.APIBIBLE_KEY = ''; }
 });
 
-test('newest Gemini model has no free quota → falls back to an older one', { skip: !seeded }, async () => {
-  process.env.GEMINI_API_KEY = 'g';
-  replies = { gemini: url => url.includes('gemini-3.5-flash:') ? { status: 429 } : TPT_JOHN_3_16 };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.translation, 'TPT');
-  assert.strictEqual(v.aiSources[0], 'gemini');
-  assert.ok(seen.some(u => u.includes('gemini-3.5-flash-lite:generateContent')));
+test('unlicensed experimental editions may still use the clearly marked AI beta path', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'g'; process.env.GROQ_API_KEY = 'q';
+  replies = { gemini: TEST_EDITION_TEXT, groq: TEST_EDITION_TEXT };
+  const v = await getVerse('John', 3, 16, 'ZZT');
+  assert.strictEqual(v.translation, 'ZZT');
+  assert.strictEqual(v.verification, 'verified');
+  assert.deepStrictEqual(v.aiSources.sort(), ['gemini', 'groq']);
+  assert.ok(seen.some(u => u.includes('gemini-3.5-flash:generateContent')));
+});
+
+test('a single AI recall for an experimental edition is not saved', { skip: !seeded }, async () => {
+  process.env.ANTHROPIC_API_KEY = 'a';
+  replies = { claude: TEST_EDITION_TEXT };
+  const v = await getVerse('John', 3, 16, 'ZZT');
+  assert.strictEqual(v.translation, 'KJV');
+  assert.match(v.fallbackReason, /could not be confirmed \(UNVERIFIED \(claude only\)/);
+  assert.strictEqual(getDb().prepare(`SELECT COUNT(*) c FROM verses WHERE translation='ZZT'`).get().c, 0);
+});
+
+test('AI providers disagreeing on an experimental edition is reported', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'g'; process.env.ANTHROPIC_API_KEY = 'a';
+  replies = { gemini: TEST_EDITION_TEXT, claude: 'A different sentence from the second test source.' };
+  const v = await getVerse('John', 3, 16, 'ZZT');
+  assert.strictEqual(v.translation, 'KJV');
+  assert.match(v.fallbackReason, /disagreed/);
+});
+
+test('one AI provider out of quota does not block the other providers', { skip: !seeded }, async () => {
+  process.env.GEMINI_API_KEY = 'g'; process.env.GROQ_API_KEY = 'q'; process.env.ANTHROPIC_API_KEY = 'a';
+  replies = { gemini: { status: 429 }, groq: TEST_EDITION_TEXT, claude: TEST_EDITION_TEXT };
+  const v = await getVerse('John', 3, 16, 'ZZT');
+  assert.strictEqual(v.verification, 'verified');
+  assert.deepStrictEqual(v.aiSources.sort(), ['claude', 'groq']);
+});
+
+test('a paragraph instead of one verse is rejected for an experimental edition', { skip: !seeded }, async () => {
+  process.env.GROQ_API_KEY = 'q';
+  replies = { groq: (TEST_EDITION_TEXT + ' ').repeat(8) };
+  const v = await getVerse('John', 3, 16, 'ZZT');
+  assert.strictEqual(v.translation, 'KJV');
+  assert.strictEqual(v.fallback, true);
+  assert.match(v.fallbackReason, /No AI provider could find ZZT/);
 });
 
 test('Groq first model declines → second model asked', { skip: !seeded }, async () => {
   process.env.GROQ_API_KEY = 'q';
   let calls = 0;
-  replies = { groq: () => (++calls === 1 ? null : TPT_JOHN_3_16) };
+  replies = { groq: () => (++calls === 1 ? null : TEST_EDITION_TEXT) };
   const v = await aiVerse.getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.text, TPT_JOHN_3_16);
+  assert.strictEqual(v.text, TEST_EDITION_TEXT);
   assert.strictEqual(calls, 2);
 });
 
 test('Gemini web search times out → asks again without search', { skip: !seeded }, async () => {
   process.env.GEMINI_API_KEY = 'g';
-  replies = { gemini: TPT_JOHN_3_16 };
+  replies = { gemini: TEST_EDITION_TEXT };
   const mocked = global.fetch;
   global.fetch = async (url, init) => {
     if (String(url).includes(':generateContent') && JSON.parse(init.body).tools) {
@@ -183,26 +198,26 @@ test('Gemini web search times out → asks again without search', { skip: !seede
     return mocked(url, init);
   };
   const v = await aiVerse.getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.text, TPT_JOHN_3_16);
+  assert.strictEqual(v.text, TEST_EDITION_TEXT);
   assert.strictEqual(v.verification, 'unverified');   // recall only, one source
 });
 
 test('Gemini model list too slow → known model names are tried', { skip: !seeded }, async () => {
   process.env.GEMINI_API_KEY = 'g';
-  replies = { gemini: url => url.includes('gemini-3.8-flash:') ? { status: 404 } : TPT_JOHN_3_16 };
+  replies = { gemini: url => url.includes('gemini-3.8-flash:') ? { status: 404 } : TEST_EDITION_TEXT };
   const mocked = global.fetch;
   global.fetch = async (url, init) => {
     if (String(url).includes('/models?')) { const e = new Error('The operation was aborted due to timeout'); e.name = 'TimeoutError'; throw e; }
     return mocked(url, init);
   };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.translation, 'TPT');
+  const v = await aiVerse.getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.text, TEST_EDITION_TEXT);
   assert.ok(seen.some(u => u.includes('gemini-3.5-flash:generateContent')), 'moved past the missing model');
 });
 
 test('two Groq models with the same wording → verified on their own', { skip: !seeded }, async () => {
   process.env.GROQ_API_KEY = 'q';
-  replies = { groq: TPT_JOHN_3_16 };
+  replies = { groq: TEST_EDITION_TEXT };
   const v = await getVerse('John', 3, 16, 'TPT');
   assert.strictEqual(v.verification, 'verified');
   assert.match(v.note, /compound \+ llama-3.3-70b-versatile|llama-3.3-70b-versatile \+ compound/);
@@ -210,16 +225,16 @@ test('two Groq models with the same wording → verified on their own', { skip: 
 
 test('two Groq models disagree (e.g. one gives KJV wording) → unverified', { skip: !seeded }, async () => {
   process.env.GROQ_API_KEY = 'q';
-  replies = { groq: model => model === 'groq/compound' ? TPT_JOHN_3_16
+  replies = { groq: model => model === 'groq/compound' ? TEST_EDITION_TEXT
     : 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish.' };
-  const v = await getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.translation, 'KJV');           // not shown
-  assert.match(v.fallbackReason, /sources disagreed/);
+  const v = await aiVerse.getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.verification, 'unverified');
+  assert.match(v.note, /sources disagreed/);
 });
 
 test('live: answers as soon as two sources agree, without waiting for a slow Gemini', { skip: !seeded }, async () => {
   process.env.GEMINI_API_KEY = 'g'; process.env.GROQ_API_KEY = 'q';
-  replies = { gemini: TPT_JOHN_3_16, groq: TPT_JOHN_3_16 };
+  replies = { gemini: TEST_EDITION_TEXT, groq: TEST_EDITION_TEXT };
   const mocked = global.fetch;
   global.fetch = async (url, init) => {
     if (String(url).includes(':generateContent')) await new Promise(r => setTimeout(r, 3000));
@@ -233,7 +248,7 @@ test('live: answers as soon as two sources agree, without waiting for a slow Gem
 
 test('live: after the deadline shows what it has, and saves a later confirmation', { skip: !seeded }, async () => {
   process.env.GEMINI_API_KEY = 'g'; process.env.ANTHROPIC_API_KEY = 'a';
-  replies = { gemini: TPT_JOHN_3_16, claude: TPT_JOHN_3_16 };
+  replies = { gemini: TEST_EDITION_TEXT, claude: TEST_EDITION_TEXT };
   const mocked = global.fetch;
   global.fetch = async (url, init) => {
     if (String(url).includes(':generateContent')) await new Promise(r => setTimeout(r, 1200));
@@ -250,21 +265,21 @@ test('live: after the deadline shows what it has, and saves a later confirmation
 
 test('AI_SHOW_UNVERIFIED=true lets flagged single-source wording into the queue', { skip: !seeded }, async () => {
   process.env.ANTHROPIC_API_KEY = 'a'; process.env.AI_SHOW_UNVERIFIED = 'true';
-  replies = { claude: TPT_JOHN_3_16 };
+  replies = { claude: TEST_EDITION_TEXT };
   try {
-    const v = await getVerse('John', 3, 16, 'TPT');
+    const v = await getVerse('John', 3, 16, 'ZZT');
     assert.strictEqual(v.verification, 'unverified');
   } finally { delete process.env.AI_SHOW_UNVERIFIED; }
 });
 
 test('backup Gemini key takes over when the first is rejected', { skip: !seeded }, async () => {
   process.env.GEMINI_API_KEY = 'AIza_bad1, AIza_good2';
-  replies = { gemini: TPT_JOHN_3_16 };
+  replies = { gemini: TEST_EDITION_TEXT };
   const mocked = global.fetch;
   global.fetch = async (url, init) => {
     if (init && init.headers && init.headers['x-goog-api-key'] === 'AIza_bad1') return json({ error: { message: 'API key not valid' } }, 400 + 3);
     return mocked(url, init);
   };
   const v = await aiVerse.getVerse('John', 3, 16, 'TPT');
-  assert.strictEqual(v.text, TPT_JOHN_3_16);
+  assert.strictEqual(v.text, TEST_EDITION_TEXT);
 });
