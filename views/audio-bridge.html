@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Di.Verse — Windows Audio Bridge</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#090b18;color:#edf0ff}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at top,#171d38,#090b18 60%)}
+main{width:min(620px,100%);background:#12172a;border:1px solid #313b5c;border-radius:18px;padding:28px;box-shadow:0 24px 80px #0008}
+.eyebrow{color:#9da9d3;font-size:12px;letter-spacing:.15em;text-transform:uppercase;font-weight:700}
+h1{font-size:28px;margin:8px 0 10px}p{color:#b9c2df;line-height:1.55}
+label{display:block;margin:22px 0 8px;color:#d8def6;font-size:14px;font-weight:650}
+select{width:100%;background:#090e20;color:white;border:1px solid #465479;border-radius:9px;padding:13px;font-size:15px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+button{border:0;border-radius:9px;padding:12px 17px;font-weight:750;font-size:14px;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}.primary{background:#e2bb4f;color:#141522}.secondary{background:#273252;color:#eaf0ff}.stop{background:#6a2734;color:#fff}
+.status{margin-top:20px;padding:13px 14px;border-radius:10px;background:#0b1020;border:1px solid #313b5c;color:#b6c2e7;font-size:14px}
+.status.ok{border-color:#28785d;color:#8fe0bd}.status.bad{border-color:#a34a5a;color:#ffc0c8}
+.meter{height:8px;background:#252d47;border-radius:99px;overflow:hidden;margin-top:14px}.fill{height:100%;width:0;background:linear-gradient(90deg,#44c99a,#e2bb4f);transition:width .1s}
+.small{font-size:12px;color:#8793b7;margin-top:15px}.warning{color:#e2c986}.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Di.Verse · Secure local audio link</div>
+  <h1>Windows audio input</h1>
+  <p>Choose the Focusrite input used by vMix on this computer. Di.Verse will receive the audio over your church LAN and transcribe it on the Mac.</p>
+  <label for="inputSelect">Audio input device</label>
+  <select id="inputSelect"><option value="">Find audio inputs first…</option></select>
+  <div class="actions">
+    <button class="secondary" id="findBtn">Find inputs</button>
+    <button class="primary" id="startBtn" disabled>Start sending audio</button>
+    <button class="stop" id="stopBtn" disabled>Stop</button>
+  </div>
+  <div class="meter"><div class="fill" id="meterFill"></div></div>
+  <div class="status" id="status">Not connected. Click “Find inputs” to allow microphone access and list the Focusrite device.</div>
+  <div class="small">Keep this browser tab open during the service. Do not select “Stereo Mix” or the computer microphone unless that is the actual vMix/Focusrite feed.</div>
+  <div class="small warning">This page does not change vMix routing or its Master audio mix. It only captures the input device you select here.</div>
+</main>
+<script>
+(function(){
+  'use strict';
+  var token = new URLSearchParams(location.search).get('token') || '';
+  var select = document.getElementById('inputSelect');
+  var status = document.getElementById('status');
+  var findBtn = document.getElementById('findBtn');
+  var startBtn = document.getElementById('startBtn');
+  var stopBtn = document.getElementById('stopBtn');
+  var meter = document.getElementById('meterFill');
+  var stream = null, ctx = null, source = null, worklet = null, mute = null, socket = null;
+  var sequence = 0, active = false, selectedLabel = '';
+
+  function say(message, state){
+    status.textContent = message;
+    status.className = 'status' + (state ? ' ' + state : '');
+  }
+  function stopTracks(s){
+    if(s) s.getTracks().forEach(function(t){ try{t.stop();}catch(e){} });
+  }
+  async function listInputs(){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser cannot capture audio. Open the link in current Chrome or Edge on Windows.');
+    var temporary = await navigator.mediaDevices.getUserMedia({audio:{
+      echoCancellation:false,noiseSuppression:false,autoGainControl:false
+    }});
+    stopTracks(temporary);
+    var devices = await navigator.mediaDevices.enumerateDevices();
+    var inputs = devices.filter(function(d){return d.kind === 'audioinput';});
+    var previous = select.value;
+    select.innerHTML = '';
+    inputs.forEach(function(d,i){
+      var option = document.createElement('option');
+      option.value = d.deviceId;
+      option.textContent = d.label || ('Audio input ' + (i+1));
+      select.appendChild(option);
+    });
+    if(previous && inputs.some(function(d){return d.deviceId===previous;})) select.value=previous;
+    else if(inputs.length===1) select.value=inputs[0].deviceId;
+    startBtn.disabled = !select.value;
+    if(!inputs.length) throw new Error('No audio input devices were found. Check the Focusrite connection and Windows audio settings.');
+    say(inputs.length + ' audio input(s) found. Select the Focusrite input, then start sending.', 'ok');
+  }
+  findBtn.addEventListener('click', async function(){
+    findBtn.disabled=true;
+    try{await listInputs();}
+    catch(e){say(e.message,'bad');}
+    finally{findBtn.disabled=false;}
+  });
+
+  function cleanup(){
+    active=false;
+    if(worklet){try{worklet.disconnect();}catch(e){} worklet=null;}
+    if(source){try{source.disconnect();}catch(e){} source=null;}
+    if(mute){try{mute.disconnect();}catch(e){} mute=null;}
+    if(ctx){try{ctx.close();}catch(e){} ctx=null;}
+    stopTracks(stream); stream=null;
+    if(socket && socket.readyState < 2){
+      try{socket.send(JSON.stringify({action:'AUDIO_BRIDGE_STOP'}));}catch(e){}
+      try{socket.close();}catch(e){}
+    }
+    socket=null;
+    meter.style.width='0%';
+    startBtn.disabled=!select.value;
+    stopBtn.disabled=true;
+  }
+  stopBtn.addEventListener('click',function(){
+    cleanup();
+    say('Audio sending stopped. The link to Di.Verse is still available.','');
+  });
+
+  startBtn.addEventListener('click', async function(){
+    if(active) return;
+    var deviceId=select.value;
+    if(!deviceId){say('Choose the Focusrite audio input first.','bad');return;}
+    startBtn.disabled=true;
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({audio:{
+        deviceId:{exact:deviceId},channelCount:{ideal:1},
+        echoCancellation:false,noiseSuppression:false,autoGainControl:false
+      }});
+      await listAfterPermission();
+      var track=stream.getAudioTracks()[0];
+      selectedLabel=(track && track.label) || 'Windows audio input';
+      ctx=new (window.AudioContext||window.webkitAudioContext)();
+      await ctx.audioWorklet.addModule('/worklets/pcm-processor.js');
+      var config={chunk:{}};
+      try{config=await (await fetch('/api/transcribe/config',{cache:'no-store'})).json();}catch(e){}
+      worklet=new AudioWorkletNode(ctx,'pcm-processor',{processorOptions:config.chunk||{}});
+      source=ctx.createMediaStreamSource(stream);
+      mute=ctx.createGain(); mute.gain.value=0;
+      source.connect(worklet); worklet.connect(mute); mute.connect(ctx.destination);
+      await ctx.resume();
+
+      var wsProto=location.protocol==='https:'?'wss://':'ws://';
+      socket=new WebSocket(wsProto+location.host+'/?type=audio-bridge&token='+encodeURIComponent(token));
+      socket.binaryType='arraybuffer';
+      socket.onopen=function(){
+        if(!active) return;
+        socket.send(JSON.stringify({action:'AUDIO_BRIDGE_INFO',inputLabel:selectedLabel,sampleRate:ctx.sampleRate}));
+        say('Connected to Di.Verse. Sending from '+selectedLabel+' at '+ctx.sampleRate+' Hz.','ok');
+      };
+      socket.onerror=function(){say('Could not reach Di.Verse on the Mac. Check that the Mac and Windows PC are on the same LAN.','bad');cleanup();};
+      socket.onclose=function(){if(active){say('Connection to the Mac was lost. Stop and start again after checking the network.','bad');cleanup();}};
+      worklet.port.onmessage=function(e){
+        if(!active) return;
+        if(e.data.level!==undefined){
+          meter.style.width=Math.min(100,Math.round(e.data.level/0.1*100))+'%';
+          return;
+        }
+        if(!socket || socket.readyState!==1) return;
+        if(socket.bufferedAmount>1024*1024){say('Network busy: skipped one old audio chunk. Check the Wi-Fi/LAN connection.','bad');return;}
+        sequence++;
+        socket.send(JSON.stringify({action:'AUDIO_CHUNK',sequence:sequence,sampleRate:e.data.sampleRate}));
+        socket.send(e.data.pcm);
+      };
+      active=true;
+      stopBtn.disabled=false;
+      startBtn.disabled=true;
+      say('Opening the Di.Verse audio link…','');
+    }catch(e){
+      cleanup();
+      say('Could not start audio: '+e.message,'bad');
+    }
+  });
+
+  async function listAfterPermission(){
+    var devices=await navigator.mediaDevices.enumerateDevices();
+    var found=devices.find(function(d){return d.kind==='audioinput' && d.deviceId===select.value;});
+    if(found && found.label) selectedLabel=found.label;
+  }
+  if(navigator.mediaDevices && navigator.mediaDevices.addEventListener){
+    navigator.mediaDevices.addEventListener('devicechange',function(){
+      if(!active) listInputs().catch(function(){});
+    });
+  }
+  if(!token) say('This Di.Verse audio link has no pairing token. Download a fresh connector from the Operator page.','bad');
+})();
+</script>
+</body>
+</html>
