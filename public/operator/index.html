@@ -1074,6 +1074,10 @@ function setApiStatus(state, message) {
   var transcribeChain = Promise.resolve(); // one request at a time keeps text in spoken order
 
   async function toggleListening() {
+    if (remoteAudioBridgeConnected) {
+      noteOnce('Windows audio is already feeding Di.Verse. Stop the Windows bridge before starting the Mac microphone.');
+      return;
+    }
     if (isListening) { stopListening(); } else { await startListening(); }
   }
 
