@@ -93,6 +93,24 @@ test('TPT remains unavailable in the picker when only AI keys are configured', {
   assert.match(tpt.reason, /authorised TPT file|API.Bible plan/i);
 });
 
+test('legacy AI-cached TPT wording never counts as an installed local translation', { skip: !seeded }, async () => {
+  const { store } = require('../services/library');
+  process.env.GROQ_API_KEY = 'q';
+  store('TPT', 'The Passion Translation', [
+    { book: 'John', chapter: 3, verse: 16, text: TEST_EDITION_TEXT },
+  ], { source: 'import:old-fixture', licence: 'fixture' });
+  getDb().prepare(`UPDATE verses SET source='ai_verified' WHERE translation='TPT'`).run();
+
+  const tpt = (await listTranslations()).find(item => item.code === 'TPT');
+  assert.strictEqual(tpt.available, false);
+  assert.strictEqual(tpt.provider, 'apibible');
+
+  const v = await getVerse('John', 3, 16, 'TPT');
+  assert.strictEqual(v.translation, 'KJV');
+  assert.strictEqual(v.fallback, true);
+  assert.match(v.fallbackReason, /licensed edition|not included/i);
+});
+
 test('an authorised local partial TPT import is available for its stored passages', { skip: !seeded }, async () => {
   const { store } = require('../services/library');
   store('TPT', 'The Passion Translation', [
@@ -114,7 +132,13 @@ test('an authorised local partial TPT import is available for its stored passage
   assert.match(missing.fallbackReason, /not part of the TPT text/i);
 });
 
-test('API.Bible supplies exact TPT text when the account plan includes it', { skip: !seeded }, async () => {
+test('an empty TPT catalogue record does not block exact API.Bible text when the plan includes it', { skip: !seeded }, async () => {
+  const { store } = require('../services/library');
+  store('TPT', 'The Passion Translation', [
+    { book: 'John', chapter: 3, verse: 16, text: 'temporary placeholder' },
+  ], { source: 'import:empty-ghost-fixture', licence: 'fixture' });
+  getDb().prepare(`DELETE FROM verses WHERE translation='TPT'`).run();
+
   process.env.GROQ_API_KEY = 'q';
   process.env.APIBIBLE_KEY = 'k';
   const mocked = global.fetch;
@@ -127,6 +151,9 @@ test('API.Bible supplies exact TPT text when the account plan includes it', { sk
     return mocked(url, init);
   };
   try {
+    const listed = (await listTranslations()).find(item => item.code === 'TPT');
+    assert.strictEqual(listed.available, true);
+    assert.strictEqual(listed.provider, 'apibible');
     const v = await getVerse('John', 3, 16, 'TPT');
     assert.strictEqual(v.source, 'apibible');
     assert.strictEqual(v.text, 'Exact publisher-supplied TPT wording.');
