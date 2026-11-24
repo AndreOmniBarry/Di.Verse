@@ -41,6 +41,15 @@ test('translation requests', () => {
   assert.deepStrictEqual(parse('let us read from the amplified'), { translationOnly: true, translation: 'AMP', confidence: 0.95 });
 });
 
+test('recognises common audio-caption variants of Zephaniah and Ephesians', () => {
+  assert.strictEqual(ref('zephania 3:1-5'), 'Zephaniah 3:1');
+  assert.strictEqual(ref('zephanaiah chapter three verses one to five'), 'Zephaniah 3:1');
+  assert.strictEqual(ref('efficient 3:12'), 'Ephesians 3:12');
+  assert.strictEqual(ref('ephesian chapter three verse twelve'), 'Ephesians 3:12');
+  assert.strictEqual(ref('improve efficiency and teamwork'), null);
+  assert.strictEqual(ref('efficiency 2 things are missing'), null);
+});
+
 test('MSG and PHILLIPS are recognised in spoken translation requests', () => {
   const namedPhillips = parse('Titus chapter three verses three to eleven in J. B. Phillips');
   assert.strictEqual(namedPhillips.translation, 'PHILLIPS');
