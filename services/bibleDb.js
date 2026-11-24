@@ -130,7 +130,7 @@ async function listTranslations() {
     if (m && count === 0 && LICENSED_NAMES[code]) continue;
     const ok = m ? count > 0 : count > 30000;
     const reason = ok ? null : m
-      ? 'Translation is listed, but no verse text is stored. Import an authorised copy; npm run seed does not install this translation.'
+      ? 'Translation is listed, but no verse text is stored. Import an authorised copy or choose a source that includes it.'
       : 'Not downloaded yet — run npm run seed';
     out.push({ code, name, provider: 'local', available: ok, ...(m && m.coverage !== 'Full Bible' ? { coverage: m.coverage } : {}),
       ...(m && { installedVerses: count }), reason });
