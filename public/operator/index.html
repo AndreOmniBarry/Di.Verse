@@ -125,7 +125,7 @@
       <option value="46">Camera: 46% — preacher left, verse right</option>
     </select>
       <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Auto-push only high-confidence scripture references (93% or higher); weaker matches stay in the queue for your review">
-      <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
+      <input type="checkbox" id="autoPushToggle" onchange="autoPush = this.checked; savePref('autoPush', this.checked ? '1' : '')"> Auto-push
     </label>
       <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off: Whisper runs only when Chrome captions miss a sentence. On: send every speech chunk to Whisper as well and display its independent transcript for comparison; this uses more transcription quota.">
       <input type="checkbox" id="whisperToggle" onchange="whisperAlways = this.checked; savePref('whisperAlways', this.checked ? '1' : '')"> Whisper double-check
@@ -266,7 +266,7 @@ var lastHeartbeat = Date.now();
 var currentFontSize = 0; // relative offset in px sent to projection
 var apiFailCount = 0;
 var isOffline = false;
-var autoPush = true;
+var autoPush = false;
 var AUTO_PUSH_MIN_CONFIDENCE = 0.93;
 var whisperAlways = false; // see "Whisper double-check" 
 
@@ -1567,6 +1567,8 @@ var base64 = btoa(binary);
   document.getElementById('cameraSelect').value = loadPref('camera') || '20';
     if (loadPref('mode')) setMode(loadPref('mode'));
     if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
+    autoPush = loadPref('autoPush') === '1';
+    document.getElementById('autoPushToggle').checked = autoPush;
     refreshAudioInputs();
   }
   
