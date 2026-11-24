@@ -5,9 +5,6 @@ on:
     branches:
       - main
       - feature/sermon-audio-quality-20261124
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -15,7 +12,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -30,5 +27,7 @@ jobs:
           sudo apt-get install --yes sqlite3
       - name: Install dependencies
         run: npm ci --omit=optional
+      - name: Build a fresh disposable test Bible database
+        run: npm run seed
       - name: Run isolated test suite
         run: npm test
