@@ -1119,15 +1119,16 @@ function setApiStatus(state, message) {
     var mySession = ++sessionId;
 
     try {
+      var audioInputId = document.getElementById('audioInputSelect').value || loadPref('audioInput') || '';
       var audioConstraints = {
         channelCount: 1,
-        // Preserve the preacher's natural voice; PA/mixer inputs can be harmed
-        // by browser echo cancellation and aggressive noise suppression.
+        // Preserve PA/mixer levels unchanged on a selected interface. Let the
+        // system help a built-in laptop mic, but keep browser AGC off for line
+        // inputs where it can pump the level between speech and room noise.
         echoCancellation: false,
         noiseSuppression: false,
-        autoGainControl: false
+        autoGainControl: !audioInputId
       };
-      var audioInputId = document.getElementById('audioInputSelect').value || loadPref('audioInput') || '';
       activeUsesCustomAudioInput = !!audioInputId;
       if (audioInputId) audioConstraints.deviceId = { exact: audioInputId };
       audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
