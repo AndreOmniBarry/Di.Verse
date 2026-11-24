@@ -511,7 +511,7 @@ const IP = getLocalIP();
 app.get('/audio-bridge', (req, res) => {
   if (req.query.token !== AUDIO_BRIDGE_TOKEN) return res.status(403).send('Invalid or expired Di.Verse audio bridge link. Download a fresh connector from the Operator page.');
   res.setHeader('Cache-Control', 'no-store');
-  res.sendFile(path.join(__dirname, 'public', 'audio-bridge', 'index.html'));
+  res.sendFile(path.join(__dirname, 'views', 'audio-bridge.html'));
 });
 
 app.get('/api/audio-bridge/connector.bat', (req, res) => {
@@ -537,7 +537,7 @@ app.get('/api/audio-bridge/connector.bat', (req, res) => {
     'echo Keep the browser tab open while the service is running.',
     'endlocal',
     '',
-  ].join('\\r\\n');
+  ].join('\r\n');
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="DiVerse-Windows-Audio-Bridge.bat"');
   res.send(script);
