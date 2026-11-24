@@ -517,7 +517,7 @@ app.get('/audio-bridge', (req, res) => {
 app.get('/api/audio-bridge/connector.bat', (req, res) => {
   if (!isOperator(req)) return res.status(403).send('Operator laptop only');
   if (!IP || IP === 'localhost') return res.status(503).send('Di.Verse cannot identify its LAN address. Connect the Mac to the church network and restart Di.Verse.');
-  const localPort = 3001;
+  const localPort = 49371;
   const bridgeUrl = `http://127.0.0.1:${localPort}/audio-bridge?token=${AUDIO_BRIDGE_TOKEN}`;
   const script = [
     '@echo off',
