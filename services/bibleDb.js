@@ -241,7 +241,9 @@ async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
     // Even multiple models agreeing is not proof that the publisher's text was
     // used; the exact licensed text must come from API.Bible or a local import.
     if (LICENSED_NAMES[translation]) {
-      reason = `${translation} is a licensed edition, but it is not available locally or in your API.Bible plan. Import an authorised copy or use a plan that includes it. Di.Verse will not invent the published wording.`;
+      reason = !apiBible.status().configured
+        ? `${translation} is a licensed edition and requires API.Bible access (set APIBIBLE_KEY) or an authorised local import. AI-generated wording is not the published ${translation} text.`
+        : `${translation} is a licensed edition, but its exact text is unavailable: ${remote.error}. Import an authorised copy or use a plan that includes it. AI-generated wording is not the published ${translation} text.`;
     } else if (aiVerse.isAvailable()) {
       const kjvRow = localVerse(book, chapter, verse, 'KJV');
       const ai = await aiVerse.getVerse(book, chapter, verse, translation, kjvRow && kjvRow.text,
