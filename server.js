@@ -117,8 +117,43 @@ app.get('/api/health', async (req, res) => {
   const internet = await within(Promise.any(['https://www.google.com/generate_204', 'https://api.groq.com/', 'https://bible.helloao.org/'].map(ping)), 3500).catch(() => false);
   add('Internet', internet ? 'ok' : 'fail', internet ? 'Connected' : 'Not reachable — local Bibles, manual search and the screens still work; listening and online translations need it');
 
-  const whisper = keyState('GROQ_API_KEY', 'Groq') || keyState('OPENAI_API_KEY', 'OpenAI');
-  add('Listening backup (Whisper)', whisper ? whisper[1] : 'fail', whisper ? whisper[0] + ' — Chrome\'s live captions lead; this covers anything they miss' : 'No Groq or OpenAI key — add a free Groq key above (live captions alone will miss more)');
+  async function checkWhisperProvider(env, label, baseUrl, model) {
+    const all = keys.list(env);
+    if (!all.length) return null;
+    const key = keys.available(env)[0] || all[0];
+    try {
+      const response = await within(fetch(baseUrl + '/models', {
+        headers: { Authorization: 'Bearer ' + key },
+        signal: AbortSignal.timeout(3000),
+      }), 3500);
+      if (response.status === 401 || response.status === 403) {
+        return { state: 'fail', detail: label + ' key was rejected. Create a new key in Settings.' };
+      }
+      if (response.status === 429) {
+        return { state: 'warn', detail: label + ' model check was rate-limited. The key is saved, but transcription was not verified.' };
+      }
+      if (!response.ok) {
+        return { state: 'warn', detail: label + ' key is saved, but the model check returned HTTP ' + response.status + '.' };
+      }
+      const payload = await response.json();
+      const ids = Array.isArray(payload.data) ? payload.data.map(item => item.id) : [];
+      if (ids.length && !ids.includes(model)) {
+        return { state: 'fail', detail: label + ' accepted the key but did not list transcription model ' + model + '.' };
+      }
+      return { state: 'ok', detail: label + ' authenticated; ' + model + ' is available. Start listening and check a real audio sample to verify the microphone path.' };
+    } catch (err) {
+      return { state: 'warn', detail: label + ' key is saved, but its connection could not be verified (' + err.message + ').' };
+    }
+  }
+
+  const groqWhisper = await checkWhisperProvider('GROQ_API_KEY', 'Groq', 'https://api.groq.com/openai/v1', process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3');
+  const openaiWhisper = await checkWhisperProvider('OPENAI_API_KEY', 'OpenAI', 'https://api.openai.com/v1', process.env.TRANSCRIBE_MODEL || 'whisper-1');
+  const workingWhisper = groqWhisper && groqWhisper.state === 'ok' ? groqWhisper
+    : openaiWhisper && openaiWhisper.state === 'ok' ? openaiWhisper
+    : groqWhisper || openaiWhisper;
+  add('Listening backup (Whisper)', workingWhisper ? workingWhisper.state : 'fail',
+    workingWhisper ? workingWhisper.detail + (groqWhisper && groqWhisper.state !== 'ok' && openaiWhisper && openaiWhisper.state === 'ok' ? ' Groq is not ready; OpenAI is available as backup.' : '')
+      : 'No Groq or OpenAI key — add a Groq key in Settings.');
 
   const detect = keyState('GROQ_API_KEY', 'Groq') || keyState('ANTHROPIC_API_KEY', 'Anthropic');
   add('Paraphrase / AI detection', detect ? detect[1] : 'warn', detect ? detect[0] : 'No key — spoken references, exact quotes and paraphrases still work offline; the AI window is off');
