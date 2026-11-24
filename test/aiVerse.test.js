@@ -221,7 +221,7 @@ test('one AI provider out of quota does not block the other providers', { skip: 
 
 test('a paragraph instead of one verse is rejected for an experimental edition', { skip: !seeded }, async () => {
   process.env.GROQ_API_KEY = 'q';
-  replies = { groq: (TEST_EDITION_TEXT + ' ').repeat(8) };
+  replies = { groq: (TEST_EDITION_TEXT + ' ').repeat(20) };
   const v = await getVerse('John', 3, 16, 'ZZT');
   assert.strictEqual(v.translation, 'KJV');
   assert.strictEqual(v.fallback, true);
