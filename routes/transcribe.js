@@ -8,7 +8,7 @@ const path = require('path');
 const os = require('os');
 
 // Two interchangeable speech-to-text providers (both speak the OpenAI API):
-//   groq   — whisper-large-v3-turbo, free tier (about 8 hours of audio a day)
+//   groq   — whisper-large-v3, higher-accuracy multilingual transcription
 //   openai — whisper-1, paid from your OpenAI API credit balance
 // TRANSCRIBE_PROVIDER picks one; otherwise Groq is used when GROQ_API_KEY is
 // set (free), else OpenAI. If the first one fails on key/quota/network, the
@@ -19,7 +19,8 @@ const PROVIDERS = {
     env: 'GROQ_API_KEY',
     key: () => keys.list('GROQ_API_KEY').length > 0,
     baseURL: 'https://api.groq.com/openai/v1',
-    model: () => process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
+    model: () => process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3',
+    language: () => process.env.TRANSCRIBE_LANGUAGE || 'en',
     // Groq bills every request as at least 10 s, so send longer chunks
     chunk: { minSeconds: 6, maxSeconds: 12 },
     keyUrl: 'console.groq.com/keys',
@@ -30,6 +31,7 @@ const PROVIDERS = {
     key: () => keys.list('OPENAI_API_KEY').length > 0,
     baseURL: undefined,
     model: () => process.env.TRANSCRIBE_MODEL || 'whisper-1',
+    language: () => process.env.TRANSCRIBE_LANGUAGE || 'en',
     chunk: { minSeconds: 2.5, maxSeconds: 8 },
     keyUrl: 'platform.openai.com/api-keys',
   },
@@ -67,14 +69,14 @@ function describeError(name, err) {
 
 // Whisper spells unfamiliar words by sound ("Purvas", "Poovams" for Proverbs);
 // listing the book names makes it expect them
-const WHISPER_PROMPT = 'Church sermon with Bible references, e.g. John chapter 3 verse 16. Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, Samuel, Kings, Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, Corinthians, Galatians, Ephesians, Philippians, Colossians, Thessalonians, Timothy, Titus, Philemon, Hebrews, James, Peter, Jude, Revelation. KJV, NKJV, NIV, Amplified, The Passion Translation, The Message, J. B. Phillips, Phillips New Testament in Modern English.';
+const WHISPER_PROMPT = 'Nigerian English church sermon. Transcribe the spoken English verbatim; do not paraphrase. Preserve Bible book names and spoken chapter and verse references. Example: John chapter 3 verse 16. Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, Samuel, Kings, Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, Corinthians, Galatians, Ephesians, Philippians, Colossians, Thessalonians, Timothy, Titus, Philemon, Hebrews, James, Peter, Jude, Revelation. Bible versions: KJV, NKJV, NIV, Amplified, TPT, MSG, J. B. Phillips.';
 
 const FAILOVER = err => !err.status || err.status === 401 || err.status === 403 || err.status === 429 || err.status >= 500;
 
 // Tells the operator page how to cut audio for the active provider
 router.get('/transcribe/config', (req, res) => {
   const order = providerOrder();
-  res.json({ provider: order[0] || null, chunk: order[0] ? PROVIDERS[order[0]].chunk : PROVIDERS.openai.chunk });
+  res.json({ provider: order[0] || null, model: order[0] ? PROVIDERS[order[0]].model() : null, language: order[0] ? PROVIDERS[order[0]].language() : null, chunk: order[0] ? PROVIDERS[order[0]].chunk : PROVIDERS.openai.chunk });
 });
 
 router.post('/transcribe', async (req, res) => {
@@ -99,6 +101,7 @@ router.post('/transcribe', async (req, res) => {
     console.log('[Transcribe] WAV written:', wavBuffer.length, 'bytes');
 
     const fileBuffer = fs.readFileSync(tmpPath);
+    const startedAt = Date.now();
 
     let lastErr = null;
     for (const name of order) {
@@ -108,15 +111,17 @@ router.post('/transcribe', async (req, res) => {
           model: PROVIDERS[name].model(),
           response_format: 'json',
           temperature: 0,
+          language: PROVIDERS[name].language(),
           prompt: WHISPER_PROMPT,
         }, { maxRetries: 0, timeout: 20000 }));
 
         const text = String((response && response.text) || '').trim();
         const cleaned = filterHallucinations(text);
-        console.log(`[Whisper:${name}]`, cleaned ? '"' + cleaned.slice(0, 80) + '"' : '(silence)');
+        const elapsedMs = Date.now() - startedAt;
+        console.log(`[Whisper:${name}:${PROVIDERS[name].model()}]`, `${elapsedMs}ms`, cleaned ? '"' + cleaned.slice(0, 100) + '"' : '(silence)');
         // A backup provider answering is worth knowing about, once per chunk
         const warning = name !== order[0] && lastErr ? describeError(lastErr.provider, lastErr).message + ` — using ${PROVIDERS[name].label} instead` : undefined;
-        return res.json({ text: cleaned, provider: name, warning });
+        return res.json({ text: cleaned, provider: name, model: PROVIDERS[name].model(), language: PROVIDERS[name].language(), elapsedMs, audioDuration: Number(response && response.duration) || null, warning });
       } catch (err) {
         lastErr = err;
         lastErr.provider = name;
