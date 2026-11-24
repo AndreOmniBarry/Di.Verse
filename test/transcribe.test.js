@@ -36,6 +36,8 @@ test('Groq (free) is used first and gets longer chunks', async () => {
   try {
     const conf = await (await fetch('http://localhost:3921/api/transcribe/config')).json();
     assert.strictEqual(conf.provider, 'groq');
+    assert.strictEqual(conf.model, 'whisper-large-v3');
+    assert.strictEqual(conf.language, 'en');
     assert.deepStrictEqual(conf.chunk, { minSeconds: 6, maxSeconds: 12 });
     const r = await transcribe(3921);
     assert.strictEqual(r.body.provider, 'groq');
