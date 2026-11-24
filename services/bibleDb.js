@@ -121,9 +121,13 @@ async function listTranslations() {
   const metaRows = Object.fromEntries(getDb().prepare('SELECT code, coverage FROM translation_meta').all().map(m => [m.code, m]));
   for (const [code, name] of Object.entries(local)) {
     const m = metaRows[code];
-    const ok = m ? (counts[code] || 0) > 0 : (counts[code] || 0) > 30000;
+    const count = counts[code] || 0;
+    const ok = m ? count > 0 : count > 30000;
+    const reason = ok ? null : m
+      ? 'Translation is listed, but no verse text is stored. Import a complete, authorised copy; npm run seed does not install this translation.'
+      : 'Not downloaded yet — run npm run seed';
     out.push({ code, name, provider: 'local', available: ok, ...(m && m.coverage !== 'Full Bible' ? { coverage: m.coverage } : {}),
-      reason: ok ? null : 'Not downloaded yet — run npm run seed' });
+      ...(m && { installedVerses: count }), reason });
   }
   const remote = new Set(await apiBible.availableCodes());
   const st = apiBible.status();
@@ -203,9 +207,13 @@ async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
 
   let reason;
   if (localTranslations()[translation]) {
-    reason = (localCounts()[translation] || 0) > 0
+    const storedCount = localCounts()[translation] || 0;
+    const registered = getDb().prepare('SELECT code FROM translation_meta WHERE code = ?').get(translation);
+    reason = storedCount > 0
       ? `${book} ${chapter}:${verse} is not part of the ${translation} text`
-      : `${translation} not downloaded yet — run npm run seed`;
+      : registered
+        ? `${translation} is registered but has no verse text stored. Import a complete, authorised ${translation} archive; npm run seed does not install it.`
+        : `${translation} not downloaded yet — run npm run seed`;
   } else {
     const remote = await apiBible.getVerse(getBookNum(book), book, chapter, verse, translation);
     if (!remote.error) return remote;
