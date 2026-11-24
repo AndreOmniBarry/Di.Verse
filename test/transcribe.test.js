@@ -38,7 +38,7 @@ test('Groq (free) is used first and gets longer chunks', async () => {
     assert.strictEqual(conf.provider, 'groq');
     assert.strictEqual(conf.model, 'whisper-large-v3');
     assert.strictEqual(conf.language, 'en');
-    assert.deepStrictEqual(conf.chunk, { minSeconds: 6, maxSeconds: 12 });
+    assert.deepStrictEqual(conf.chunk, { minSeconds: 10, maxSeconds: 25 });
     const r = await transcribe(3921);
     assert.strictEqual(r.body.provider, 'groq');
     assert.match(r.body.text, /groq heard/);
