@@ -149,6 +149,20 @@ test('accepts text objects and counts invalid verse entries', () => {
   assert.equal(parsed.invalidVerses, 3);
 });
 
+test('preserves MSG and PHILLIPS verse ranges as single text blocks', () => {
+  const msg = parseChapterJson({ '1-5': 'MSG paragraph one', '6': 'MSG verse six', '9-13': 'MSG paragraph two' });
+  assert.deepEqual(msg.verses, [
+    { verse: 1, verseEnd: 5, text: 'MSG paragraph one' },
+    { verse: 6, text: 'MSG verse six' },
+    { verse: 9, verseEnd: 13, text: 'MSG paragraph two' },
+  ]);
+  assert.equal(msg.invalidVerses, 0);
+
+  const phillips = parseChapterJson({ '1-2': 'Opening paragraph', '3-11': 'Long paragraph with editorial markers a and b-11', '12-13': 'Closing paragraph' });
+  assert.deepEqual(phillips.verses.map(v => [v.verse, v.verseEnd || v.verse]), [[1, 2], [3, 11], [12, 13]]);
+  assert.equal(phillips.invalidVerses, 0);
+});
+
 test('rejects malformed and empty chapter JSON', () => {
   assert.throws(() => parseChapterJson('{broken'), /Invalid JSON/);
   assert.throws(() => parseChapterJson({ title: 'heading only' }), /No valid verse/i);
@@ -177,6 +191,43 @@ test('previews and imports selected ZIP translations one at a time', { skip: !ha
   assert.equal(lib.saved.length, 1);
   assert.equal(lib.saved[0].code, 'AMP');
   assert.deepEqual(lib.saved[0].rows.map(r => [r.chapter, r.verse]), [[1, 1], [1, 2], [2, 1]]);
+});
+
+test('previews and imports MSG and PHILLIPS chapter files with verse ranges intact', { skip: !hasYauzl }, async () => {
+  const zip = makeZip({
+    'bible-imports/MSG/old/Zephaniah/3.json': JSON.stringify({
+      '1-5': 'MSG opening paragraph', '6': 'MSG verse six', '7': 'MSG verse seven', '8': 'MSG verse eight',
+      '9-13': 'MSG restoration paragraph', '14-15': 'MSG rejoicing paragraph', '16-17': 'MSG comfort paragraph', '18-20': 'MSG promise paragraph',
+    }),
+    'bible-imports/PHILLIPS/new/Titus/3.json': JSON.stringify({
+      '1-2': 'PHILLIPS first paragraph', '3-11': 'PHILLIPS long paragraph', '12-13': 'PHILLIPS travel paragraph',
+      '14': 'PHILLIPS verse fourteen', '15': 'PHILLIPS closing verse',
+    }),
+  });
+  const lib = fakeLibrary();
+  const preview = await inspectArchive(zip, { library: lib });
+  const msg = preview.translations.find(t => t.code === 'MSG');
+  const phillips = preview.translations.find(t => t.code === 'PHILLIPS');
+  assert.equal(msg.invalidFiles, 0);
+  assert.equal(msg.invalidVerses, 0);
+  assert.equal(msg.verses, 20);
+  assert.equal(msg.canImport, true);
+  assert.equal(phillips.invalidFiles, 0);
+  assert.equal(phillips.invalidVerses, 0);
+  assert.equal(phillips.verses, 15);
+  assert.equal(phillips.canImport, true);
+
+  const result = await importArchive(zip, {
+    library: lib,
+    includeCodes: ['MSG', 'PHILLIPS'],
+    expectedHash: preview.archiveHash,
+  });
+  assert.equal(result.imported, 2);
+  const msgRows = lib.saved.find(item => item.code === 'MSG').rows;
+  const phillipsRows = lib.saved.find(item => item.code === 'PHILLIPS').rows;
+  assert.deepEqual(msgRows.filter(r => r.verseEnd).map(r => [r.verse, r.verseEnd]), [[1, 5], [9, 13], [14, 15], [16, 17], [18, 20]]);
+  assert.deepEqual(phillipsRows.filter(r => r.verseEnd).map(r => [r.verse, r.verseEnd]), [[1, 2], [3, 11], [12, 13]]);
+  assert.equal(phillipsRows.find(r => r.verse === 3).text, 'PHILLIPS long paragraph');
 });
 
 test('requires explicit confirmation before replacing an installed ZIP translation', { skip: !hasYauzl }, async () => {

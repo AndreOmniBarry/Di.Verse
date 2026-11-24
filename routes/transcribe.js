@@ -67,7 +67,7 @@ function describeError(name, err) {
 
 // Whisper spells unfamiliar words by sound ("Purvas", "Poovams" for Proverbs);
 // listing the book names makes it expect them
-const WHISPER_PROMPT = 'Church sermon with Bible references, e.g. John chapter 3 verse 16. Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, Samuel, Kings, Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, Corinthians, Galatians, Ephesians, Philippians, Colossians, Thessalonians, Timothy, Titus, Philemon, Hebrews, James, Peter, Jude, Revelation. KJV, NKJV, NIV, Amplified, The Passion Translation, The Message.';
+const WHISPER_PROMPT = 'Church sermon with Bible references, e.g. John chapter 3 verse 16. Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, Samuel, Kings, Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, Corinthians, Galatians, Ephesians, Philippians, Colossians, Thessalonians, Timothy, Titus, Philemon, Hebrews, James, Peter, Jude, Revelation. KJV, NKJV, NIV, Amplified, The Passion Translation, The Message, J. B. Phillips, Phillips New Testament in Modern English.';
 
 const FAILOVER = err => !err.status || err.status === 401 || err.status === 403 || err.status === 429 || err.status >= 500;
 
@@ -170,3 +170,4 @@ function filterHallucinations(text) {
 }
 
 module.exports = router;
+module.exports.WHISPER_PROMPT = WHISPER_PROMPT;

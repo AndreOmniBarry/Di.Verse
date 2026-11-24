@@ -58,17 +58,33 @@ function store(code, name, rows, info = {}) {
   for (const r of rows) {
     const text = String(r.text || '').replace(/\s+/g, ' ').trim();
     if (!text) { empty++; continue; }
-    const key = r.book + '|' + r.chapter + '|' + r.verse;
-    if (seen.has(key)) { dupes++; continue; }
-    seen.add(key);
-    if (!expected.has(r.book + '|' + r.chapter) || r.verse > expected.get(r.book + '|' + r.chapter)) {
-      extra++;
-      const ch = r.book + ' ' + r.chapter;
-      extraChapters.set(ch, (extraChapters.get(ch) || 0) + 1);
+    const verse = Number(r.verse);
+    const verseEnd = Number(r.verseEnd || r.verse);
+    if (!Number.isSafeInteger(verse) || !Number.isSafeInteger(verseEnd) ||
+        verse < 1 || verseEnd < verse || verseEnd > 300) {
+      throw new Error(`Invalid verse range for ${r.book} ${r.chapter}: ${r.verse}-${r.verseEnd || r.verse}`);
     }
-    clean.push({ book: r.book, chapter: r.chapter, verse: r.verse, text });
+    const chapterKey = r.book + '|' + r.chapter;
+    const prefix = chapterKey + '|';
+    let overlaps = false;
+    for (let v = verse; v <= verseEnd; v++) {
+      if (seen.has(prefix + v)) { overlaps = true; break; }
+    }
+    if (overlaps) { dupes++; continue; }
+    for (let v = verse; v <= verseEnd; v++) {
+      seen.add(prefix + v);
+      if (!expected.has(chapterKey) || v > expected.get(chapterKey)) {
+        extra++;
+        const ch = r.book + ' ' + r.chapter;
+        extraChapters.set(ch, (extraChapters.get(ch) || 0) + 1);
+      }
+    }
+    clean.push({ book: r.book, chapter: r.chapter, verse, verseEnd, text });
   }
   if (!clean.length) throw new Error('No non-empty verses found in this import.');
+  // Metadata counts the verse positions represented by the source, while the
+  // database retains one row for each original paragraph/range.
+  const storedVerses = clean.reduce((sum, r) => sum + r.verseEnd - r.verse + 1, 0);
 
   // Coverage, book by book, against the KJV layout
   const perBook = [];
@@ -100,18 +116,18 @@ function store(code, name, rows, info = {}) {
   const db = getDb();
   db.transaction(() => {
     db.prepare(`DELETE FROM verses WHERE translation = ? AND substr(source, 1, 3) != 'ai_'`).run(code);
-    const ins = db.prepare('INSERT INTO verses (translation, book, book_num, chapter, verse, text, source) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    for (const r of clean) ins.run(code, r.book, getBookNum(r.book), r.chapter, r.verse, r.text, info.source || 'import');
+    const ins = db.prepare('INSERT INTO verses (translation, book, book_num, chapter, verse, verse_end, text, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const r of clean) ins.run(code, r.book, getBookNum(r.book), r.chapter, r.verse, r.verseEnd, r.text, info.source || 'import');
     db.prepare(`INSERT OR REPLACE INTO translation_meta (code, name, source, licence, coverage, verses, books, missing, installed_at, note)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(code, name, info.source || 'import', info.licence || '', coverage, clean.length, books, missing, new Date().toISOString(),
+      .run(code, name, info.source || 'import', info.licence || '', coverage, storedVerses, books, missing, new Date().toISOString(),
         (info.note || '') + (numberingDiffers ? `${info.note ? ' — ' : ''}numbering differs from KJV, e.g. ${differsIn.join(', ')}` : ''));
   })();
   invalidateTranslations();
-  const report = { code, name, coverage, verses: clean.length, books, missing, extra, empty, duplicates: dupes,
+  const report = { code, name, coverage, verses: storedVerses, passages: clean.length, books, missing, extra, empty, duplicates: dupes,
     numberingDiffers, ...(numberingDiffers ? { differsIn } : {}),
     missingBooks: BOOKS.filter(b => !perBook.find(p => p.book === b.name)).map(b => b.name) };
-  console.log(`[Library] ${code} stored: ${coverage}, ${clean.length} verses${missing ? `, ${missing} verses missing vs KJV layout` : ''}` +
+  console.log(`[Library] ${code} stored: ${coverage}, ${storedVerses} verses in ${clean.length} passage records${missing ? `, ${missing} verses missing vs KJV layout` : ''}` +
     (numberingDiffers ? ` — WARNING: ${extra} verses numbered past KJV chapter ends (${differsIn.join(', ')}…)` : ''));
   return report;
 }

@@ -98,6 +98,8 @@ const TRANSLATION_MAP = {
   'tpt':'TPT','passion':'TPT','the passion':'TPT','passion translation':'TPT',
   'the passion translation':'TPT','departure translation':'TPT',
   'msg':'MSG','message':'MSG','the message':'MSG','message bible':'MSG',
+  'phillips':'PHILLIPS','phillips translation':'PHILLIPS','phillips new testament':'PHILLIPS',
+  'j b phillips':'PHILLIPS','jb phillips':'PHILLIPS','new testament in modern english':'PHILLIPS',
   'gnt':'GNT','good news':'GNT','good news translation':'GNT','good news bible':'GNT',
   'tlb':'TLB','living bible':'TLB','the living bible':'TLB',
   'niv':'NIV','new international':'NIV','new international version':'NIV',

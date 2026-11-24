@@ -3,12 +3,12 @@
 // translation in this computer's bible.db.
 const test = require('node:test');
 const assert = require('node:assert');
-const { getDb, getVerse, listTranslations } = require('../services/bibleDb');
+const { getDb, getVerse, getPassage, listTranslations } = require('../services/bibleDb');
 const library = require('../services/library');
 const { parse, importFile } = require('../services/importer');
 
 const kjv = (book) => getDb().prepare(`SELECT chapter, verse, text FROM verses WHERE translation = 'KJV' AND book = ? ORDER BY chapter, verse`).all(book);
-const cleanup = () => { for (const c of ['ZZU', 'ZZO', 'ZZJ', 'ZZM']) try { library.remove(c); } catch (e) {} };
+const cleanup = () => { for (const c of ['ZZU', 'ZZO', 'ZZJ', 'ZZM', 'ZZR']) try { library.remove(c); } catch (e) {} };
 test.after(cleanup);
 
 test('USFM: one book, footnotes and markers stripped, coverage reported', () => {
@@ -56,6 +56,33 @@ test('manual imports accept an optional source note; KJV cannot be replaced', ()
   assert.throws(() => importFile({ content, code: 'KJV', name: 'King James Version' }), /KJV is built in/);
   assert.throws(() => parse('{"hello":{"world":1}}', 'x.json'), /No verses found/);
 });
+test('range-based scripture remains one block in storage and lookup', async () => {
+  const report = library.store('ZZR', 'Range fixture', [
+    { book: 'Titus', chapter: 3, verse: 1, verseEnd: 2, text: 'Opening grouped passage.' },
+    { book: 'Titus', chapter: 3, verse: 3, verseEnd: 11, text: 'Middle grouped passage.' },
+    { book: 'Titus', chapter: 3, verse: 12, verseEnd: 13, text: 'Travel grouped passage.' },
+    { book: 'Titus', chapter: 3, verse: 14, text: 'Verse fourteen.' },
+    { book: 'Titus', chapter: 3, verse: 15, text: 'Verse fifteen.' },
+  ], { source: 'zip-import' });
+  assert.equal(report.verses, 15);
+  assert.equal(report.passages, 5);
+
+  const inside = await getVerse('Titus', 3, 7, 'ZZR');
+  assert.equal(inside.reference, 'Titus 3:3-11');
+  assert.equal(inside.verse, 3);
+  assert.equal(inside.verseEnd, 11);
+  assert.equal(inside.text, 'Middle grouped passage.');
+
+  const passage = await getPassage('Titus', 3, 1, 15, 'ZZR');
+  assert.equal(passage.reference, 'Titus 3:1-15');
+  assert.equal((passage.text.match(/Middle grouped passage\./g) || []).length, 1);
+  assert.match(passage.text, /³–¹¹\u2009Middle grouped passage\./);
+
+  const stored = getDb().prepare('SELECT verse, verse_end FROM verses WHERE translation = ? AND chapter = ? ORDER BY verse').all('ZZR', 3);
+  assert.deepEqual(stored.map(row => [row.verse, row.verse_end]), [[1, 2], [3, 11], [12, 13], [14, 14], [15, 15]]);
+  library.remove('ZZR');
+});
+
 test('an imported translation is offered as local, with what it covers; removing it removes it', async () => {
   importFile({ content: JSON.stringify(kjv('Luke').map(r => ({ book: 'LUK', chapter: r.chapter, verse: r.verse, text: r.text }))), code: 'ZZM', name: 'Test Luke', obtained: 'Test fixture built from KJV' });
   let t = (await listTranslations()).find(x => x.code === 'ZZM');
