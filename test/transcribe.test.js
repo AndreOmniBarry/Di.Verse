@@ -45,6 +45,22 @@ test('Groq (free) is used first and gets longer chunks', async () => {
   } finally { p.kill(); }
 });
 
+test('Groq transcription request sends full Whisper Large V3 and English language', async () => {
+  const p = await boot(3928, {
+    GROQ_API_KEY: 'g',
+    MOCK_GROQ: 'ok',
+    MOCK_EXPECT_MODEL: 'whisper-large-v3',
+    MOCK_EXPECT_LANGUAGE: 'en',
+  });
+  try {
+    const r = await transcribe(3928);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.model, 'whisper-large-v3');
+    assert.strictEqual(r.body.language, 'en');
+    assert.strictEqual(r.body.provider, 'groq');
+  } finally { p.kill(); }
+});
+
 test('Groq quota used up → OpenAI takes over and the operator is told', async () => {
   const p = await boot(3922, { GROQ_API_KEY: 'g', OPENAI_API_KEY: 'o', MOCK_GROQ: '429', MOCK_OPENAI: 'ok' });
   try {
