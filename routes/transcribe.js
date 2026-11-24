@@ -22,7 +22,7 @@ const PROVIDERS = {
     model: () => process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3',
     language: () => process.env.TRANSCRIBE_LANGUAGE || 'en',
     // Groq bills every request as at least 10 s, so send longer chunks
-    chunk: { minSeconds: 10, maxSeconds: 25 },
+    chunk: { minSeconds: 6, maxSeconds: 20 },
     keyUrl: 'console.groq.com/keys',
   },
   openai: {
