@@ -79,31 +79,28 @@ router.get('/transcribe/config', (req, res) => {
   res.json({ provider: order[0] || null, model: order[0] ? PROVIDERS[order[0]].model() : null, language: order[0] ? PROVIDERS[order[0]].language() : null, chunk: order[0] ? PROVIDERS[order[0]].chunk : PROVIDERS.openai.chunk });
 });
 
-router.post('/transcribe', async (req, res) => {
-  const { audio, sampleRate = 48000 } = req.body;
-  if (!audio) return res.status(400).json({ error: 'No audio data' });
+async function transcribePcmBuffer(pcmBuffer, sampleRate = 48000) {
+  if (!Buffer.isBuffer(pcmBuffer)) return { status: 400, body: { error: 'Audio data must be a PCM buffer', text: '' } };
   const order = providerOrder();
-  if (!order.length) return res.status(503).json({ code: 'TRANSCRIBE_KEY_MISSING', error: 'No transcription key in .env — set GROQ_API_KEY (free) or OPENAI_API_KEY. Manual search still works.', text: '' });
+  if (!order.length) return { status: 503, body: {
+    code: 'TRANSCRIBE_KEY_MISSING',
+    error: 'No transcription key in .env — set GROQ_API_KEY (free) or OPENAI_API_KEY. Manual search still works.',
+    text: '',
+  } };
+
+  if (pcmBuffer.length < 1000) return { status: 200, body: { text: '' } };
 
   let tmpPath = null;
   try {
-    const pcmBuffer = Buffer.from(audio, 'base64');
     console.log('[Transcribe] Received PCM bytes:', pcmBuffer.length, 'sampleRate:', sampleRate);
-
-    if (pcmBuffer.length < 1000) {
-      console.log('[Transcribe] Chunk too small, skipping');
-      return res.json({ text: '' });
-    }
-
     const wavBuffer = pcmToWAV(pcmBuffer, sampleRate);
-    tmpPath = path.join(os.tmpdir(), 'dv_' + Date.now() + '.wav');
+    tmpPath = path.join(os.tmpdir(), 'dv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.wav');
     fs.writeFileSync(tmpPath, wavBuffer);
-    console.log('[Transcribe] WAV written:', wavBuffer.length, 'bytes');
 
     const fileBuffer = fs.readFileSync(tmpPath);
     const startedAt = Date.now();
-
     let lastErr = null;
+
     for (const name of order) {
       try {
         const response = await keys.withKey(PROVIDERS[name].env, async key => getClient(name, key).audio.transcriptions.create({
@@ -115,13 +112,16 @@ router.post('/transcribe', async (req, res) => {
           prompt: WHISPER_PROMPT,
         }, { maxRetries: 0, timeout: 20000 }));
 
-        const text = String((response && response.text) || '').trim();
-        const cleaned = filterHallucinations(text);
+        const text = filterHallucinations(String((response && response.text) || '').trim());
         const elapsedMs = Date.now() - startedAt;
-        console.log(`[Whisper:${name}:${PROVIDERS[name].model()}]`, `${elapsedMs}ms`, cleaned ? '"' + cleaned.slice(0, 100) + '"' : '(silence)');
-        // A backup provider answering is worth knowing about, once per chunk
-        const warning = name !== order[0] && lastErr ? describeError(lastErr.provider, lastErr).message + ` — using ${PROVIDERS[name].label} instead` : undefined;
-        return res.json({ text: cleaned, provider: name, model: PROVIDERS[name].model(), language: PROVIDERS[name].language(), elapsedMs, audioDuration: Number(response && response.duration) || null, warning });
+        console.log(`[Whisper:${name}:${PROVIDERS[name].model()}]`, `${elapsedMs}ms`, text ? '"' + text.slice(0, 100) + '"' : '(silence)');
+        const warning = name !== order[0] && lastErr
+          ? describeError(lastErr.provider, lastErr).message + ` — using ${PROVIDERS[name].label} instead`
+          : undefined;
+        return { status: 200, body: {
+          text, provider: name, model: PROVIDERS[name].model(), language: PROVIDERS[name].language(),
+          elapsedMs, audioDuration: Number(response && response.duration) || null, warning,
+        } };
       } catch (err) {
         lastErr = err;
         lastErr.provider = name;
@@ -130,14 +130,23 @@ router.post('/transcribe', async (req, res) => {
       }
     }
     const info = describeError(lastErr.provider || order[0], lastErr);
-    res.status(502).json({ code: info.code, error: info.message, text: '' });
-
+    return { status: 502, body: { code: info.code, error: info.message, text: '' } };
   } catch (err) {
     console.error('[Transcribe Error]', err.message);
-    res.status(500).json({ code: 'TRANSCRIBE_ERROR', error: err.message, text: '' });
+    return { status: 500, body: { code: 'TRANSCRIBE_ERROR', error: err.message, text: '' } };
   } finally {
-    if (tmpPath) try { fs.unlinkSync(tmpPath); } catch(e) {}
+    if (tmpPath) try { fs.unlinkSync(tmpPath); } catch (_) {}
   }
+}
+
+router.post('/transcribe', async (req, res) => {
+  const { audio, sampleRate = 48000 } = req.body || {};
+  if (!audio) return res.status(400).json({ error: 'No audio data', text: '' });
+  let pcmBuffer;
+  try { pcmBuffer = Buffer.from(audio, 'base64'); }
+  catch (_) { return res.status(400).json({ error: 'Invalid base64 audio data', text: '' }); }
+  const result = await transcribePcmBuffer(pcmBuffer, Number(sampleRate) || 48000);
+  return res.status(result.status).json(result.body);
 });
 
 function pcmToWAV(pcmData, sampleRate, channels = 1, bitsPerSample = 16) {
@@ -176,3 +185,4 @@ function filterHallucinations(text) {
 
 module.exports = router;
 module.exports.WHISPER_PROMPT = WHISPER_PROMPT;
+module.exports.transcribePcmBuffer = transcribePcmBuffer;
