@@ -785,11 +785,15 @@ async function doStep(dir, unit) {
   if (!cur || !cur.book) { noteOnce('Push a verse first — Next / Previous move on from the verse on screen.'); return; }
   var q = 'book=' + encodeURIComponent(cur.book) + '&chapter=' + cur.chapter + '&verse=' + cur.verse +
     (cur.verseEnd ? '&verseEnd=' + cur.verseEnd : '') + '&dir=' + dir + '&unit=' + unit;
-  var item = await fetchVerseFast('/api/verse/step?' + q, baseTranslation(cur.translation), function(late) {
+  var wantedTranslation = baseTranslation(cur.requestedTranslation || cur.translation);
+  var item = await fetchVerseFast('/api/verse/step?' + q, wantedTranslation, function(late) {
     // the requested translation arrived after KJV went up: swap it in if that verse is still showing
     if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true, 'upgrade');
   });
-  if (item) await pushVerse(Object.assign({}, item, { type: 'manual', confidence: 1 }), false, 'step');
+  if (item) {
+    if (item.fallback) showAlert(item.requestedTranslation + ' is missing ' + item.reference + ' in the local archive. KJV is shown for this verse; navigation will continue in ' + wantedTranslation + '.');
+    await pushVerse(Object.assign({}, item, { type: 'manual', confidence: 1 }), false, 'step');
+  }
 }
 // A reference that doesn't exist: say so, and queue the closest real verses
 // (e.g. Matthew 11:35 → 11:25, 11:30, 11:15) to pick from
@@ -876,7 +880,8 @@ async function pushVerse(item, sameVerse, why) {
       why: why || (sameVerse ? 'mode' : (item.type === 'manual' ? 'manual' : 'queue')),
       listening: isListening,
       detected: item.type !== 'manual',
-      verse: { reference: item.reference, translation: item.translation, text: item.text, displayMode: displayMode,
+      verse: { reference: item.reference, translation: item.translation, requestedTranslation: item.requestedTranslation,
+               fallback: !!item.fallback, text: item.text, displayMode: displayMode,
                book: item.book, chapter: item.chapter, verse: item.verse, verseEnd: item.verseEnd },
       theme: THEMES[currentTheme],
       fontSize: currentFontSize

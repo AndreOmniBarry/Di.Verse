@@ -42,7 +42,8 @@ router.post('/detect', async (req, res) => {
   if (!current && req.body.cues !== false && req.app.locals.screen) {
     const on = req.app.locals.screen();
     const v = on && on.action === 'SHOW_VERSE' && on.verse;
-    if (v && v.book && v.chapter && v.verse) current = { book: v.book, chapter: v.chapter, verse: v.verse, verseEnd: v.verseEnd, translation: String(v.translation || activeTranslation).split('/')[0] };
+    if (v && v.book && v.chapter && v.verse) current = { book: v.book, chapter: v.chapter, verse: v.verse, verseEnd: v.verseEnd,
+      translation: String(v.requestedTranslation || v.translation || activeTranslation).split('/')[0] };
   }
 
   try {
