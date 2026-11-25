@@ -18,7 +18,7 @@
   });
 
   function display(text) {
-    return String(text == null ? '' : text).replace(/\\[([a-z]|\\d+(?:-\\d+)?)\\]/gi, function(marker, contents) {
+    return String(text == null ? '' : text).replace(/\[([a-z]|\d+(?:-\d+)?)\]/gi, function(marker, contents) {
       var result = '';
       for (var i = 0; i < contents.length; i++) {
         var character = contents.charAt(i).toLowerCase();
