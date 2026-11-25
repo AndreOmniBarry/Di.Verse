@@ -14,10 +14,81 @@ function chapterIndex(book, chapter) {
   return allChapters().findIndex(c => c.book === book && c.chapter === chapter);
 }
 
-// ref: { book, chapter, verse, verseEnd? } → the verse to show next
+// Move through the actual stored passage records for a local translation.
+// This matters for editions with omitted verse numbers or paragraph ranges:
+// the next button must not jump into a KJV-only number and silently fall back.
+function stepLocalTranslation(ref, dir, unit, translation) {
+  const db = getDb();
+  const hasText = db.prepare(`
+    SELECT 1 FROM verses
+    WHERE translation = ? AND COALESCE(substr(source, 1, 3), '') != 'ai_'
+    LIMIT 1
+  `).get(translation);
+  if (!hasText) return undefined; // keep the canonical/API navigation path
+
+  const current = db.prepare('SELECT book_num FROM verses WHERE translation = ? AND book = ? LIMIT 1')
+    .get(translation, ref.book);
+  if (!current) return undefined;
+
+  if (unit === 'chapter') {
+    const chapters = db.prepare(`
+      SELECT book, book_num, chapter, MIN(verse) AS first_verse
+      FROM verses
+      WHERE translation = ? AND COALESCE(substr(source, 1, 3), '') != 'ai_'
+      GROUP BY book, book_num, chapter
+      ORDER BY book_num, chapter
+    `).all(translation);
+    const index = chapters.findIndex(c => c.book === ref.book && c.chapter === Number(ref.chapter));
+    if (index < 0) return undefined;
+    const target = chapters[index + (dir === 'next' ? 1 : -1)];
+    return target ? { book: target.book, chapter: target.chapter, verse: target.first_verse } : null;
+  }
+
+  if (dir === 'next') {
+    const target = db.prepare(`
+      SELECT book, chapter, verse
+      FROM verses
+      WHERE translation = ?
+        AND COALESCE(substr(source, 1, 3), '') != 'ai_'
+        AND (
+          book_num > ?
+          OR (book_num = ? AND chapter > ?)
+          OR (book_num = ? AND chapter = ? AND verse > ?)
+        )
+      ORDER BY book_num, chapter, verse
+      LIMIT 1
+    `).get(translation, current.book_num, current.book_num, ref.chapter,
+      current.book_num, ref.chapter, Number(ref.verseEnd || ref.verse));
+    return target ? { book: target.book, chapter: target.chapter, verse: target.verse } : null;
+  }
+
+  const target = db.prepare(`
+    SELECT book, chapter, verse
+    FROM verses
+    WHERE translation = ?
+      AND COALESCE(substr(source, 1, 3), '') != 'ai_'
+      AND (
+        book_num < ?
+        OR (book_num = ? AND chapter < ?)
+        OR (book_num = ? AND chapter = ? AND COALESCE(NULLIF(verse_end, 0), verse) < ?)
+      )
+    ORDER BY book_num DESC, chapter DESC, verse DESC
+    LIMIT 1
+  `).get(translation, current.book_num, current.book_num, ref.chapter,
+    current.book_num, ref.chapter, Number(ref.verse));
+  return target ? { book: target.book, chapter: target.chapter, verse: target.verse } : null;
+}
+
+// ref: { book, chapter, verse, verseEnd? } → the verse/passage to show next
 //   dir: 'next' | 'prev'; unit: 'verse' | 'chapter'
-// Returns { book, chapter, verse } or null at the very start / end of the Bible.
-function step(ref, dir, unit = 'verse') {
+// translation is optional; local translations navigate only through stored
+// passages, while remote and canonical translations retain the KJV structure.
+function step(ref, dir, unit = 'verse', translation) {
+  if (translation) {
+    const local = stepLocalTranslation(ref, dir, unit, String(translation).toUpperCase().split('/')[0]);
+    if (local !== undefined) return local;
+  }
+
   const list = allChapters();
   const i = chapterIndex(ref.book, Number(ref.chapter));
   if (i < 0) return null;
@@ -77,7 +148,7 @@ function cue(text) {
 // Where a cue takes us from the verse on screen. null if it doesn't apply.
 function resolve(command, current) {
   if (!command || !current || !current.book || !current.chapter) return null;
-  if (command.kind === 'step') return step(current, command.dir, command.unit);
+  if (command.kind === 'step') return step(current, command.dir, command.unit, current.translation);
   const chapter = command.chapter || Number(current.chapter);
   const c = allChapters().find(x => x.book === current.book && x.chapter === chapter);
   if (!c || command.verse > c.max_verse) return null;
