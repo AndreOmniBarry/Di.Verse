@@ -420,3 +420,57 @@ test('session report: success rate, missed references word for word, false alarm
     assert.ok(fs.readdirSync(path.join(data, 'logs', 'sessions')).some(f => f.endsWith('.jsonl')), 'kept on the Di.Verse computer');
   } finally { srv.kill(); fs.rmSync(data, { recursive: true, force: true }); }
 });
+
+
+test('Windows audio connector is paired, loopback-only and streams PCM through Whisper', async () => {
+  const download = await fetch(base + '/api/audio-bridge/connector.bat');
+  assert.strictEqual(download.status, 200);
+  assert.match(download.headers.get('content-disposition'), /DiVerse-Windows-Audio-Bridge\.bat/);
+  const batch = await download.text();
+  assert.match(batch, /listenaddress=127\.0\.0\.1/);
+  assert.match(batch, /connectaddress=/);
+  assert.match(batch, /Run this file again using Run as administrator/);
+  const token = (batch.match(/audio-bridge\?token=([a-f0-9]{48})/) || [])[1];
+  assert.ok(token, 'connector includes a one-run pairing token');
+
+  const invalidPage = await fetch(base + '/audio-bridge?token=wrong');
+  assert.strictEqual(invalidPage.status, 403);
+  const page = await fetch(base + '/audio-bridge?token=' + token);
+  assert.strictEqual(page.status, 200);
+  assert.match(page.headers.get('content-type'), /text\/html/);
+  assert.match(await page.text(), /Start sending audio/);
+  assert.strictEqual((await fetch(base + '/audio-bridge/')).status, 403, 'the trailing-slash route still requires the pairing token');
+
+  const bad = new WebSocket(`ws://localhost:${PORT}?type=audio-bridge&token=wrong`);
+  const badCode = await new Promise(resolve => bad.on('close', resolve));
+  assert.strictEqual(badCode, 1008);
+
+  const operator = new WebSocket(`ws://localhost:${PORT}?type=operator`);
+  await new Promise(resolve => operator.on('open', resolve));
+  const waitFor = action => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timed out waiting for ' + action)), 2500);
+    operator.on('message', function handler(raw) {
+      const msg = JSON.parse(raw);
+      if (msg.action !== action) return;
+      clearTimeout(timer);
+      operator.off('message', handler);
+      resolve(msg);
+    });
+  });
+
+  const bridge = new WebSocket(`ws://localhost:${PORT}?type=audio-bridge&token=${token}`);
+  await new Promise(resolve => bridge.on('open', resolve));
+  const connected = waitFor('AUDIO_BRIDGE_STATUS');
+  bridge.send(JSON.stringify({ action: 'AUDIO_BRIDGE_INFO', inputLabel: 'Focusrite USB Audio', sampleRate: 48000 }));
+  const status = await connected;
+  assert.strictEqual(status.connected, true);
+  assert.strictEqual(status.inputLabel, 'Focusrite USB Audio');
+
+  const failed = waitFor('AUDIO_BRIDGE_ERROR');
+  bridge.send(JSON.stringify({ action: 'AUDIO_CHUNK', sequence: 1, sampleRate: 16000 }));
+  bridge.send(Buffer.alloc(32000));
+  const error = await failed;
+  assert.match(error.message, /No transcription key/);
+
+  bridge.close(); operator.close();
+});

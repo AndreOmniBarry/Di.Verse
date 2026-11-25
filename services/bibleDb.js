@@ -107,7 +107,10 @@ function localTranslations() {
 function invalidateTranslations() { localCache = null; }
 
 function localCounts() {
-  const rows = getDb().prepare(`SELECT translation, COUNT(*) AS c FROM verses GROUP BY translation`).all();
+  // AI beta cache rows are experimental wording, not installed Bible text.
+  // Never let an old AI paraphrase make a licensed edition look installed.
+  const rows = getDb().prepare(`SELECT translation, COUNT(*) AS c FROM verses
+    WHERE COALESCE(substr(source, 1, 3), '') != 'ai_' GROUP BY translation`).all();
   return Object.fromEntries(rows.map(r => [r.translation, r.c]));
 }
 
@@ -121,20 +124,29 @@ async function listTranslations() {
   const metaRows = Object.fromEntries(getDb().prepare('SELECT code, coverage FROM translation_meta').all().map(m => [m.code, m]));
   for (const [code, name] of Object.entries(local)) {
     const m = metaRows[code];
-    const ok = m ? (counts[code] || 0) > 0 : (counts[code] || 0) > 30000;
+    const count = counts[code] || 0;
+    // If a recognised licensed edition has only stale AI cache rows and no
+    // real imported text, let the API.Bible catalogue decide its availability.
+    if (m && count === 0 && LICENSED_NAMES[code]) continue;
+    const ok = m ? count > 0 : count > 30000;
+    const reason = ok ? null : m
+      ? 'Translation is listed, but no verse text is stored. Import an authorised copy or choose a source that includes it.'
+      : 'Not downloaded yet — run npm run seed';
     out.push({ code, name, provider: 'local', available: ok, ...(m && m.coverage !== 'Full Bible' ? { coverage: m.coverage } : {}),
-      reason: ok ? null : 'Not downloaded yet — run npm run seed' });
+      ...(m && { installedVerses: count }), reason });
   }
   const remote = new Set(await apiBible.availableCodes());
   const st = apiBible.status();
-  const ai = aiVerse.isAvailable();
   for (const [code, name] of Object.entries(LICENSED_NAMES)) {
-    if (local[code]) continue; // stored locally: that copy is used
-    // Licensed text when the API.Bible plan has it, otherwise the AI beta path
+    if (local[code] && (counts[code] || 0) > 0) continue; // real stored text takes precedence
+    // A model-generated paraphrase is never the published wording of a named,
+    // copyrighted edition. Only the publisher-licensed API or an imported local
+    // copy may make one of these translations selectable.
     if (remote.has(code)) out.push({ code, name, provider: 'apibible', available: true, reason: null });
-    else if (ai) out.push({ code, name, provider: 'ai', available: true, reason: 'AI beta — wording cross-checked, not licensed text' });
     else out.push({ code, name, provider: 'apibible', available: false,
-      reason: !st.configured ? 'Needs GEMINI_API_KEY / GROQ_API_KEY (beta) or an API.Bible key' : (st.error || 'Not included in your API.Bible plan') });
+      reason: !st.configured
+        ? `${code} is a licensed edition. Add an API.Bible key with ${code} in its plan, or import an authorised ${code} file.`
+        : `${code} is not included in your API.Bible plan. Import an authorised ${code} file or use a plan that includes it. AI-generated wording is not the published ${code} text.` });
   }
   for (const code of remote) {
     if (!local[code] && !LICENSED_NAMES[code]) out.push({ code, name: code, provider: 'apibible', available: true, reason: null });
@@ -202,26 +214,42 @@ async function getVerse(book, chapter, verse, translation = 'KJV', opts = {}) {
   if (local) return local;
 
   let reason;
-  if (localTranslations()[translation]) {
-    reason = (localCounts()[translation] || 0) > 0
-      ? `${book} ${chapter}:${verse} is not part of the ${translation} text`
-      : `${translation} not downloaded yet — run npm run seed`;
+  const storedCount = localCounts()[translation] || 0;
+  const localName = localTranslations()[translation];
+  const registered = getDb().prepare('SELECT code FROM translation_meta WHERE code = ?').get(translation);
+  if (localName && storedCount > 0) {
+    reason = `${book} ${chapter}:${verse} is not part of the ${translation} text`;
+    // A partial local import remains authoritative for the passages it has.
+    // For a named licensed edition, allow API.Bible to fill uncovered verses
+    // when the operator's plan actually includes that edition.
+    if (LICENSED_NAMES[translation]) {
+      const remote = await apiBible.getVerse(getBookNum(book), book, chapter, verse, translation);
+      if (!remote.error) return remote;
+      reason += `; API.Bible: ${remote.error}`;
+    }
+  } else if (registered && !LICENSED_NAMES[translation]) {
+    reason = `${translation} is registered but has no verse text stored. Import an authorised ${translation} archive; npm run seed does not install it.`;
   } else {
     const remote = await apiBible.getVerse(getBookNum(book), book, chapter, verse, translation);
     if (!remote.error) return remote;
     reason = remote.error;
 
     const savedAi = localVerse(book, chapter, verse, translation, { ai: true });
-    if (savedAi) return savedAi;
+    if (savedAi && !LICENSED_NAMES[translation]) return savedAi;
 
-    if (aiVerse.isAvailable()) {
+    // Never substitute model-generated wording for a known licensed edition.
+    // Even multiple models agreeing is not proof that the publisher's text was
+    // used; the exact licensed text must come from API.Bible or a local import.
+    if (LICENSED_NAMES[translation]) {
+      reason = !apiBible.status().configured
+        ? `${translation} is a licensed edition and requires API.Bible access (set APIBIBLE_KEY) or an authorised local import. AI-generated wording is not the published ${translation} text.`
+        : `${translation} is a licensed edition, but its exact text is unavailable: ${remote.error}. Import an authorised copy or use a plan that includes it. AI-generated wording is not the published ${translation} text.`;
+    } else if (aiVerse.isAvailable()) {
       const kjvRow = localVerse(book, chapter, verse, 'KJV');
       const ai = await aiVerse.getVerse(book, chapter, verse, translation, kjvRow && kjvRow.text,
         opts.live ? { deadlineMs: LIVE_DEADLINE_MS, onLateResult: late => { saveAiVerse(late); events.emit('lateVerse', late); } } : {});
-      // Only confirmed wording is ever shown: two sources agreeing, or a web
-      // search. A single AI's recollection can be invented text, so it is
-      // never put in front of a congregation (set AI_SHOW_UNVERIFIED=true to
-      // see it in the queue anyway, flagged).
+      // Experimental unlicensed translation lookups remain visibly marked AI
+      // beta; only confirmed wording is cached.
       if (!ai.error && (ai.verification !== 'unverified' || opts.allowUnverified || process.env.AI_SHOW_UNVERIFIED === 'true')) { saveAiVerse(ai); return ai; }
       reason = ai.error || `${translation} wording could not be confirmed (${ai.note.replace(/^AI beta · /, '')})`;
     }

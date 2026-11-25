@@ -124,10 +124,10 @@
       <option value="33">Camera: 33%</option>
       <option value="46">Camera: 46% — preacher left, verse right</option>
     </select>
-      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Push confident explicit references straight to the screen">
-      <input type="checkbox" id="autoPushToggle" checked onchange="autoPush = this.checked"> Auto-push
+      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Auto-push only high-confidence scripture references (93% or higher); weaker matches stay in the queue for your review">
+      <input type="checkbox" id="autoPushToggle" onchange="autoPush = this.checked; savePref('autoPush', this.checked ? '1' : '')"> Auto-push
     </label>
-      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off (recommended): Whisper only listens when Chrome's live captions aren't working, so Groq's free limit lasts all day. On: Whisper double-checks everything too (uses about 4–5 hours of free Groq a day).">
+      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off: Whisper runs only when Chrome captions miss a sentence. On: send every speech chunk to Whisper as well and display its independent transcript for comparison; this uses more transcription quota.">
       <input type="checkbox" id="whisperToggle" onchange="whisperAlways = this.checked; savePref('whisperAlways', this.checked ? '1' : '')"> Whisper double-check
     </label>
       <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
@@ -168,10 +168,15 @@
 <main>
   <div class="left">
     <div class="transcription-panel">
-      <div class="label">
-        Live Transcription
-        <span style="float:right;">
-          <span id="engineLabel" style="font-size:0.6rem;color:#7a7aa8;margin-right:8px;" title="Which speech engine is writing the transcript right now"></span><span id="vadLabel" style="font-size:0.6rem;color:#555577;">VAD: ready</span>
+      <div class="label" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <span>Live Transcription</span>
+        <span style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+          <select id="audioInputSelect" title="Choose the microphone or virtual audio input (e.g. BlackHole for direct Mac audio)" onchange="savePref('audioInput', this.value); if (isListening) showAlert('Audio input changed. Stop and start listening to apply it.');" style="max-width:220px;padding:3px 6px;font-size:0.62rem;background:var(--surface2);border:1px solid var(--mid);border-radius:4px;color:var(--text);">
+            <option value="">Audio input: System default</option>
+          </select>
+          <button type="button" onclick="refreshAudioInputs()" title="Refresh available audio inputs" style="padding:2px 6px;background:var(--surface2);border:1px solid var(--mid);border-radius:4px;color:var(--text);cursor:pointer;">↻</button>
+          <a href="/api/audio-bridge/connector.bat" title="Download the built-in Windows browser connector. No VB-CABLE, SonoBus or third-party audio driver required." style="font-size:0.62rem;color:var(--accent);text-decoration:none;border:1px solid var(--mid);border-radius:4px;padding:3px 6px;">Link Windows audio</a>
+          <span id="engineLabel" style="font-size:0.6rem;color:#7a7aa8;margin-right:4px;" title="Which speech engines are actively writing or checking the transcript"></span><span id="vadLabel" style="font-size:0.6rem;color:#555577;">VAD: ready</span>
         </span>
       </div>
       <div class="vad-bar"><div class="vad-fill" id="vadFill"></div></div>
@@ -232,6 +237,7 @@
 </main>
 
 <script src="/projection/backgrounds.js"></script>
+<script src="/scripture-text.js"></script>
 <script>
 // Opened from another computer with ?token=… (OPERATOR_TOKEN): send it with
 // every request so the laptop accepts this page's controls
@@ -262,8 +268,12 @@ var lastHeartbeat = Date.now();
 var currentFontSize = 0; // relative offset in px sent to projection
 var apiFailCount = 0;
 var isOffline = false;
-var autoPush = true;
-var whisperAlways = false; // see "Whisper double-check" 
+var autoPush = false;
+var AUTO_PUSH_MIN_CONFIDENCE = 0.93;
+var whisperAlways = false; // see "Whisper double-check"
+var activeUsesCustomAudioInput = false;
+var remoteAudioBridgeConnected = false;
+var remoteAudioBridgeInput = ''; 
 
 // ===== Themes =====
 var THEMES = {
@@ -353,6 +363,25 @@ function connectWS() {
     }
     if (msg.action === 'NOTICE') noteOnce(msg.message);
     if (msg.action === 'TRANSLATION_CHANGE') setTranslation(msg.translation, true);
+    if (msg.action === 'AUDIO_BRIDGE_STATUS') {
+      remoteAudioBridgeConnected = !!msg.connected;
+      remoteAudioBridgeInput = msg.inputLabel || '';
+      if (remoteAudioBridgeConnected) {
+        if (isListening) stopListening();
+        transcriptionContext = [];
+        appendTranscription('[ Windows audio connected: ' + remoteAudioBridgeInput + ' ]', false, true);
+        noteOnce('Windows audio is feeding Di.Verse. Use this as the sermon input; the Mac microphone is disabled while this link is active.');
+      } else {
+        appendTranscription('[ Windows audio link disconnected ]', false, true);
+      }
+      updateEngineLabel();
+      updateListeningUI(isListening ? 'active' : 'off');
+    }
+    if (msg.action === 'AUDIO_TRANSCRIPT') handleRemoteAudioTranscript(msg);
+    if (msg.action === 'AUDIO_BRIDGE_ERROR') {
+      appendTranscription('[ AUDIO LINK ] ' + msg.message, false, true, true);
+      setApiStatus('fail', msg.message || 'Windows audio link error');
+    }
     if (msg.action === 'LATE_VERSE' && msg.verse) {
       addToQueue(Object.assign({}, msg.verse, { confidence: 0.9, type: 'explicit', note: msg.verse.note + ' (confirmed after a delay)' }));
     }
@@ -724,7 +753,7 @@ function renderQueue() {
     if (item.note) meta += ' · ' + item.note;
     return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + (item.verification==='unverified'?' unverified':'') + '" onclick="selectItem(' + i + ')">' +
       '<div class="q-ref">' + escapeHTML(item.reference) + ' <span class="q-trans">' + escapeHTML(item.translation) + '</span></div>' +
-      '<div class="q-text">' + escapeHTML(item.text.slice(0,180)) + (item.text.length>180?'...':'') + '</div>' +
+      '<div class="q-text">' + escapeHTML(DiVerseScriptureText.display(item.text).slice(0,180)) + (item.text.length>180?'...':'') + '</div>' +
       '<div class="q-meta">' + escapeHTML(meta) + '</div></div>';
   }).join('');
 }
@@ -756,11 +785,15 @@ async function doStep(dir, unit) {
   if (!cur || !cur.book) { noteOnce('Push a verse first — Next / Previous move on from the verse on screen.'); return; }
   var q = 'book=' + encodeURIComponent(cur.book) + '&chapter=' + cur.chapter + '&verse=' + cur.verse +
     (cur.verseEnd ? '&verseEnd=' + cur.verseEnd : '') + '&dir=' + dir + '&unit=' + unit;
-  var item = await fetchVerseFast('/api/verse/step?' + q, baseTranslation(cur.translation), function(late) {
+  var wantedTranslation = baseTranslation(cur.requestedTranslation || cur.translation);
+  var item = await fetchVerseFast('/api/verse/step?' + q, wantedTranslation, function(late) {
     // the requested translation arrived after KJV went up: swap it in if that verse is still showing
     if (currentVerse && currentVerse.reference === late.reference) pushVerse(Object.assign({}, late, { type: 'manual', confidence: 1 }), true, 'upgrade');
   });
-  if (item) await pushVerse(Object.assign({}, item, { type: 'manual', confidence: 1 }), false, 'step');
+  if (item) {
+    if (item.fallback) showAlert(item.requestedTranslation + ' is missing ' + item.reference + ' in the local archive. KJV is shown for this verse; navigation will continue in ' + wantedTranslation + '.');
+    await pushVerse(Object.assign({}, item, { type: 'manual', confidence: 1 }), false, 'step');
+  }
 }
 // A reference that doesn't exist: say so, and queue the closest real verses
 // (e.g. Matthew 11:35 → 11:25, 11:30, 11:15) to pick from
@@ -847,7 +880,8 @@ async function pushVerse(item, sameVerse, why) {
       why: why || (sameVerse ? 'mode' : (item.type === 'manual' ? 'manual' : 'queue')),
       listening: isListening,
       detected: item.type !== 'manual',
-      verse: { reference: item.reference, translation: item.translation, text: item.text, displayMode: displayMode,
+      verse: { reference: item.reference, translation: item.translation, requestedTranslation: item.requestedTranslation,
+               fallback: !!item.fallback, text: item.text, displayMode: displayMode,
                book: item.book, chapter: item.chapter, verse: item.verse, verseEnd: item.verseEnd },
       theme: THEMES[currentTheme],
       fontSize: currentFontSize
@@ -875,7 +909,7 @@ function renderNowPlaying() {
   if (!currentVerse) { el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>'; return; }
   el.innerHTML = '<div class="verse-card"><div class="ref">' + escapeHTML(currentVerse.reference) +
     ' <span class="trans">' + escapeHTML(currentVerse.translation) + '</span></div>' +
-    '<div class="txt">' + escapeHTML(currentVerse.text) + '</div></div>';
+    '<div class="txt">' + escapeHTML(DiVerseScriptureText.display(currentVerse.text)) + '</div></div>';
 }
 
 async function clearScreen() {
@@ -927,7 +961,7 @@ async function handleDetection(detection, meta) {
       else if (followSinger && activeSong && detection.source === 'quote') appendTranscription('[ ' + v.reference + ' quoted in the song — in the queue ]', false, true);
       // the AI window looks back over several sentences: its finds wait in the queue
       else if (!/^(parser|quote|finder)$/.test(detection.source || '')) appendTranscription('[ ' + v.reference + ' — AI suggestion, in the queue ]', false, true);
-      else if (autoPush && (item.confidence || 0) >= 0.85) {
+      else if (autoPush && (item.confidence || 0) >= AUTO_PUSH_MIN_CONFIDENCE) {
         var why = holdBack(item, detection.source, meta.heardAt);
         if (why) appendTranscription('[ ' + v.reference + ' in the queue — ' + why + ' ]', false, true);
         else await pushVerse(item, false, 'auto');
@@ -1046,7 +1080,44 @@ function setApiStatus(state, message) {
   var transcribeChain = Promise.resolve(); // one request at a time keeps text in spoken order
 
   async function toggleListening() {
+    if (remoteAudioBridgeConnected) {
+      noteOnce('Windows audio is already feeding Di.Verse. Stop the Windows bridge before starting the Mac microphone.');
+      return;
+    }
     if (isListening) { stopListening(); } else { await startListening(); }
+  }
+
+  var audioInputRefreshInFlight = false;
+  async function refreshAudioInputs() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    var select = document.getElementById('audioInputSelect');
+    if (!select || audioInputRefreshInFlight) return;
+    audioInputRefreshInFlight = true;
+    var selected = select.value || loadPref('audioInput') || '';
+    try {
+      var devices = await navigator.mediaDevices.enumerateDevices();
+      var inputs = devices.filter(function(d) { return d.kind === 'audioinput'; });
+      select.innerHTML = '';
+      var def = document.createElement('option');
+      def.value = '';
+      def.textContent = 'Audio input: System default';
+      select.appendChild(def);
+      inputs.forEach(function(d, i) {
+        var option = document.createElement('option');
+        option.value = d.deviceId;
+        option.textContent = d.label || ('Audio input ' + (i + 1));
+        select.appendChild(option);
+      });
+      select.value = inputs.some(function(d) { return d.deviceId === selected; }) ? selected : '';
+      if (selected && !select.value) savePref('audioInput', '');
+    } catch (err) {
+      console.warn('[Audio] Could not list input devices:', err.message);
+    } finally {
+      audioInputRefreshInFlight = false;
+    }
+  }
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', refreshAudioInputs);
   }
 
   async function startListening() {
@@ -1054,16 +1125,26 @@ function setApiStatus(state, message) {
     var mySession = ++sessionId;
 
     try {
-      audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          // church PA / mixer feeds: noise suppression and echo cancellation
-          // can swallow the preacher's voice; automatic gain keeps it level
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: true
-        }
-      });
+      var audioInputId = document.getElementById('audioInputSelect').value || loadPref('audioInput') || '';
+      var audioConstraints = {
+        channelCount: 1,
+        // Preserve PA/mixer levels unchanged on a selected interface. Let the
+        // system help a built-in laptop mic, but keep browser AGC off for line
+        // inputs where it can pump the level between speech and room noise.
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: !audioInputId
+      };
+      activeUsesCustomAudioInput = !!audioInputId;
+      if (audioInputId) audioConstraints.deviceId = { exact: audioInputId };
+      audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      await refreshAudioInputs();
+      var inputTrack = audioStream.getAudioTracks()[0];
+      if (inputTrack) {
+        var inputSettings = inputTrack.getSettings ? inputTrack.getSettings() : {};
+        var inputName = inputTrack.label || 'System default input';
+        appendTranscription('[ Audio input: ' + inputName + (inputSettings.sampleRate ? ' · ' + inputSettings.sampleRate + ' Hz' : '') + ' ]', false, true);
+      }
 
       // Native rate; the worklet downsamples to 16 kHz itself
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1101,7 +1182,7 @@ function setApiStatus(state, message) {
         var pcm = new Int16Array(e.data.pcm);
         var rate = e.data.sampleRate;
         var saidFrom = Date.now() - pcm.length / rate * 1000 - 600;
-        var captionsCovered = !!recognition && captionsLastResult > saidFrom;
+        var captionsCovered = !activeUsesCustomAudioInput && !!recognition && captionsLastResult > saidFrom;
         if (!whisperAlways && captionsCovered) return;
         var heardAt = Date.now(); // when this sentence ended — the queue to Whisper can lag behind
         transcribeChain = transcribeChain.then(function() { return sendPCMToWhisper(pcm, rate, mySession, !captionsCovered, heardAt); });
@@ -1109,7 +1190,7 @@ function setApiStatus(state, message) {
 
       sourceNode.connect(workletNode);
       workletNode.connect(audioCtx.destination);
-      startCaptions(mySession);
+      if (!activeUsesCustomAudioInput) startCaptions(mySession);
 
       isListening = true;
       updateListeningUI('active');
@@ -1139,6 +1220,7 @@ function setApiStatus(state, message) {
       }
 
     } catch(err) {
+      activeUsesCustomAudioInput = false;
       updateListeningUI('off');
       if (err.name === 'NotAllowedError') {
         showAlert('Microphone access denied. Allow in Chrome and try again.');
@@ -1167,6 +1249,7 @@ function setApiStatus(state, message) {
       audioStream = null;
     }
     updateListeningUI('off');
+    activeUsesCustomAudioInput = false;
     document.getElementById('vadFill').style.width = '0%';
     document.getElementById('vadLabel').textContent = 'VAD: ready';
   }
@@ -1205,11 +1288,14 @@ var base64 = btoa(binary);
       // While Chrome's live captions are working they lead (they're seconds
       // faster); Whisper then quietly double-checks for references they missed
       if (!primary && captionsHealthy()) {
+        if (whisperAlways) {
+          appendTranscription('[WHISPER CHECK · ' + (result.provider || 'provider') + (result.model ? ' · ' + result.model : '') + '] ' + text, false, true);
+        }
         detectScripture(text, '', activeTranslation, mySession, true, { heardAt: heardAt });
         return;
       }
 
-      appendTranscription(text);
+      appendTranscription('[WHISPER · ' + (result.provider || 'provider') + (result.model ? ' · ' + result.model : '') + '] ' + text);
       followLyrics(text);
       transcriptionContext.push(text);
       if (transcriptionContext.length > 3) transcriptionContext.shift();
@@ -1227,6 +1313,22 @@ var base64 = btoa(binary);
         setApiStatus('fail');
       }
     }
+  }
+
+  function handleRemoteAudioTranscript(msg) {
+    var text = String(msg.text || '').trim();
+    setApiStatus('ok');
+    if (msg.warning) noteOnce(msg.warning);
+    if (text.length < 3) return;
+    appendTranscription('[WHISPER · Windows · ' + (msg.provider || 'provider') +
+      (msg.model ? ' · ' + msg.model : '') + '] ' + text);
+    followLyrics(text);
+    transcriptionContext.push(text);
+    if (transcriptionContext.length > 3) transcriptionContext.shift();
+    var remoteUtt = 100000000 + (Number(msg.sequence) || 0);
+    detectScripture(text, transcriptionContext.slice(0, -1).join(' '), activeTranslation,
+      sessionId, true, { utt: remoteUtt, via: 'whisper', heardAt: msg.heardAt || Date.now() });
+    queueForAI(text, sessionId);
   }
 
   // opts: { interim, utt } — utt numbers the sentence, so a cue like "next
@@ -1310,8 +1412,11 @@ var base64 = btoa(binary);
   var captionUtt = 0, whisperUtt = 0;
 
   function captionsHealthy() {
-    // Healthy = wrote something recently, or nobody is talking
-    return !!recognition && (Date.now() - captionsLastResult < 6000 || Date.now() - lastSpeechAt > 4000);
+    // SpeechRecognition always listens to the OS default microphone, not a
+    // selected getUserMedia device. Never let those captions mask Whisper when
+    // the operator has deliberately chosen a different audio input.
+    return !activeUsesCustomAudioInput && !!recognition &&
+      (Date.now() - captionsLastResult < 6000 || Date.now() - lastSpeechAt > 4000);
   }
 
   // Chrome's recogniser sometimes goes deaf without ending. If the mic hears
@@ -1338,7 +1443,7 @@ var base64 = btoa(binary);
     noteHealth(speaking, level);
     if (speaking) { lastSpeechAt = Date.now(); speechSinceCaption += 100; }
     updateEngineLabel();
-    if (!SpeechRec || !isListening || sessionId !== mySession || captionsBlocked) return;
+    if (!SpeechRec || activeUsesCustomAudioInput || !isListening || sessionId !== mySession || captionsBlocked) return;
     if (speechSinceCaption >= 3000 && Date.now() - captionsLastResult > 5000 && Date.now() - lastCaptionRebuild > 8000) {
       lastCaptionRebuild = Date.now();
       speechSinceCaption = 0;
@@ -1350,12 +1455,15 @@ var base64 = btoa(binary);
   }
   var engineShown = '';
   function updateEngineLabel() {
-    var t = !isListening ? '' : captionsBlocked || !SpeechRec ? 'Whisper' : captionsHealthy() ? 'Live captions ✓' : 'Whisper covering';
+    var t = remoteAudioBridgeConnected ? 'Windows audio · Whisper'
+      : !isListening ? '' : activeUsesCustomAudioInput || whisperAlways
+        ? (captionsBlocked || !SpeechRec || activeUsesCustomAudioInput ? 'Whisper' : 'Captions + Whisper check')
+        : (captionsBlocked || !SpeechRec ? 'Whisper' : captionsHealthy() ? 'Live captions ✓ · Whisper standby' : 'Whisper covering');
     if (t !== engineShown) { engineShown = t; document.getElementById('engineLabel').textContent = t; }
   }
 
   function startCaptions(mySession) {
-    if (!SpeechRec) return; // not Chrome: Whisper does everything
+    if (!SpeechRec || activeUsesCustomAudioInput) return; // custom devices go straight to Whisper
     var rec = new SpeechRec();
     rec.continuous = true;
     rec.interimResults = true;
@@ -1449,6 +1557,15 @@ var base64 = btoa(binary);
     var dot = document.getElementById('dot');
     var label = document.getElementById('listenLabel');
     var btn = document.getElementById('listenBtn');
+    if (remoteAudioBridgeConnected && !isListening) {
+      dot.className = 'status-dot active';
+      label.className = 'listening-label active';
+      label.textContent = 'Windows audio';
+      btn.textContent = 'Start';
+      btn.disabled = true;
+      return;
+    }
+    btn.disabled = false;
     dot.className = 'status-dot' + (state==='active'?' active':state==='warn'?' warn':state==='error'?' error':'');
     label.className = 'listening-label' + (state==='active'?' active':state==='warn'?' warn':state==='error'?' error':'');
     label.textContent = state==='active'?'Listening...':state==='warn'?'Slow...':state==='error'?'Recovering...':'Not listening';
@@ -1516,6 +1633,9 @@ var base64 = btoa(binary);
   document.getElementById('cameraSelect').value = loadPref('camera') || '20';
     if (loadPref('mode')) setMode(loadPref('mode'));
     if (loadPref('whisperAlways')) { whisperAlways = true; document.getElementById('whisperToggle').checked = true; }
+    autoPush = loadPref('autoPush') === '1';
+    document.getElementById('autoPushToggle').checked = autoPush;
+    refreshAudioInputs();
   }
   
   try { buildBackgroundList(); restorePrefs(); }
