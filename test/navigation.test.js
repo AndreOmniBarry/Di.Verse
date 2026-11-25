@@ -39,3 +39,58 @@ test('a cue resolves against the verse on screen, never past the chapter', () =>
   assert.strictEqual(nav.resolve(nav.cue('verse 99'), here), null);
   assert.strictEqual(nav.resolve(nav.cue('next verse'), null), null);
 });
+
+test('local translation navigation follows stored passages, skips gaps and paragraph ranges', () => {
+  const { getDb } = require('../services/bibleDb');
+  const db = getDb();
+  db.prepare("DELETE FROM verses WHERE translation = 'TPT'").run();
+  const insert = db.prepare(`
+    INSERT INTO verses (translation, book, book_num, chapter, verse, verse_end, text, source)
+    VALUES ('TPT', ?, ?, ?, ?, ?, 'fixture', 'zip-import')
+  `);
+  try {
+    insert.run('Luke', 42, 1, 1, 0);
+    insert.run('Luke', 42, 1, 5, 0);
+    insert.run('Luke', 42, 1, 6, 8);
+    insert.run('Luke', 42, 3, 3, 0);
+    insert.run('Acts', 44, 1, 1, 0);
+
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 1 }, 'next', 'verse', 'TPT'),
+      { book: 'Luke', chapter: 1, verse: 5 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 5 }, 'prev', 'verse', 'TPT'),
+      { book: 'Luke', chapter: 1, verse: 1 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 6, verseEnd: 8 }, 'next', 'verse', 'TPT'),
+      { book: 'Luke', chapter: 3, verse: 3 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 3, verse: 3 }, 'prev', 'verse', 'TPT'),
+      { book: 'Luke', chapter: 1, verse: 6 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 1 }, 'next', 'chapter', 'TPT'),
+      { book: 'Luke', chapter: 3, verse: 3 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 3, verse: 3 }, 'next', 'verse', 'TPT'),
+      { book: 'Acts', chapter: 1, verse: 1 }
+    );
+    assert.deepStrictEqual(
+      nav.resolve({ kind: 'step', dir: 'next', unit: 'verse' },
+        { book: 'Luke', chapter: 1, verse: 1, translation: 'TPT' }),
+      { book: 'Luke', chapter: 1, verse: 5 }
+    );
+
+    // Existing KJV navigation remains canonical when no local translation is supplied.
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 1 }, 'next'),
+      { book: 'Luke', chapter: 1, verse: 2 }
+    );
+  } finally {
+    db.prepare("DELETE FROM verses WHERE translation = 'TPT'").run();
+  }
+});
