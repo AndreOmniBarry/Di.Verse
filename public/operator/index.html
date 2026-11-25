@@ -237,6 +237,7 @@
 </main>
 
 <script src="/projection/backgrounds.js"></script>
+<script src="/scripture-text.js"></script>
 <script>
 // Opened from another computer with ?token=… (OPERATOR_TOKEN): send it with
 // every request so the laptop accepts this page's controls
@@ -752,7 +753,7 @@ function renderQueue() {
     if (item.note) meta += ' · ' + item.note;
     return '<div class="queue-item' + (i===selectedIndex?' selected':'') + (item.type==='implicit'?' implicit':'') + (item.verification==='unverified'?' unverified':'') + '" onclick="selectItem(' + i + ')">' +
       '<div class="q-ref">' + escapeHTML(item.reference) + ' <span class="q-trans">' + escapeHTML(item.translation) + '</span></div>' +
-      '<div class="q-text">' + escapeHTML(item.text.slice(0,180)) + (item.text.length>180?'...':'') + '</div>' +
+      '<div class="q-text">' + escapeHTML(DiVerseScriptureText.display(item.text).slice(0,180)) + (item.text.length>180?'...':'') + '</div>' +
       '<div class="q-meta">' + escapeHTML(meta) + '</div></div>';
   }).join('');
 }
@@ -903,7 +904,7 @@ function renderNowPlaying() {
   if (!currentVerse) { el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>'; return; }
   el.innerHTML = '<div class="verse-card"><div class="ref">' + escapeHTML(currentVerse.reference) +
     ' <span class="trans">' + escapeHTML(currentVerse.translation) + '</span></div>' +
-    '<div class="txt">' + escapeHTML(currentVerse.text) + '</div></div>';
+    '<div class="txt">' + escapeHTML(DiVerseScriptureText.display(currentVerse.text)) + '</div></div>';
 }
 
 async function clearScreen() {
