@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { parse, parseAll, normaliseNumbers } = require('../services/parser');
+const { parse, parseAll, normaliseNumbers, detectTranslation } = require('../services/parser');
 
 function ref(text) {
   const r = parse(text);
@@ -39,6 +39,26 @@ test('ordinary speech is not turned into a reference', () => {
 test('translation requests', () => {
   assert.strictEqual(parse('John 3 verse 16 in the Amplified').translation, 'AMP');
   assert.deepStrictEqual(parse('let us read from the amplified'), { translationOnly: true, translation: 'AMP', confidence: 0.95 });
+});
+
+test('installed catalogue aliases recognise full names and spaced spoken codes', () => {
+  const catalogue = {
+    AKJV: 'American King James Version',
+    ESVUK: 'English Standard Version UK',
+    NMB: 'New Matthew Bible',
+    DLNT: 'Discourse Literal New Testament',
+    WE: 'World English Bible'
+  };
+
+  for (const [code, name] of Object.entries(catalogue)) {
+    assert.strictEqual(detectTranslation('switch to ' + code, catalogue), code, code + ' spoken code');
+    assert.strictEqual(detectTranslation('reading from ' + name, catalogue), code, code + ' full name');
+  }
+
+  assert.strictEqual(detectTranslation('switch to ESV UK', catalogue), 'ESVUK');
+  assert.strictEqual(detectTranslation('W E', catalogue), null);
+  assert.strictEqual(detectTranslation('we should keep moving', catalogue), null);
+  assert.strictEqual(detectTranslation('switch to WE', catalogue), 'WE');
 });
 
 test('MSG and PHILLIPS are recognised in spoken translation requests', () => {
