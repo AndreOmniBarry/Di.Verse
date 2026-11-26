@@ -120,8 +120,11 @@ test('all locally installed translations are recognised and loaded from spoken r
   server.stderr.on('data', data => { serverOutput += data.toString(); });
 
   async function waitForServer() {
-    for (let attempt = 0; attempt < 60; attempt++) {
-      if (server.exitCode !== null) {
+    for (let attempt = 0; attempt < 300; attempt++) {
+      if (serverSpawnError) {
+        throw new Error('QA server could not start: ' + serverSpawnError.message + '\n' + serverOutput);
+      }
+      if (server.exitCode !== null || server.signalCode !== null) {
         throw new Error('QA server exited early:\n' + serverOutput);
       }
       try {
@@ -130,7 +133,7 @@ test('all locally installed translations are recognised and loaded from spoken r
       } catch (error) {}
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    throw new Error('QA server did not start:\n' + serverOutput);
+    throw new Error('QA server did not start within 30 seconds:\n' + serverOutput);
   }
 
   try {
