@@ -65,9 +65,9 @@ function describeError(name, err) {
   return { code: tag + '_ERROR', message: `${p.label} error ${err.status}: ${err.message}` };
 }
 
-// Build the prompt from the translations installed on this computer, rather
-// than a short hard-coded list. Compact labels keep every code and key name
-// within Whisper's prompt budget.
+// Build a compact dictionary from every installed edition. Whisper's
+// prompt is limited to 224 tokens, so each entry uses its code plus one
+// distinctive name word; Di.Verse's local parser handles full catalogue names.
 const { localTranslations } = require('../services/bibleDb');
 const PROMPT_STOP_WORDS = new Set([
   'the', 'a', 'an', 'version', 'translation', 'bible', 'edition',
@@ -75,14 +75,13 @@ const PROMPT_STOP_WORDS = new Set([
 ]);
 
 function compactPromptName(name) {
-  return String(name || '')
+  const words = String(name || '')
     .replace(/\([^)]*\)/g, ' ')
     .replace(/[’']/g, '')
-    .replace(/[^a-zA-Z0-9]+/g, ' ')
-    .split(/\s+/)
-    .filter(word => word && !PROMPT_STOP_WORDS.has(word.toLowerCase()))
-    .slice(0, 2)
-    .join(' ');
+    .match(/[a-zA-Z0-9]+/g) || [];
+  const candidates = words.filter(word => !PROMPT_STOP_WORDS.has(word.toLowerCase()));
+  candidates.sort((a, b) => b.length - a.length);
+  return candidates[0] || '';
 }
 
 function buildWhisperPrompt(catalogue) {
@@ -95,15 +94,19 @@ function buildWhisperPrompt(catalogue) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([rawCode, name]) => {
       const code = String(rawCode).toUpperCase();
-      if (code === 'MSG') return 'MSG The Message';
-      if (code === 'PHILLIPS') return 'PHILLIPS J. B. Phillips, Phillips New Testament in Modern English';
-      const compact = compactPromptName(name);
-      return !compact || compact.toUpperCase() === code ? code : code + ' ' + compact;
+      const keyword = compactPromptName(name);
+      return keyword && normalisePromptCode(keyword) !== code
+        ? code + ' ' + keyword
+        : code;
     })
     .join(', ');
 
-  return 'Church sermon, Bible references. Examples: John 3:16, Genesis 1:1, Psalm 23. ' +
-    'Hear these installed Bible translation names and initials accurately: ' + versions + '.';
+  return 'Church sermon, Bible references such as John 3:16. Installed Bible versions: ' +
+    versions + '.';
+}
+
+function normalisePromptCode(value) {
+  return String(value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
 }
 
 const WHISPER_PROMPT = buildWhisperPrompt();
@@ -210,4 +213,5 @@ function filterHallucinations(text) {
 
 module.exports = router;
 module.exports.WHISPER_PROMPT = WHISPER_PROMPT;
+module.exports.buildWhisperPrompt = buildWhisperPrompt;
 module.exports.buildWhisperPrompt = buildWhisperPrompt;
