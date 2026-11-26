@@ -220,7 +220,8 @@ const AMBIGUOUS = new Set([
   'message', 'the message', 'good news', 'passion', 'the passion', 'web', 'amp',
   'living bible', 'the living bible', 'american standard', 'world english',
   'basic english', 'voice', 'the voice', 'net', 'we', 'common english',
-  'new living', 'revised standard', 'modern english', 'phillips', 'phillips translation',
+  'new living', 'revised standard', 'modern english', 'king james', 'amplified',
+  'new international', 'english standard', 'contemporary english', 'phillips', 'phillips translation',
   'phillips new testament', 'j b phillips', 'jb phillips', 'new testament in modern english'
 ]);
 const AMBIGUOUS_CODES = new Set(['AMP', 'GW', 'NET', 'VOICE', 'WE', 'WEB']);
