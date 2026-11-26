@@ -17,7 +17,11 @@ case "$(uname -m)" in
   *)     NODE="$RES/node-x64/node" ;;
 esac
 
-running() { curl -s -m 1 http://localhost:3000/api/version 2>/dev/null | grep -q '"version"'; }
+EXPECTED_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$CONTENTS/Info.plist" 2>/dev/null || true)"
+running_version() {
+  curl -fsS --max-time 2 http://localhost:3000/api/version 2>/dev/null |
+    sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
 
 open_operator() {
   if [ -d "/Applications/Google Chrome.app" ] || [ -d "$HOME/Applications/Google Chrome.app" ]; then
@@ -28,7 +32,26 @@ open_operator() {
   fi
 }
 
-if running; then open_operator; exit 0; fi
+CURRENT_VERSION="$(running_version)"
+if [ -n "$CURRENT_VERSION" ]; then
+  if [ "$CURRENT_VERSION" = "$EXPECTED_VERSION" ]; then open_operator; exit 0; fi
+
+  # An older app may still own port 3000 after the user replaces the bundle.
+  # Ask it to stop cleanly so its supervisor exits too, then start this version.
+  echo "=== $(date) — updating running Di.Verse $CURRENT_VERSION to $EXPECTED_VERSION ===" >> "$LOG"
+  if ! curl -fsS --max-time 3 -X POST http://localhost:3000/api/shutdown >/dev/null 2>&1; then
+    osascript -e 'display dialog "Another Di.Verse version is still running on port 3000, but it could not be stopped safely. Stop it from its own Settings page, then open Di.Verse again." buttons {"OK"} default button 1 with title "Di.Verse update" with icon caution' >/dev/null 2>&1
+    exit 1
+  fi
+  for i in $(seq 1 80); do
+    [ -z "$(running_version)" ] && break
+    sleep 0.25
+  done
+  if [ -n "$(running_version)" ]; then
+    osascript -e 'display dialog "The previous Di.Verse server did not stop. Your data is safe; stop the older app from its Settings page and try again." buttons {"OK"} default button 1 with title "Di.Verse update" with icon caution' >/dev/null 2>&1
+    exit 1
+  fi
+fi
 
 # First launch on a Mac that ran the Terminal version: bring its keys,
 # Bibles (including any imported) and songs across. The old folder is untouched.
@@ -51,17 +74,8 @@ echo "=== $(date) — starting Di.Verse ===" >> "$LOG"
 nohup "$NODE" scripts/supervisor.js >> "$LOG" 2>&1 &
 
 for i in $(seq 1 80); do
-  if running; then open_operator; exit 0; fi
+  if [ "$(running_version)" = "$EXPECTED_VERSION" ]; then open_operator; exit 0; fi
 
-# First launch on a Mac that ran the Terminal version: bring its keys,
-# Bibles (including any imported) and songs across. The old folder is untouched.
-OLD="$HOME/Desktop/Di.Verse"
-if [ ! -f "$DATA/.env" ] && [ -f "$OLD/.env" ]; then
-  mkdir -p "$DATA/db"
-  cp "$OLD/.env" "$DATA/.env"
-  for f in "$OLD"/db/bible.db* "$OLD"/db/songs.db*; do [ -f "$f" ] && cp "$f" "$DATA/db/"; done
-  echo "=== $(date) — copied keys, Bibles and songs from $OLD ===" >> "$LOG"
-fi
   sleep 0.25
 done
 

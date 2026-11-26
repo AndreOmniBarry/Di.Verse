@@ -74,10 +74,10 @@ In Terminal:
 cd ~/Desktop
 git clone https://github.com/AndreOmniBarry/Di.Verse.git
 cd Di.Verse
-git checkout claude/trusting-archimedes-b7qg2u
+git checkout main
 ```
 
-(If you already have the folder: `cd` into it, then `git fetch` and `git checkout claude/trusting-archimedes-b7qg2u`, then `git pull`.)
+(If you already have the folder: `cd` into it, then `git fetch origin` and `git switch main`, followed by `git pull --ff-only origin main`.)
 
 ## Step 3: Install and download the Bibles (once, needs internet)
 

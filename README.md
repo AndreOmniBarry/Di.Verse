@@ -71,3 +71,7 @@ Di.Verse only stores and shows scripture it's allowed to:
 - **Built-in and free:** public domain or openly licensed, with each licence checked before download.
 - **Copyrighted versions** (NKJV, AMP, TPT, NIV, …): only from a publisher-licensed source, either API.Bible or a file you import with a note of where it came from.
 - **AI-recalled wording** is never presented as the real text.
+
+## Software licence
+
+The Di.Verse application code is distributed under the ISC licence in [LICENSE](LICENSE). This software licence does **not** grant rights to Bible translations, song lyrics, publisher content, or files imported by an operator. Those materials remain subject to their own copyright and licence terms.

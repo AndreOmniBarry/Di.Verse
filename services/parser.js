@@ -213,29 +213,117 @@ function resolveBookTail(raw) {
   return null;
 }
 
-// Translation names that are also everyday sermon words ("the good news",
-// "his message", "compassion", "the web"). They only count with a clear cue:
-// "Message Bible", "Good News translation", "in the Passion", "from the Message"
-// at the end of what was said.
-const AMBIGUOUS = new Set(['message', 'the message', 'good news', 'passion', 'the passion', 'web', 'amp', 'living bible', 'the living bible', 'american standard', 'world english', 'basic english']);
+// Translation names can also be ordinary sermon words ("the message", "the voice",
+// "good news", "the web"). These only count when the speaker clearly asks for
+// that version, not when the same words occur naturally in a sermon.
+const AMBIGUOUS = new Set([
+  'message', 'the message', 'good news', 'passion', 'the passion', 'web', 'amp',
+  'living bible', 'the living bible', 'american standard', 'world english',
+  'basic english', 'voice', 'the voice', 'net', 'we', 'common english',
+  'new living', 'revised standard', 'modern english', 'king james', 'amplified',
+  'new international', 'english standard', 'contemporary english', 'phillips', 'phillips translation',
+  'phillips new testament', 'j b phillips', 'jb phillips', 'new testament in modern english'
+]);
+const AMBIGUOUS_CODES = new Set(['AMP', 'GW', 'NET', 'VOICE', 'WE', 'WEB']);
 
-const escapeRe = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRe = str => str.replace(/[.*+?^{}()|[\]\\]/g, '\\$&');
 
-const TRANSLATION_PATTERNS = Object.entries(TRANSLATION_MAP)
-  .sort((a, b) => b[0].length - a[0].length) // longer phrases first ("the passion translation" before "passion")
-  .map(([phrase, code]) => {
-    const p = escapeRe(phrase).replace(/'/g, "'?");
-    if (!AMBIGUOUS.has(phrase)) return { code, re: new RegExp(String.raw`\b${p}\b`) };
-    const base = escapeRe(phrase.replace(/^the /, ''));
-    return { code, re: new RegExp(
-      String.raw`\b${base}\s+(?:bible|translation|version)\b` +            // "message bible"
-      String.raw`|\b(?:in|from|using|switch(?:ing)? to)\s+the\s+${base}\s*$`  // "...in the message" (end)
-    ) };
-  });
+function normaliseTranslationPhrase(value) {
+  return String(value || '').toLowerCase()
+    .replace(/[’']/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-function detectTranslation(text) {
-  const lower = text.toLowerCase().replace(/\s+/g, ' ').trim();
-  for (const { code, re } of TRANSLATION_PATTERNS) {
+let translationPatternsCache = null;
+let translationCatalogueCache = null;
+
+// Include every translation actually installed in bible.db. Names come from
+// translation_meta, so a newly imported edition becomes speakable without a
+// second hand-maintained list in this parser.
+function buildTranslationPatterns(catalogue) {
+  let installed = catalogue;
+  if (!installed) {
+    try {
+      installed = require('./bibleDb').localTranslations();
+    } catch (error) {
+      installed = {};
+    }
+  }
+  if (!catalogue && installed === translationCatalogueCache && translationPatternsCache) {
+    return translationPatternsCache;
+  }
+
+  const aliases = new Map();
+  const add = (phrase, code, requiresCue = false) => {
+    const key = normaliseTranslationPhrase(phrase);
+    if (!key) return;
+    const existing = aliases.get(key);
+    if (existing) {
+      if (existing.code !== code) {
+        existing.conflicted = true;
+        return;
+      }
+      existing.requiresCue = existing.requiresCue && requiresCue;
+      return;
+    }
+    aliases.set(key, { code, requiresCue: requiresCue || AMBIGUOUS.has(key), conflicted: false });
+  };
+
+  for (const [phrase, code] of Object.entries(TRANSLATION_MAP)) {
+    add(phrase, code, AMBIGUOUS.has(normaliseTranslationPhrase(phrase)));
+  }
+
+  for (const [rawCode, rawName] of Object.entries(installed || {})) {
+    const code = String(rawCode).trim().toUpperCase();
+    if (!code) continue;
+
+    add(code, code, AMBIGUOUS_CODES.has(code) || code.length <= 2);
+
+    // ASR may insert a space in suffixes/numbers: "NIV UK", "RSV CE", "KJ 21".
+    const spacedSuffix = code
+      .replace(/([A-Z])([0-9]+)/g, '$1 $2')
+      .replace(/^([A-Z]{2,})(UK|US|CE)$/, '$1 $2');
+    if (spacedSuffix !== code) add(spacedSuffix, code, AMBIGUOUS_CODES.has(code) || code.length <= 2);
+
+    // Also accept letter-by-letter output ("N I V"), but only after a cue.
+    if (/^[A-Z]{2,6}$/.test(code)) add(code.split('').join(' '), code, true);
+
+    // Drop parenthetical catalogue notes such as "(1901)" from spoken names.
+    const name = String(rawName || '').replace(/\([^)]*\)/g, ' ');
+    const namePhrase = normaliseTranslationPhrase(name);
+    if (namePhrase) add(namePhrase, code, namePhrase.split(' ').length === 1);
+  }
+
+  const patterns = [...aliases.entries()]
+    .filter(([, item]) => !item.conflicted)
+    .sort((a, b) => b[0].length - a[0].length)
+    .map(([phrase, item]) => {
+      const escaped = phrase.split(' ').map(escapeRe).join('\\s+');
+      if (!item.requiresCue) return { code: item.code, re: new RegExp('\\b' + escaped + '\\b') };
+
+      const base = phrase.replace(/^the\s+/, '').split(' ').map(escapeRe).join('\\s+');
+      return {
+        code: item.code,
+        re: new RegExp(
+          '\\b' + base + '\\s+(?:bible|translation|version|edition)\\b' +
+          '|\\b(?:in|from|using|with|switch(?:ing)?\\s+to|read(?:ing)?\\s+from|turn(?:ing)?\\s+to|use)\\s+(?:the\\s+)?' + base + '\\s*$'
+        )
+      };
+    });
+
+  if (!catalogue) {
+    translationCatalogueCache = installed;
+    translationPatternsCache = patterns;
+  }
+  return patterns;
+}
+
+function detectTranslation(text, catalogue) {
+  const lower = normaliseTranslationPhrase(text);
+  for (const { code, re } of buildTranslationPatterns(catalogue)) {
     if (re.test(lower)) return code;
   }
   return null;
@@ -459,4 +547,4 @@ function parse(text, fallbackTranslation = 'KJV') {
   return null;
 }
 
-module.exports = { parse, parseAll, looksLikeReference, detectTranslation, resolveBook, normaliseNumbers, CHAPTERS };
+module.exports = { parse, parseAll, looksLikeReference, detectTranslation, buildTranslationPatterns, resolveBook, normaliseNumbers, CHAPTERS };

@@ -21,7 +21,7 @@ const PKG = require(path.join(ROOT, 'package.json'));
 const VERSION = PKG.version;
 const NODE_MAJOR = process.env.DIVERSE_NODE_MAJOR || '22';
 const SHIP_BIBLES = ['KJV', 'ASV', 'YLT', 'BBE', 'BSB', 'WEB']; // the rest are one click in Admin → Bibles
-const APP_FILES = ['server.js', 'package.json', 'package-lock.json', '.env.example', 'services', 'routes', 'public', 'scripts/supervisor.js', 'scripts/bibles.js'];
+const APP_FILES = ['server.js', 'package.json', 'package-lock.json', 'LICENSE', '.env.example', 'services', 'routes', 'public', 'scripts/supervisor.js', 'scripts/bibles.js'];
 const withLinux = process.argv.includes('--linux');
 
 const step = m => console.log('• ' + m);
