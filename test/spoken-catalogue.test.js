@@ -46,6 +46,10 @@ test('all locally installed translations are recognised and loaded from spoken r
     assert.ok(byName && !byName.translationOnly && byName.translation === code,
       code + ': spoken full name should select this version; got ' + JSON.stringify(byName));
 
+    const byNameSwitch = parse('switch to ' + spokenName, '__ACTIVE_TRANSLATION__');
+    assert.ok(byNameSwitch && byNameSwitch.translationOnly && byNameSwitch.translation === code,
+      code + ': spoken full name should switch to this version; got ' + JSON.stringify(byNameSwitch));
+
     const loaded = await getVerse(row.book, row.chapter, row.verse, code);
     assert.ok(loaded && typeof loaded.text === 'string' && loaded.text.trim(),
       code + ': local passage failed to load');
