@@ -124,6 +124,26 @@ test('all locally installed translations are recognised and loaded from spoken r
 
     for (const sample of samples) {
       const spokenName = sample.spokenName || sample.code;
+
+      const switchResponse = await fetch('http://127.0.0.1:' + port + '/api/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'switch to ' + spokenName,
+          activeTranslation: '__ACTIVE_TRANSLATION__',
+          fast: true,
+          cues: false,
+          via: 'full-catalogue-spoken-switch-qa'
+        })
+      });
+      assert.equal(switchResponse.status, 200,
+        sample.code + ': spoken switch returned HTTP ' + switchResponse.status);
+      const switched = await switchResponse.json();
+      assert.equal(switched.type, 'translation_change',
+        sample.code + ': spoken switch did not produce a translation change');
+      assert.equal(switched.new_translation, sample.code,
+        sample.code + ': spoken switch selected the wrong version');
+
       const text = 'Turn to ' + sample.book + ' chapter ' + sample.chapter +
         ' verse ' + sample.verse + ' in ' + spokenName;
 
