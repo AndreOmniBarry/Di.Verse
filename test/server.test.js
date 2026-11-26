@@ -73,7 +73,7 @@ test.before(async () => {
   server = spawnTestServer(PORT, env);
   await waitForTestServer(server, base + '/api/songs/search', 'Main integration test server');
 });
-test.after(() => { if (server && server.exitCode === null) server.kill(); });
+test.after(async () => { await stopTestServer(server); });
 
 test('server boots without an OpenAI key and explains why listening is off', async () => {
   const res = await fetch(base + '/api/transcribe', {
@@ -477,5 +477,5 @@ test('session report: success rate, missed references word for word, false alarm
     assert.match(txt, /MISSED: "let us look at romance 8:28 this morning"/);
     assert.match(txt, /on screen: John 3:16 \(auto\)/);
     assert.ok(fs.readdirSync(path.join(data, 'logs', 'sessions')).some(f => f.endsWith('.jsonl')), 'kept on the Di.Verse computer');
-  } finally { if (srv.exitCode === null) srv.kill(); fs.rmSync(data, { recursive: true, force: true }); }
+  } finally { await stopTestServer(srv); fs.rmSync(data, { recursive: true, force: true }); }
 });
