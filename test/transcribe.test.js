@@ -6,10 +6,13 @@ const path = require('path');
 
 const transcribeRoute = require('../routes/transcribe');
 
-test('Whisper vocabulary includes MSG and J. B. Phillips', () => {
-  assert.match(transcribeRoute.WHISPER_PROMPT, /The Message/i);
-  assert.match(transcribeRoute.WHISPER_PROMPT, /J\. B\. Phillips/i);
-  assert.match(transcribeRoute.WHISPER_PROMPT, /Phillips New Testament in Modern English/i);
+test('Whisper prompt builder accepts MSG and J. B. Phillips catalogue names', () => {
+  const prompt = transcribeRoute.buildWhisperPrompt({
+    MSG: 'The Message',
+    PHILLIPS: 'PHILLIPS',
+  });
+  assert.match(prompt, /MSG Message/i);
+  assert.match(prompt, /PHILLIPS J B Phillips/i);
 });
 
 async function boot(port, env) {
