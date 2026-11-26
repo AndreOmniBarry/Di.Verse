@@ -29,6 +29,18 @@ test('all locally installed translations are recognised and loaded from spoken r
     'LIMIT 1'
   ].join(' '));
 
+  const normaliseName = value => String(value || '')
+    .replace(/\([^)]*\)/g, ' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const nameCounts = new Map();
+  for (const [, name] of entries) {
+    const key = normaliseName(name);
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+  }
+
   const samples = [];
   for (const [code, name] of entries) {
     const row = selectSample.get(code);
@@ -39,16 +51,21 @@ test('all locally installed translations are recognised and loaded from spoken r
     assert.ok(byCode && byCode.translationOnly && byCode.translation === code,
       code + ': spoken code should switch translation; got ' + JSON.stringify(byCode));
 
-    const spokenName = String(name || code).replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+    // If two editions share the same display label, the code is the safe spoken
+    // disambiguator. Unique display names must work as aliases as well.
+    const normalisedName = normaliseName(name);
+    const spokenName = normalisedName && nameCounts.get(normalisedName) === 1
+      ? String(name).replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim()
+      : code;
     const utterance = 'Turn to ' + row.book + ' chapter ' + row.chapter +
       ' verse ' + row.verse + ' in ' + spokenName;
     const byName = parse(utterance, 'KJV');
     assert.ok(byName && !byName.translationOnly && byName.translation === code,
-      code + ': spoken full name should select this version; got ' + JSON.stringify(byName));
+      code + ': spoken name/code should select this version; got ' + JSON.stringify(byName));
 
     const byNameSwitch = parse('switch to ' + spokenName, '__ACTIVE_TRANSLATION__');
     assert.ok(byNameSwitch && byNameSwitch.translationOnly && byNameSwitch.translation === code,
-      code + ': spoken full name should switch to this version; got ' + JSON.stringify(byNameSwitch));
+      code + ': spoken name/code should switch to this version; got ' + JSON.stringify(byNameSwitch));
 
     const loaded = await getVerse(row.book, row.chapter, row.verse, code);
     assert.ok(loaded && typeof loaded.text === 'string' && loaded.text.trim(),
