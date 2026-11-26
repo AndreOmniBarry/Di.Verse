@@ -47,7 +47,8 @@ test('installed catalogue aliases recognise full names and spaced spoken codes',
     ESVUK: 'English Standard Version UK',
     NMB: 'New Matthew Bible',
     DLNT: 'Discourse Literal New Testament',
-    WE: 'World English Bible'
+    WE: 'WE',
+    WEB: 'World English Bible'
   };
 
   for (const [code, name] of Object.entries(catalogue)) {
