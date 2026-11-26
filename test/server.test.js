@@ -51,8 +51,9 @@ async function waitForTestServer(child, url, label) {
     } catch (error) {}
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  child.kill();
-  throw new Error(label + ' did not become ready within 30 seconds:\\n' + child.testOutput);
+  const output = child.testOutput;
+  await stopTestServer(child);
+  throw new Error(label + ' did not become ready within 30 seconds:\\n' + output);
 }
 
 async function stopTestServer(child) {
