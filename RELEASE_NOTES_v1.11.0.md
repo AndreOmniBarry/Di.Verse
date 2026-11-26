@@ -10,6 +10,8 @@
 - Server integration tests use dynamically allocated ports and explicit startup checks.
 - The Mac app launcher now detects an older running server and requests a clean stop before starting the upgraded app.
 - Developer setup instructions now point to the stable main branch.
+- Added the ISC licence for Di.Verse application code and included it in the packaged app. This does not relicense Bible translations or other third-party content.
+- Updated vulnerable transitive dependencies to body-parser 2.4.0, proxy-addr 2.0.8 and qs 6.17.1; the high/critical npm audit gate passes.
 
 ## Validation
 
