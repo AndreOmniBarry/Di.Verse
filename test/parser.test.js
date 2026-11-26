@@ -61,6 +61,8 @@ test('installed catalogue aliases recognise full names and spaced spoken codes',
   assert.strictEqual(detectTranslation('W E should keep moving', catalogue), null);
   assert.strictEqual(detectTranslation('we should keep moving', catalogue), null);
   assert.strictEqual(detectTranslation('switch to WE', catalogue), 'WE');
+  assert.strictEqual(detectTranslation('King James was a British monarch', catalogue), null);
+  assert.strictEqual(detectTranslation('the sound was amplified', catalogue), null);
 });
 
 test('MSG and PHILLIPS are recognised in spoken translation requests', () => {
