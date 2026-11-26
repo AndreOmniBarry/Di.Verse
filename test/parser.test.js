@@ -57,7 +57,8 @@ test('installed catalogue aliases recognise full names and spaced spoken codes',
   }
 
   assert.strictEqual(detectTranslation('switch to ESV UK', catalogue), 'ESVUK');
-  assert.strictEqual(detectTranslation('W E', catalogue), null);
+  assert.strictEqual(detectTranslation('reading from W E', catalogue), 'WE');
+  assert.strictEqual(detectTranslation('W E should keep moving', catalogue), null);
   assert.strictEqual(detectTranslation('we should keep moving', catalogue), null);
   assert.strictEqual(detectTranslation('switch to WE', catalogue), 'WE');
 });
