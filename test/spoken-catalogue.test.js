@@ -4,6 +4,18 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
+const net = require('node:net');
+
+async function freePort() {
+  const probe = net.createServer();
+  await new Promise((resolve, reject) => {
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', resolve);
+  });
+  const port = probe.address().port;
+  await new Promise(resolve => probe.close(resolve));
+  return port;
+}
 
 const ENABLED = process.env.DIVERSE_SPOKEN_CATALOGUE_QA === '1';
 
@@ -81,7 +93,7 @@ test('all locally installed translations are recognised and loaded from spoken r
   assert.ok(prompt.length < 1200,
     'Whisper prompt is too long to remain a compact dictionary (' + prompt.length + ' chars)');
 
-  const port = 41000 + (process.pid % 10000);
+  const port = await freePort();
   const dataFolder = process.env.DIVERSE_DATA;
   assert.ok(dataFolder, 'Spoken QA runner must provide DIVERSE_DATA');
 
@@ -102,6 +114,8 @@ test('all locally installed translations are recognised and loaded from spoken r
   });
 
   let serverOutput = '';
+  let serverSpawnError = null;
+  server.once('error', error => { serverSpawnError = error; });
   server.stdout.on('data', data => { serverOutput += data.toString(); });
   server.stderr.on('data', data => { serverOutput += data.toString(); });
 
@@ -176,14 +190,16 @@ test('all locally installed translations are recognised and loaded from spoken r
 
     console.log('[Spoken QA] Passed for ' + samples.length + ' installed translations.');
   } finally {
-    const exited = new Promise(resolve => server.once('exit', resolve));
-    server.kill('SIGTERM');
-    await Promise.race([
-      exited,
-      new Promise(resolve => setTimeout(() => {
-        server.kill('SIGKILL');
-        resolve();
-      }, 2500))
-    ]);
+    if (server.exitCode === null && server.signalCode === null) {
+      const exited = new Promise(resolve => server.once('exit', resolve));
+      server.kill('SIGTERM');
+      await Promise.race([
+        exited,
+        new Promise(resolve => setTimeout(() => {
+          server.kill('SIGKILL');
+          resolve();
+        }, 2500))
+      ]);
+    }
   }
 });
