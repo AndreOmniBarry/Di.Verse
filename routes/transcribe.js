@@ -65,9 +65,48 @@ function describeError(name, err) {
   return { code: tag + '_ERROR', message: `${p.label} error ${err.status}: ${err.message}` };
 }
 
-// Whisper spells unfamiliar words by sound ("Purvas", "Poovams" for Proverbs);
-// listing the book names makes it expect them
-const WHISPER_PROMPT = 'Church sermon with Bible references, e.g. John chapter 3 verse 16. Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, Samuel, Kings, Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, Corinthians, Galatians, Ephesians, Philippians, Colossians, Thessalonians, Timothy, Titus, Philemon, Hebrews, James, Peter, Jude, Revelation. KJV, NKJV, NIV, Amplified, The Passion Translation, The Message, J. B. Phillips, Phillips New Testament in Modern English.';
+// Build the prompt from the translations installed on this computer, rather
+// than a short hard-coded list. Compact labels keep every code and key name
+// within Whisper's prompt budget.
+const { localTranslations } = require('../services/bibleDb');
+const PROMPT_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'version', 'translation', 'bible', 'edition',
+  'of', 'in', 'for', 'and', 'new', 'testament'
+]);
+
+function compactPromptName(name) {
+  return String(name || '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[’']/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter(word => word && !PROMPT_STOP_WORDS.has(word.toLowerCase()))
+    .slice(0, 2)
+    .join(' ');
+}
+
+function buildWhisperPrompt(catalogue) {
+  let installed = catalogue;
+  if (!installed) {
+    try { installed = localTranslations(); }
+    catch (error) { installed = {}; }
+  }
+  const versions = Object.entries(installed || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([rawCode, name]) => {
+      const code = String(rawCode).toUpperCase();
+      if (code === 'MSG') return 'MSG The Message';
+      if (code === 'PHILLIPS') return 'PHILLIPS J. B. Phillips, Phillips New Testament in Modern English';
+      const compact = compactPromptName(name);
+      return !compact || compact.toUpperCase() === code ? code : code + ' ' + compact;
+    })
+    .join(', ');
+
+  return 'Church sermon, Bible references. Examples: John 3:16, Genesis 1:1, Psalm 23. ' +
+    'Hear these installed Bible translation names and initials accurately: ' + versions + '.';
+}
+
+const WHISPER_PROMPT = buildWhisperPrompt();
 
 const FAILOVER = err => !err.status || err.status === 401 || err.status === 403 || err.status === 429 || err.status >= 500;
 
@@ -171,3 +210,4 @@ function filterHallucinations(text) {
 
 module.exports = router;
 module.exports.WHISPER_PROMPT = WHISPER_PROMPT;
+module.exports.buildWhisperPrompt = buildWhisperPrompt;
