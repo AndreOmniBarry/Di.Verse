@@ -27,13 +27,21 @@ function spawnTestServer(port, env) {
     stdio: 'pipe',
   });
   child.testOutput = '';
+  child.spawnError = null;
+  child.once('error', error => { child.spawnError = error; });
   child.stdout.on('data', chunk => { child.testOutput += chunk.toString(); });
   child.stderr.on('data', chunk => { child.testOutput += chunk.toString(); });
   return child;
 }
 
 async function waitForTestServer(child, url, label) {
-  for (let i = 0; i < 100; i++) {
+  // Packaged-data tests copy the full Bible database before listening. Give
+  // that startup path enough time, while reporting the child process' real
+  // error immediately instead of issuing requests against a closed port.
+  for (let i = 0; i < 300; i++) {
+    if (child.spawnError) {
+      throw new Error(label + ' could not start: ' + child.spawnError.message + '\\n' + child.testOutput);
+    }
     if (child.exitCode !== null || child.signalCode !== null) {
       throw new Error(label + ' exited before becoming ready:\\n' + child.testOutput);
     }
@@ -44,7 +52,17 @@ async function waitForTestServer(child, url, label) {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   child.kill();
-  throw new Error(label + ' did not become ready within 10 seconds:\\n' + child.testOutput);
+  throw new Error(label + ' did not become ready within 30 seconds:\\n' + child.testOutput);
+}
+
+async function stopTestServer(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise(resolve => {
+    const done = () => resolve();
+    child.once('exit', done);
+    child.kill();
+    setTimeout(done, 2500).unref();
+  });
 }
 
 test.before(async () => {
@@ -406,7 +424,7 @@ test('packaged app: data lives in its own folder; settings save keys without eve
     assert.match(shown, /…WXYZ/); assert.match(shown, /192\.168\.0\.120:8088/);
     r = await fetch('http://127.0.0.1:' + port + '/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ GROQ_API_KEY: 'a\nINJECTED=1' }) });
     assert.strictEqual(r.status, 400);
-  } finally { if (srv.exitCode === null) srv.kill(); fs.rmSync(data, { recursive: true, force: true }); }
+  } finally { await stopTestServer(srv); fs.rmSync(data, { recursive: true, force: true }); }
 });
 
 test('system check lists what a service depends on, each with a state and what to do', async () => {
