@@ -150,7 +150,7 @@ router.post('/transcribe', async (req, res) => {
           model: PROVIDERS[name].model(),
           response_format: 'json',
           temperature: 0,
-          prompt: WHISPER_PROMPT,
+          prompt: buildWhisperPrompt(),
         }, { maxRetries: 0, timeout: 20000 }));
 
         const text = String((response && response.text) || '').trim();
