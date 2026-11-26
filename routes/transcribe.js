@@ -94,7 +94,7 @@ function buildWhisperPrompt(catalogue) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([rawCode, name]) => {
       const code = String(rawCode).toUpperCase();
-      const keyword = compactPromptName(name);
+      const keyword = code === 'PHILLIPS' ? 'J B Phillips' : compactPromptName(name);
       return keyword && normalisePromptCode(keyword) !== code
         ? code + ' ' + keyword
         : code;
@@ -213,5 +213,4 @@ function filterHallucinations(text) {
 
 module.exports = router;
 module.exports.WHISPER_PROMPT = WHISPER_PROMPT;
-module.exports.buildWhisperPrompt = buildWhisperPrompt;
 module.exports.buildWhisperPrompt = buildWhisperPrompt;
