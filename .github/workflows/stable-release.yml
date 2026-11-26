@@ -1,0 +1,103 @@
+name: Di.Verse stable release
+
+on:
+  push:
+    branches:
+      - main
+      - 'release/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Test clean install
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install SQLite command-line tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes sqlite3
+      - name: Install dependencies
+        run: npm ci --omit=optional
+      - name: Report dependency security advisories
+        shell: bash
+        run: |
+          npm audit --json > /tmp/diverse-npm-audit.json || true
+          node -e "const a=require('/tmp/diverse-npm-audit.json'); for(const [name,v] of Object.entries(a.vulnerabilities||{})) console.log(name+' | '+v.severity+' | direct='+v.isDirect+' | range='+v.range+' | fix='+JSON.stringify(v.fixAvailable)); console.log('Summary:', JSON.stringify(a.metadata && a.metadata.vulnerabilities || {}));"
+      - name: Seed the four public-domain starter translations
+        run: npm run seed
+      - name: Run automated tests
+        run: npm test
+
+  packages:
+    name: Build Mac and Windows installers
+    needs: tests
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --omit=optional
+      - name: Check macOS launcher syntax
+        run: bash -n packaging/mac/launcher.sh
+      - name: Seed public-domain starter translations
+        run: npm run seed
+      - name: Add the two additional bundled starter translations
+        run: npm run bibles -- add BSB WEB
+      - name: Build Mac and Windows packages
+        run: npm run build:apps
+      - name: Verify installer archives
+        run: |
+          unzip -t dist/Di.Verse-1.11.0-mac.zip
+          unzip -t dist/Di.Verse-1.11.0-windows.zip
+          ls -lh dist/Di.Verse-1.11.0-*.zip
+      - name: Upload release installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: Di.Verse-v1.11.0-installers
+          path: dist/Di.Verse-1.11.0-*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub release
+    if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'Release Di.Verse v1.11.0')
+    needs:
+      - tests
+      - packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified installers
+        uses: actions/download-artifact@v4
+        with:
+          name: Di.Verse-v1.11.0-installers
+          path: dist
+      - name: Publish Di.Verse v1.11.0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.11.0
+          name: Di.Verse v1.11.0
+          body_path: RELEASE_NOTES_v1.11.0.md
+          files: dist/Di.Verse-1.11.0-*.zip
+          draft: false
+          prerelease: false

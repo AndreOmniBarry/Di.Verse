@@ -39,6 +39,18 @@ try {
   // public-domain translations and the chapter structure, but remove all
   // user-imported/licensed translations from this disposable test copy.
   const cleanSql = [
+    `CREATE TABLE IF NOT EXISTS translation_meta (
+      code TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      source TEXT,
+      licence TEXT,
+      coverage TEXT,
+      verses INTEGER,
+      books INTEGER,
+      missing INTEGER,
+      installed_at TEXT,
+      note TEXT
+    );`,
     "DELETE FROM verses WHERE translation NOT IN ('KJV','ASV','YLT','BBE');",
     'DELETE FROM translation_meta;',
     "UPDATE verses SET source='seed' WHERE translation IN ('KJV','ASV','YLT','BBE');",
