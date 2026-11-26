@@ -74,7 +74,7 @@ echo "=== $(date) — starting Di.Verse ===" >> "$LOG"
 nohup "$NODE" scripts/supervisor.js >> "$LOG" 2>&1 &
 
 for i in $(seq 1 80); do
-  if running; then open_operator; exit 0; fi
+  if [ "$(running_version)" = "$EXPECTED_VERSION" ]; then open_operator; exit 0; fi
 
   sleep 0.25
 done
