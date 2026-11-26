@@ -45,8 +45,6 @@ test('all locally installed translations are recognised and loaded from spoken r
   for (const [code, name] of entries) {
     const row = selectSample.get(code);
     assert.ok(row, code + ' (' + name + ') is listed but has no local passage text');
-    samples.push({ code, name, book: row.book, chapter: row.chapter, verse: row.verse });
-
     const byCode = parse('switch to ' + code, '__ACTIVE_TRANSLATION__');
     assert.ok(byCode && byCode.translationOnly && byCode.translation === code,
       code + ': spoken code should switch translation; got ' + JSON.stringify(byCode));
@@ -63,6 +61,8 @@ test('all locally installed translations are recognised and loaded from spoken r
     assert.ok(byName && !byName.translationOnly && byName.translation === code,
       code + ': spoken name/code should select this version; got ' + JSON.stringify(byName));
 
+    samples.push({ code, name, spokenName, book: row.book, chapter: row.chapter, verse: row.verse });
+
     const byNameSwitch = parse('switch to ' + spokenName, '__ACTIVE_TRANSLATION__');
     assert.ok(byNameSwitch && byNameSwitch.translationOnly && byNameSwitch.translation === code,
       code + ': spoken name/code should switch to this version; got ' + JSON.stringify(byNameSwitch));
@@ -76,7 +76,7 @@ test('all locally installed translations are recognised and loaded from spoken r
 
   const prompt = transcribeRoute.buildWhisperPrompt(catalogue);
   for (const [code] of entries) {
-    assert.ok(prompt.includes(code), 'Whisper prompt is missing installed code ' + code);
+    assert.ok(new RegExp('\\b' + code + '\\b').test(prompt), 'Whisper prompt is missing installed code ' + code);
   }
   assert.ok(prompt.length < 1200,
     'Whisper prompt is too long to remain a compact dictionary (' + prompt.length + ' chars)');
@@ -123,8 +123,7 @@ test('all locally installed translations are recognised and loaded from spoken r
     await waitForServer();
 
     for (const sample of samples) {
-      const spokenName = String(sample.name || sample.code)
-        .replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+      const spokenName = sample.spokenName || sample.code;
       const text = 'Turn to ' + sample.book + ' chapter ' + sample.chapter +
         ' verse ' + sample.verse + ' in ' + spokenName;
 
