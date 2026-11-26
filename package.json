@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node scripts/supervisor.js",
     "seed": "node db/seeds/seedBible.js",
-    "test": "node scripts/run-tests.js",
+    "test": "node scripts/run-tests.js && node scripts/run-spoken-tests.js",
     "check:apibible": "node scripts/check-apibible.js",
     "prefetch": "node scripts/prefetch.js",
     "server": "node server.js",
