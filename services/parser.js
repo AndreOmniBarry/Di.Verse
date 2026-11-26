@@ -287,7 +287,7 @@ function buildTranslationPatterns(catalogue) {
     if (spacedSuffix !== code) add(spacedSuffix, code, AMBIGUOUS_CODES.has(code) || code.length <= 2);
 
     // Also accept letter-by-letter output ("N I V"), but only after a cue.
-    if (/^[A-Z]{3,6}$/.test(code)) add(code.split('').join(' '), code, true);
+    if (/^[A-Z]{2,6}$/.test(code)) add(code.split('').join(' '), code, true);
 
     // Drop parenthetical catalogue notes such as "(1901)" from spoken names.
     const name = String(rawName || '').replace(/\([^)]*\)/g, ' ');
