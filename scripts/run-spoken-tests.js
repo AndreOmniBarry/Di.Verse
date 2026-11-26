@@ -29,21 +29,31 @@ try {
   }
 
   fs.mkdirSync(tempDbDir, { recursive: true });
-  run('sqlite3', [sourceDb, ".backup '" + tempDb + "'"], {});
 
-  console.log('[Spoken QA] Full local Bible database copied to a disposable test folder.');
-  const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', 'test/spoken-catalogue.test.js'], {
-    cwd: root,
-    env: Object.assign({}, process.env, {
-      DIVERSE_DATA: tempData,
-      DIVERSE_SPOKEN_CATALOGUE_QA: '1',
-      DIVERSE_NO_BROWSER: '1'
-    }),
-    stdio: 'inherit'
-  });
+  // A fresh development/CI seed contains only the four bundled public-domain
+  // translations. Run the full-catalogue gate when the local library actually
+  // has at least 57 translations; otherwise report an explicit skip.
+  const installedCount = Number(run('sqlite3', [sourceDb,
+    "SELECT COUNT(DISTINCT translation) FROM verses WHERE translation <> '';"], {}).trim());
+  if (!Number.isFinite(installedCount) || installedCount < 57) {
+    console.log('[Spoken QA] Skipped full-catalogue check: ' + installedCount + '/57 installed translations found. It will run automatically when the full library is present.');
+    process.exitCode = 0;
+  } else {
+    run('sqlite3', [sourceDb, ".backup '" + tempDb + "'"], {});
+    console.log('[Spoken QA] Full local Bible database copied to a disposable test folder (' + installedCount + ' translations).');
+    const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', 'test/spoken-catalogue.test.js'], {
+      cwd: root,
+      env: Object.assign({}, process.env, {
+        DIVERSE_DATA: tempData,
+        DIVERSE_SPOKEN_CATALOGUE_QA: '1',
+        DIVERSE_NO_BROWSER: '1'
+      }),
+      stdio: 'inherit'
+    });
 
-  if (result.error) throw result.error;
-  process.exitCode = result.status === null ? 1 : result.status;
+    if (result.error) throw result.error;
+    process.exitCode = result.status === null ? 1 : result.status;
+  }
 } catch (error) {
   console.error('[Spoken QA] ' + error.message);
   process.exitCode = 1;
