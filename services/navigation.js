@@ -50,14 +50,10 @@ function stepLocalTranslation(ref, dir, unit, translation) {
   if (verse >= 1) return { book: here.book, chapter: here.chapter, verse };
   const previous = chapters[index - 1];
   if (!previous) return null;
-  const canonicalEnd = db.prepare(
-    'SELECT max_verse FROM bible_structure WHERE book = ? AND chapter = ?'
-  ).get(previous.book, previous.chapter);
-  return {
-    book: previous.book,
-    chapter: previous.chapter,
-    verse: canonicalEnd ? canonicalEnd.max_verse : previous.last_verse
-  };
+  // Return to the last verse actually stored in the previous local chapter.
+  // This keeps Next/Previous symmetric when a partial translation omits the
+  // tail of a chapter; gaps within a stored chapter remain navigable above.
+  return { book: previous.book, chapter: previous.chapter, verse: previous.last_verse };
 }
 // ref: { book, chapter, verse, verseEnd? } → the verse/passage to show next
 //   dir: 'next' | 'prev'; unit: 'verse' | 'chapter'
