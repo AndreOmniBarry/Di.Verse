@@ -415,6 +415,17 @@ async function inspectArchive(buffer, options = {}) {
 }
 
 async function importArchive(buffer, options = {}) {
+  if (options.authorized !== true) {
+    const error = new Error('Confirm that you are authorized to import these Bible files before continuing.');
+    error.status = 403;
+    throw error;
+  }
+  const sourceNote = String(options.sourceNote || '').trim();
+  if (!sourceNote) {
+    const error = new Error('Enter the source or permission basis for this Bible archive.');
+    error.status = 400;
+    throw error;
+  }
   const lib = options.library || defaultLibrary;
   const preview = await inspectArchive(buffer, { library: lib });
   if (options.expectedHash && options.expectedHash !== preview.archiveHash) {
@@ -474,7 +485,7 @@ async function importArchive(buffer, options = {}) {
         const name = TRANSLATION_NAMES[code] || (prior && prior.name) || code;
         const report = lib.store(code, name, rows, {
           source: 'zip-import',
-          licence: '',
+          licence: `Operator attested: ${sourceNote}`,
           note: `Imported from ZIP archive (${files.length} chapter files)`,
         });
         results.push({ ...report, chapterFiles: files.length });
