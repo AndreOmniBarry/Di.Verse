@@ -91,7 +91,7 @@
     document.getElementById('installed').innerHTML =
       seeded.map(function(s) { return '<tr><td class="code">' + s[0] + '</td><td>' + s[1] + '</td><td><span class="tag full">Full Bible</span></td><td class="small">Built in</td><td></td></tr>'; }).join('') +
       d.installed.map(function(m) {
-        return '<tr><td class="code">' + esc(m.code) + '</td><td>' + esc(m.name) + (m.licence && /^import:/.test(m.source) ? '<div class="small">' + esc(m.licence) + '</div>' : '') + '</td>' +
+        return '<tr><td class="code">' + esc(m.code) + '</td><td>' + esc(m.name) + (m.licence && (/^import:/.test(m.source) || m.source === 'zip-import') ? '<div class="small">Source / permission basis: ' + esc(m.licence) + '</div>' : '') + '</td>' +
           '<td><span class="tag' + (m.coverage === 'Full Bible' ? ' full' : '') + '">' + esc(m.coverage) + '</span>' + (m.missing && m.coverage === 'Full Bible' ? ' <span class="small">' + m.missing + ' verses not in this text</span>' : '') + '</td>' +
           '<td class="small">' + esc(from(m.source)) + '</td>' +
           '<td style="text-align:right"><button class="btn btn-dim" onclick="removeT(\'' + esc(m.code) + '\')">Remove</button></td></tr>';
