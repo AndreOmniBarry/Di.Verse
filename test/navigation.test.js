@@ -73,6 +73,10 @@ test('local translation navigation keeps missing verse numbers visible and respe
       { book: 'Luke', chapter: 3, verse: 1 }
     );
     assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 3, verse: 1 }, 'prev', 'verse', 'TPT'),
+      { book: 'Luke', chapter: 1, verse: 8 }
+    );
+    assert.deepStrictEqual(
       nav.step({ book: 'Luke', chapter: 3, verse: 3 }, 'prev', 'verse', 'TPT'),
       { book: 'Luke', chapter: 3, verse: 2 }
     );
