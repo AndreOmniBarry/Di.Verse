@@ -20,12 +20,12 @@ const BOOK_MAP = {
   '1 chronicles':13,'1chronicles':13,'1ch':13,'first chronicles':13,
   '2 chronicles':14,'2chronicles':14,'2ch':14,'second chronicles':14,
   'ezra':15,'ezr':15,
-  'nehemiah':16,'neh':16,
+  'nehemiah':16,'nehemia':16,'neh':16,
   'esther':17,'est':17,
   'job':18,
   'psalms':19,'psalm':19,'psa':19,'ps':19,
-  'proverbs':20,'pro':20,'prov':20,
-  'ecclesiastes':21,'ecc':21,'eccl':21,
+  'proverbs':20,'proverb':20,'pro':20,'prov':20,'purvas':20,'poovams':20,'poovans':20,'provabs':20,'proverbes':20,
+  'ecclesiastes':21,'ecclesiastic':21,'ecclesiastics':21,'ecc':21,'eccl':21,
   'song of solomon':22,'song':22,'sos':22,'song of songs':22,
   'isaiah':23,'isa':23,
   'jeremiah':24,'jer':24,
@@ -40,10 +40,10 @@ const BOOK_MAP = {
   'micah':33,'mic':33,
   'nahum':34,'nah':34,
   'habakkuk':35,'hab':35,
-  'zephaniah':36,'zep':36,
+  'zephaniah':36,'zephania':36,'zephanaiah':36,'zefaniah':36,'zep':36,
   'haggai':37,'hag':37,
   'zechariah':38,'zec':38,'zech':38,
-  'malachi':39,'mal':39,
+  'malachi':39,'malachai':39,'mal':39,
   'matthew':40,'mat':40,'matt':40,'mt':40,
   'mark':41,'mar':41,'mrk':41,'mk':41,
   'luke':42,'luk':42,'lk':42,
@@ -53,7 +53,7 @@ const BOOK_MAP = {
   '1 corinthians':46,'1corinthians':46,'1co':46,'1cor':46,'first corinthians':46,
   '2 corinthians':47,'2corinthians':47,'2co':47,'2cor':47,'second corinthians':47,
   'galatians':48,'gal':48,
-  'ephesians':49,'eph':49,
+  'ephesians':49,'ephesian':49,'ephisians':49,'efficient':49,'efficiency':49,'eph':49,
   'philippians':50,'phi':50,'php':50,'phil':50,
   'colossians':51,'col':51,
   '1 thessalonians':52,'1thessalonians':52,'1th':52,'first thessalonians':52,
@@ -364,7 +364,7 @@ function exists(book, chapter, verse) {
 // Book names that are also everyday words or first names. Alone with one
 // number ("mark 2 things", "John 3 times") they need a cue to count as a
 // reference: "chapter", or "turn to / open / read / in / book of…" before them.
-const COMMON_WORD_BOOKS = new Set(['mark', 'john', 'james', 'acts', 'act', 'job', 'numbers', 'ruth', 'amos', 'jude', 'joel', 'titus', 'daniel', 'luke', 'jonah', 'micah', 'song', 'ezra', 'esther', 'hosea', 'nahum', 'mar', 'jon', 'pro', 'lam', 'num', 'gen', 'col', 'gal', 'dan', 'mal', 'hag', 'tit', 'jam', 'heb', 'rev', 'phil', 'mat', 'matt', 'eph']);
+const COMMON_WORD_BOOKS = new Set(['mark', 'john', 'james', 'acts', 'act', 'job', 'numbers', 'ruth', 'amos', 'jude', 'joel', 'titus', 'daniel', 'luke', 'jonah', 'micah', 'song', 'ezra', 'esther', 'hosea', 'nahum', 'mar', 'jon', 'pro', 'lam', 'num', 'gen', 'col', 'gal', 'dan', 'mal', 'hag', 'tit', 'jam', 'heb', 'rev', 'phil', 'mat', 'matt', 'eph', 'efficient', 'efficiency', 'ephesian', 'ephisians', 'purvas', 'poovams', 'poovans', 'provabs']);
 const CUE_BEFORE = new Set(['in', 'of', 'from', 'open', 'read', 'reading', 'chapter', 'book', 'gospel', 'says', 'said', 'see', 'unto']);
 const TO_AFTER = new Set(['turn', 'open', 'go', 'back', 'over', 'bibles', 'bible', 'flip', 'me', 'us', 'move', 'come']); // "turn to", "go with me to"
 

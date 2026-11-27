@@ -65,6 +65,25 @@ test('installed catalogue aliases recognise full names and spaced spoken codes',
   assert.strictEqual(detectTranslation('the sound was amplified', catalogue), null);
 });
 
+test('recognises common audio-caption variants of Zephaniah and Ephesians', () => {
+  assert.strictEqual(ref('zephania 3:1-5'), 'Zephaniah 3:1');
+  assert.strictEqual(ref('zephanaiah chapter three verses one to five'), 'Zephaniah 3:1');
+  assert.strictEqual(ref('efficient 3:12'), 'Ephesians 3:12');
+  assert.strictEqual(ref('ephesian chapter three verse twelve'), 'Ephesians 3:12');
+  assert.strictEqual(ref('improve efficiency and teamwork'), null);
+  assert.strictEqual(ref('efficiency 2 things are missing'), null);
+});
+
+test('recognises Whisper phonetic variants of Proverbs and other sermon book names', () => {
+  for (const said of ['Purvas 3:5', 'Poovams chapter three verse five', 'provabs 3 verse 5', 'Proverbes 3:5']) {
+    assert.strictEqual(ref(said), 'Proverbs 3:5', said);
+  }
+  assert.strictEqual(ref('Ecclesiastic 3:1'), 'Ecclesiastes 3:1');
+  assert.strictEqual(ref('Nehemia 8:10'), 'Nehemiah 8:10');
+  assert.strictEqual(ref('Malachai 3:10'), 'Malachi 3:10');
+  assert.strictEqual(ref('we need to improve our proverbs and wisdom'), null);
+});
+
 test('MSG and PHILLIPS are recognised in spoken translation requests', () => {
   const namedPhillips = parse('Titus chapter three verses three to eleven in J. B. Phillips');
   assert.strictEqual(namedPhillips.translation, 'PHILLIPS');
