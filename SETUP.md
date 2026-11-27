@@ -255,9 +255,11 @@ Use **Lower-Third** mode for the stream (Full-Screen mode deliberately covers th
 
 ## Squeeze-back: shrink the preacher, big scripture (vMix)
 
-Three caption modes, chosen with the mode button on the Operator page:
+Six display modes, chosen in Operator → **Scripture** → Display mode (or cycled with **M** or the mode button in the top bar):
 - **Lower Third:** the verse across the bottom of the camera picture.
-- **Squeeze (UEFA in-game style):** the preacher shrinks to a small framed window at the **top left** (20% of the screen by default: the **Camera** picker also offers 25%, 33% and 46%) and the scripture fills the rest of the screen in a large glass panel.
+- **Squeeze (UEFA in-game style):** the preacher shrinks to a small framed window at the **top left** (20% of the screen by default: the **Squeeze camera** picker also offers 25%, 33% and 46%) and the scripture fills the rest of the screen in a large glass panel.
+- **Split: preacher left, scripture right** and **Split: scripture left, preacher right:** a large camera window, vertically centred, beside the scripture. The size follows the live virtual-set profile's split ratio (see "Virtual set" below).
+- **Cinematic teaching:** letterboxed, centred serif scripture with the reference above it.
 - **Full Screen:** scripture only, no preacher.
 
 **Every verse fits on one screen, in every mode, however long** (Esther 8:9, 90 words, included). There are never "1/3" pages. Full Screen and Squeeze use the largest text that fits: short verses come up huge, long ones as large as the space allows. The Lower Third keeps your chosen size for ordinary verses, and for a very long verse it grows upward with smaller type.
@@ -276,8 +278,36 @@ Three caption modes, chosen with the mode button on the Operator page:
 6. **After an update** the vMix input loads the new page by itself (from v1.6.1). If the Operator page ever says a screen is showing an **OLD Di.Verse page**, open the vMix input's settings and set its URL to the address it gives (it ends `&v=` and the version number). A new address always loads fresh. With `VMIX_URL` set, Di.Verse asks vMix to reload it automatically.
 7. **Check the vMix screen itself.** With the vMix input refreshed, `http://localhost:3000/api/vmix` also lists `screens`: one should say `"where": "vMix …"` with its browser version. If anything on that screen goes wrong, the Operator page shows a "Screen problem on vMix…" message and Terminal prints a `[Screen]` line. Send that line to your helper.
 
-From then on: pushing a verse in **Squeeze** mode makes vMix zoom the live camera down into the window at the top left (exactly inside Di.Verse's frame). **✕ Clear**, or showing the next verse in another mode, puts the camera back to full screen. Changing the Camera size while squeezed resizes it live.
+From then on: pushing a verse in **Squeeze** mode makes vMix zoom the live camera down into the window at the top left (exactly inside Di.Verse's frame). **Clear**, or showing the next verse in a mode without a camera window, puts the camera back to full screen. Changing the Camera size while squeezed resizes it live. The two **Split** modes work the same way: vMix zooms the camera into the split window, moves it when you switch sides, and resizes it when the live profile's split ratio changes. Sermon notes never move the camera.
 
 *Alternative, a scene of your own:* if you'd rather build a vMix scene with the camera already shrunk, also add `VMIX_SQUEEZE_INPUT=<scene name>`; Di.Verse then fades to that scene and back instead (`VMIX_TRANSITION`, `VMIX_DURATION` set the transition).
 
 Without the vMix link (no `VMIX_URL`), Squeeze still draws the layout and the camera stays full size behind it.
+
+---
+
+## Sermon notes (titles, points, highlights)
+
+Operator → **Sermon Notes** (Alt+3). While listening, Di.Verse suggests:
+- a **title** when the preacher announces it ("today's message is titled…", "I want to talk to you this morning about…");
+- numbered **points** ("point number two", "the third point is", "number four:", "finally");
+- **highlights** after a cue ("write this down", "take note", "here is the key", "the bottom line is"). A cue on its own takes the next sentence.
+
+Suggestions also appear in **Live Control** with Approve, Show and Dismiss. Nothing goes on screen until you choose **Show**.
+
+- **Wording.** What was heard is always kept. Di.Verse offers a shorter display wording that only removes filler words; **Edit** changes it and **Use heard wording** goes back.
+- **References.** Only references are attached: ones the preacher says (checked against the Bible), the verse on screen when a point is made, or one you type. A reference that doesn't exist is refused. Sermon numbering ("number three") is never read as the book of Numbers.
+- **Showing.** A title shows for 10 seconds (**Show until hidden** keeps it up). Points and highlights stay until hidden. **Show** replays any note at any time. **Hide** (or **H**) removes only the note: the verse or lyrics underneath stay. **Clear** removes everything.
+- Notes are saved in `db/presentation.db` in the data folder. They are still there after a page refresh or a restart. **New sermon** starts an empty list; earlier sermons stay in the file.
+
+## Virtual set (presentation profiles)
+
+Operator → **Virtual Set** (Alt+5). A profile sets the layout, background (including **Transparent** for livestream graphics over the camera), palette, typeface, text scale, lower-third width and position, safe-area margin, split ratio, transition and an optional ministry name.
+
+1. Pick a profile, or **New** / **Duplicate**.
+2. Change it. The 16:9 **Preview** shows the draft over the live screen; **Sample verse** fills it when nothing is up. The real screens don't change.
+3. **Take live** saves it, applies it to every screen (projector, preacher, vMix) and switches the display mode to the profile's layout.
+
+The live profile is kept: a screen opened later, or after a restart, gets it straight away. Choose **Di.Verse Classic** to go back to the caption look set in Scripture → Caption look.
+
+For vMix, keep one Web Browser input at `/projection?overlay=1`, sized **1920 × 1080** or **3840 × 2160**. Every size on the page is relative, so 1080p and 4K look the same.
