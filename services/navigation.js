@@ -40,7 +40,7 @@ function step(ref, dir, unit = 'verse') {
 
 // Spoken cues, checked only when no book is named (a full reference is the
 // parser's job). Returns the LAST cue in the text, with where it ends, or null:
-//   { kind: 'step', dir, unit } | { kind: 'goto', chapter?, verse, verseEnd? }
+//   { kind: 'step', dir, unit } | { kind: 'goto', chapter?, verse, verseEnd? } | { kind: 'repeat' }
 const ORDINALS = {
   first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6,
   seventh: 7, eighth: 8, ninth: 9, tenth: 10, eleventh: 11,
@@ -69,14 +69,13 @@ const CUES = [
   // A short "next" / "the next one" is accepted only as a complete cue.
   [/^(?:(?:okay|ok|alright|right|now|so|and|then|please|let'?s)\s+){0,3}(?:the\s+)?next(?:\s+(?:one|1))?(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse', deferInterim: true }],
   // Natural continuation instructions. Exact/command-like forms only.
-  [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:go\s+on|go\s+ahead|carry\s+on|continue|proceed|keep\s+going|keep\s+reading|read\s+on|move\s+on)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
+  [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:go\s+on|go\s+ahead|carry\s+on|continue|proceed|advance|move\s+forward|keep\s+going|keep\s+reading|read\s+on|move\s+on)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
   // "take it back", "previous verse", "the verse before", "back one".
   [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:can|could|would)\s+you\s+)?(?:(?:let'?s|let\s+us)\s+)?(?:take\s+(?:it|us|that|me)\s+back(?:\s+(?:one|1)\s+verse)?|(?:go|come|step)\s+back(?:\s+(?:a|one|1)(?:\s+verse)?)?|back\s+(?:one|1)(?:\s+verse)?|(?:the\s+)?(?:previous|preceding|prior)\s+verse|(?:the\s+)?verse\s+before(?:\s+(?:that|this|it))?|the\s+last\s+one)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'prev', unit: 'verse' }],
   [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:go\s+back|back\s+one|previous|previous\s+one)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'prev', unit: 'verse' }],
   // Repeat the currently displayed passage; this is not a previous-verse cue.
   [/^(?:(?:okay|ok|alright|right|now|please)\s+)*(?:read|show|repeat)\s+(?:that|it|this|the\s+verse)\s+again(?:\s+please)?[.!?]*$/g, { kind: 'repeat', deferInterim: true }],
-  [/^(?:again|repeat)[.!?]*$/g, { kind: 'repeat', deferInterim: true }],
-  [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:(?:go|move|jump|turn|take)\s+(?:(?:us|me)\s+)?(?:to\s+)?|read\s+)?(?:the\s+)?(?:next|following)\s+chapter(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'chapter' }],
+  [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:(?:go|move|jump|turn|take|proceed|advance)\s+(?:(?:us|me)\s+)?(?:forward\s+)?(?:on\s+)?to\s+|read\s+)?(?:the\s+)?(?:next|following)\s+chapter(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'chapter' }],
   [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:(?:go|move|jump|turn|take)\s+(?:(?:us|me)\s+)?(?:back\s+)?(?:to\s+)?|read\s+)?(?:the\s+)?(?:previous|preceding|prior)\s+chapter(?:\s+please)?[.!?]*$|^(?:(?:okay|ok|alright|right|now|please)\s+)*(?:chapter\s+before\s+(?:that|this|it)|go\s+back\s+(?:a|one|1)\s+chapter)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'prev', unit: 'chapter' }],
   // "chapter 5 verse 3", "verse 17", "verses 17 to 19".
   [/\b(?:chapters?\s+(\d{1,3})\s*(?:,|and)?\s*)?(?:verses?|versus|vs)\s+(\d{1,3})(?:\s*(?:to|through|thru|till|until|and|-|–)\s*(?:verses?\s+)?(\d{1,3}))?\b/g, 'goto'],
