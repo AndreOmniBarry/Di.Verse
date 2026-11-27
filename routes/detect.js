@@ -54,7 +54,7 @@ router.post('/detect', async (req, res) => {
       const command = navigation.cue(text);
       // "verse 1…" while still speaking may become "verse 16": wait for the
       // next word or the end of the sentence before jumping to a number
-      if (command && !(interim && command.kind === 'goto' && command.atEnd)) {
+      if (command && !(interim && (command.deferInterim || (command.kind === 'goto' && command.atEnd)))) {
         const target = navigation.resolve(command, { ...current, book: normaliseBook(current.book) || current.book });
         if (target) {
           const verseData = await getPassage(target.book, target.chapter, target.verse, target.verseEnd, current.translation || activeTranslation, { live: true });
