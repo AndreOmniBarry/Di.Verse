@@ -55,7 +55,7 @@ test('manual imports require explicit authorization and record the source note; 
   assert.ok(rep.verses > 0);
   const meta = getDb().prepare("SELECT licence FROM translation_meta WHERE code = 'ZZJ'").get();
   assert.strictEqual(meta.licence, 'Operator attested: Test fixture built from KJV');
-  assert.throws(() => importFile({ content, code: 'KJV', name: 'King James Version' }), /KJV is built in/);
+  assert.throws(() => importFile({ content, code: 'KJV', name: 'King James Version', obtained: 'Authorized test fixture', authorized: true }), /KJV is built in/);
   assert.throws(() => parse('{"hello":{"world":1}}', 'x.json'), /No verses found/);
 });
 test('range-based scripture remains one block in storage and lookup', async () => {
