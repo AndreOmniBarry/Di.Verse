@@ -141,7 +141,7 @@ test('every installed edition passes the ten catalogue checks', { skip: !ENABLED
     r.sampleRequestOn = sample ? `${sample.book} ${sample.chapter} ${sample.verse} on ${spokenName}` : '';
 
     // 11. natural requests: examples of each intent family, not required syntax
-    const forms = [code, ...(spokenName !== code ? [spokenName] : [])];
+    const forms = [code, ...(/^[A-Z]{2,6}$/.test(code) ? [code.split('').join(' ')] : []), ...(spokenName !== code ? [spokenName] : [])];
     const natural = n => [
       `can we have ${n} on screen`, `could you put ${n} up`, `show us the ${n}`,                        // on screen
       `can we read this same passage on ${n}`, `let's see that in ${n}`, `read it on ${n}`,              // same passage
@@ -149,6 +149,7 @@ test('every installed edition passes the ten catalogue checks', { skip: !ENABLED
       `switch over to ${n}`, `change it to ${n}`, `let's change to the ${n}`,                             // switch
       `keep this reference but show it in the ${n}`, `can we have the same passage in the ${n}`,         // keep the reference
       `put the ${n} on screen`, `read the next verse in the ${n}`,
+      `same passage but from the ${n}`, `display the ${n} on the screen`,
     ].map(t => t.replace(/\bthe\s+the\b/gi, 'the'));
     const missed11 = [];
     for (const n of forms) for (const said of natural(n)) {

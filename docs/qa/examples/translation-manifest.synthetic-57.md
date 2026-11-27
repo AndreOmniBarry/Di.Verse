@@ -1,6 +1,6 @@
 # Di.Verse translation QA manifest
 
-Generated 2026-11-27T19:41:47.863Z from a read-only copy of the library. 57 editions, 0 with a failed check.
+Generated 2026-11-27T19:44:38.486Z from a read-only copy of the library. 57 editions, 0 with a failed check.
 No verse text is included: "fp" is an 8-character fingerprint of the stored text.
 
 Checks: 1 code/name · 2 counts · 3 no AI-only availability · 4 switch by code · 5 switch by name · 6 reference + edition · 7 stored text · 8 no fallback · 9 Whisper prompt · 10 partial books / paragraph ranges · 11 natural requests (parser, several intent families, code and name) · 12 natural requests (detect route)

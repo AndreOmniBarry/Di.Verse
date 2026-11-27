@@ -151,6 +151,7 @@ The phrases are **examples of intent, not commands**. These are understood for e
 | "Let's change to the NIV." | heard | heard |
 | "Can we have the same passage in the Living Bible?" | heard | heard |
 | "Let's see that in the Living Bible." / "Could you put the New Living Translation up?" / "Can we have this passage in the Message?" / "Let's go back to King James." | heard | heard |
+| "Same passage, but from the Passion Translation." / "Can we have the Living Bible on screen?" / "Put the New Living Translation on the screen." / "can we have N I V on screen" | heard | heard |
 | **"Read the next verse in the NKJV."** | **edition changed but "next verse" dropped** | moves on to the next verse **and** changes edition |
 | A request for the edition already selected while the screen shows another | **ignored** | honoured |
 | "Read it on the Amplified" / "Change it to the Passion" / "Show us the Voice" / "show us the NET" | **not heard** | heard |
@@ -159,7 +160,7 @@ The phrases are **examples of intent, not commands**. These are understood for e
 **New tests:**
 - `test/natural-requests.test.js`: the owner's 12 examples; every intent family for all 57 editions in `test/fixtures/edition-names-57.json` (names only), by code and by name; references with an edition in both word orders; 33 sermon sentences ("message", "passion", "voice", "living", "good news", "web", "amplified", "King James") that must not switch.
 - `test/natural-detect-route.test.js`: the real `/api/detect` route. 15 natural translation-only requests; references with an edition, range kept; "read the next verse in the YLT" goes to John 3:19 after 3:16–18; an uninstalled edition never moves on under a stand-in; sermon talk doesn't switch.
-- `test/full-catalogue-qa.test.js`: new check 11 (12 natural phrasings per edition through the parser, by code and name) and check 12 (4 through the detection route), plus a library-wide sermon guard. Rehearsals: seed 168 + 24 phrasings, synthetic partial 196 + 28, 57 synthetic names 1,596 + 228; all passed, sermon guard 13/13.
+- `test/full-catalogue-qa.test.js`: new check 11 (16 natural phrasings per edition through the parser, by code, spelled-out code and name) and check 12 (4 through the detection route), plus a library-wide sermon guard. Rehearsals: seed 288 + 24 phrasings, synthetic partial 336 + 28, 57 synthetic names 2,704 + 228; all passed, sermon guard 13/13.
 - `test/browser/translations.js` (real Operator page), 41/41:
   - natural requests keep the range and project the new edition's real text;
   - "read the next verse in the YLT" moves on and changes edition;

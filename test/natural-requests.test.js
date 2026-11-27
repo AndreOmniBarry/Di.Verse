@@ -27,6 +27,9 @@ test('the owner\'s examples', () => {
     ["Let's change to the NIV.", 'NIV'],
     ['Read the next verse in the NKJV.', 'NKJV'],
     ['Can we have the same passage in the Living Bible?', 'TLB'],
+    ['Same passage, but from the Passion Translation.', 'TPT'],
+    ['Can we have the Living Bible on screen?', 'TLB'],
+    ['Put the New Living Translation on the screen.', 'NLT'],
   ]) assert.strictEqual(heard(said), code, said);
 });
 
@@ -38,6 +41,8 @@ const FAMILIES = {
   'switch': n => [`switch to ${n}`, `change it to the ${n}`, `let's go back to ${n}`, `switch over to ${n}`, `let's change to the ${n}`],
   'keep the reference': n => [`keep this reference but show it in the ${n}`, `same verses but in ${n} please`, `can we have the same passage in the ${n}`],
   'with a cue': n => [`read the next verse in the ${n}`, `let's read the previous verse in ${n}`],
+  'read from': n => [`let us read that from the ${n}`, `same passage but from the ${n}`, `read it from ${n}`],
+  'display / project': n => [`display the ${n} on the screen`, `can we project ${n}`],
 };
 
 test('every intent family works for every edition, by code and by full name', () => {
@@ -47,7 +52,9 @@ test('every intent family works for every edition, by code and by full name', ()
   for (const [, name] of names) { const k = name.toLowerCase(); nameCount.set(k, (nameCount.get(k) || 0) + 1); }
   for (const [code, rawName] of names) {
     const name = rawName.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
-    const forms = [code, ...(nameCount.get(rawName.toLowerCase()) === 1 ? [name] : [])];
+    // code, the code spelled out letter by letter ("N I V"), and the unique full name
+    const spelled = /^[A-Z]{2,6}$/.test(code) ? [code.split('').join(' ')] : [];
+    const forms = [code, ...spelled, ...(nameCount.get(rawName.toLowerCase()) === 1 ? [name] : [])];
     for (const n of forms) for (const [family, make] of Object.entries(FAMILIES)) for (const said of make(n)) {
       const spoken = said.replace(/\bthe\s+the\b/gi, 'the');   // nobody says "the The Message"
       const got = heard(spoken);
