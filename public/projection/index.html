@@ -145,6 +145,7 @@
   </div>
   <div id="reconnect">Reconnecting...</div>
 <script src="/projection/backgrounds.js"></script>
+<script src="/scripture-text.js"></script>
 <script>
   var OVERLAY = /[?&]overlay(=|&|$)/.test(location.search);
   if (OVERLAY) document.documentElement.classList.add('overlay');
@@ -378,22 +379,23 @@
     try { applyTheme(theme); } catch (err) { report('theme: ' + err.message); }
     if (fontSize !== undefined) fontDelta = fontSize;
     var box = boxFor(verse.displayMode);
-    show(box, verse.reference, verse.translation, verse.text);
+    show(box, verse.reference, verse.translation, verse.text, true);
   }
 
   // The words go up first, so whatever else fails the verse is on screen;
   // the background and the sizing follow, each on its own
-  function show(box, ref, badge, text) {
+  function show(box, ref, badge, text, formatScripture) {
+    var visibleText = formatScripture ? DiVerseScriptureText.display(text) : text;
     document.getElementById(BOXES[box].ref).textContent = ref;
     document.getElementById(BOXES[box].badge).textContent = badge;
-    document.getElementById(BOXES[box].text).textContent = text;
+    document.getElementById(BOXES[box].text).textContent = visibleText;
     document.getElementById(box).classList.add('show');
     try { paintBackgrounds(); } catch (err) { report('background: ' + err.message); } // start the live effect now the box is visible
-    try { fit(box, text); }
+    try { fit(box, visibleText); }
     catch (err) {
       report('layout: ' + err.message);
       var el = document.getElementById(BOXES[box].text);
-      el.textContent = text;
+      el.textContent = visibleText;
       if (!parseFloat(getComputedStyle(el).fontSize)) el.style.fontSize = '5vh';
     }
   }
