@@ -35,7 +35,7 @@ router.post('/library/import', express.raw({ type: '*/*', limit: '60mb' }), (req
     res.json(importFile({ content: req.body, filename, code, name, obtained, authorized: String(req.query.authorized || '') === 'true' }));
   } catch (err) {
     console.error('[Library] import failed:', err.message);
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   } finally { busy = null; }
 });
 
