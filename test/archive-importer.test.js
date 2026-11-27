@@ -200,7 +200,7 @@ test('refuses ZIP import without an explicit authorization attestation', { skip:
 test('previews and imports testament-less partial TPT chapters without assuming all 66 books', { skip: !hasYauzl }, async () => {
   const zip = makeZip({
     'bible-imports/TPT/Psalms/23.json': JSON.stringify({ '1': 'Synthetic fixture text for partial archive import testing.' }),
-    'TPT/John/chapters/3.json': JSON.stringify({ '16': 'A verse supplied by the authorised source.' }),
+    'TPT/John/chapters/3.json': JSON.stringify({ '16': 'Synthetic fixture wording for the authorized test archive.' }),
   });
   const lib = fakeLibrary();
   const preview = await inspectArchive(zip, { library: lib });
