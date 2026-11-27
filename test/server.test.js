@@ -377,7 +377,7 @@ test('verse-step API follows the selected local partial translation', async () =
   await fetch(base + '/api/library/ZZPTST', { method: 'DELETE' });
   try {
     const imported = await fetch(base + '/api/library/import?' + query.toString(), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(source),
+      method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: JSON.stringify(source),
     });
     assert.strictEqual(imported.status, 200, await imported.text());
     const response = await fetch(base + '/api/verse/step?' + new URLSearchParams({
