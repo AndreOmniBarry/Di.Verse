@@ -19,6 +19,8 @@ const paths = {
   ENV_FILE: path.join(DATA, '.env'),
   BIBLE_DB: path.join(DB_DIR, 'bible.db'),
   SONGS_DB: path.join(DB_DIR, 'songs.db'),
+  // sermon notes, presentation history and virtual-set profiles (never the Bible text)
+  PRESENTATION_DB: path.join(DB_DIR, 'presentation.db'),
   STATE_FILE: process.env.DIVERSE_STATE_FILE || path.join(DB_DIR, 'screen-state.json'),
   LOG_DIR: path.join(DATA, 'logs'),
   packaged: Boolean(process.env.DIVERSE_DATA),
