@@ -13,7 +13,7 @@ test('renders numeric footnote markers and numeric ranges as superscripts', () =
 });
 
 test('does not alter ordinary bracketed text or unsupported groups', () => {
-  assert.equal(display('Keep [note], [a, b] and [123x] unchanged.'), 'Keep [note], [a, b] and [123x] unchanged.');
+  assert.equal(display('Keep [note], [a, b], [q] and [123x] unchanged.'), 'Keep [note], [a, b], [q] and [123x] unchanged.');
 });
 
 test('keeps source text unchanged when producing a display string', () => {
