@@ -188,7 +188,7 @@ test('rejects malformed and empty chapter JSON', () => {
 
 test('previews and imports testament-less partial TPT chapters without assuming all 66 books', { skip: !hasYauzl }, async () => {
   const zip = makeZip({
-    'bible-imports/TPT/Psalms/23.json': JSON.stringify({ '1': 'The Lord is my best friend and my shepherd.' }),
+    'bible-imports/TPT/Psalms/23.json': JSON.stringify({ '1': 'Synthetic fixture text for partial archive import testing.' }),
     'TPT/John/chapters/3.json': JSON.stringify({ '16': 'A verse supplied by the authorised source.' }),
   });
   const lib = fakeLibrary();
