@@ -32,10 +32,10 @@ router.post('/library/import', express.raw({ type: '*/*', limit: '60mb' }), (req
     if (exists && !replace) {
       return res.status(409).json({ error: `${normalisedCode} is already installed. Confirm replacement to continue.`, replaceRequired: [normalisedCode] });
     }
-    res.json(importFile({ content: req.body, filename, code, name, obtained }));
+    res.json(importFile({ content: req.body, filename, code, name, obtained, authorized: String(req.query.authorized || '') === 'true' }));
   } catch (err) {
     console.error('[Library] import failed:', err.message);
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   } finally { busy = null; }
 });
 
@@ -61,6 +61,8 @@ router.post('/library/archive/import', express.raw({ type: '*/*', limit: '250mb'
       includeCodes,
       replaceCodes,
       expectedHash: String(req.query.hash || ''),
+      authorized: String(req.query.authorized || '') === 'true',
+      sourceNote: String(req.query.sourceNote || ''),
     });
     res.json(report);
   } catch (err) {

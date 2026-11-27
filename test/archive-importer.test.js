@@ -119,6 +119,23 @@ test('accepts common testament folder spellings and flags mismatch without losin
   assert.equal(parseChapterPath('ESV/new/Genesis/1.json').testamentMismatch, true);
 });
 
+test('recognises partial translation archives without testament folders', () => {
+  const tptOt = parseChapterPath('TPT/Psalms/23.json');
+  assert.equal(tptOt.code, 'TPT');
+  assert.equal(tptOt.book, 'Psalms');
+  assert.equal(tptOt.testament, 'old');
+  assert.equal(tptOt.testamentInferred, true);
+
+  const tptNt = parseChapterPath('bible-imports/TPT/John/chapters/3.json');
+  assert.equal(tptNt.code, 'TPT');
+  assert.equal(tptNt.book, 'John');
+  assert.equal(tptNt.testament, 'new');
+  assert.equal(tptNt.testamentInferred, true);
+
+  assert.equal(parseChapterPath('random/Psalms/23.json'), null);
+  assert.equal(parseChapterPath('TPT/unknown-book/1.json'), null);
+});
+
 test('ignores paths outside the chapter archive convention', () => {
   assert.equal(parseChapterPath('AMP/old/Genesis/README.md'), null);
   assert.equal(parseChapterPath('AMP/old/NotABook/1.json'), null);
@@ -169,6 +186,43 @@ test('rejects malformed and empty chapter JSON', () => {
   assert.throws(() => parseChapterJson([]), /must be an object/i);
 });
 
+test('refuses ZIP import without an explicit authorization attestation', { skip: !hasYauzl }, async () => {
+  const zip = makeZip({ 'TPT/John/3.json': JSON.stringify({ '16': 'Synthetic fixture text.' }) });
+  const lib = fakeLibrary();
+  const preview = await inspectArchive(zip, { library: lib });
+  await assert.rejects(
+    importArchive(zip, { library: lib, includeCodes: ['TPT'], expectedHash: preview.archiveHash }),
+    error => error.status === 403 && /authorized to import/i.test(error.message),
+  );
+  assert.equal(lib.saved.length, 0);
+});
+
+test('previews and imports testament-less partial TPT chapters without assuming all 66 books', { skip: !hasYauzl }, async () => {
+  const zip = makeZip({
+    'bible-imports/TPT/Psalms/23.json': JSON.stringify({ '1': 'Synthetic fixture text for partial archive import testing.' }),
+    'TPT/John/chapters/3.json': JSON.stringify({ '16': 'Synthetic fixture wording for the authorized test archive.' }),
+  });
+  const lib = fakeLibrary();
+  const preview = await inspectArchive(zip, { library: lib });
+  const tpt = preview.translations.find(item => item.code === 'TPT');
+  assert.equal(tpt.canImport, true);
+  assert.equal(tpt.books, 2);
+  assert.deepEqual(tpt.bookNames, ['John', 'Psalms']);
+  assert.equal(tpt.testamentInferredFiles, 2);
+  assert.equal(tpt.verses, 2);
+
+  const imported = await importArchive(zip, {
+    library: lib,
+    includeCodes: ['TPT'],
+    expectedHash: preview.archiveHash,
+    authorized: true,
+    sourceNote: 'Test fixture: operator-authorized synthetic content',  });
+  assert.equal(imported.imported, 1);
+  assert.deepEqual(lib.saved[0].rows.map(row => [row.book, row.chapter, row.verse]), [
+    ['Psalms', 23, 1], ['John', 3, 16],
+  ]);
+});
+
 test('previews and imports selected ZIP translations one at a time', { skip: !hasYauzl }, async () => {
   const zip = makeZip({
     'bible-imports/AMP/old/Genesis/1.json': JSON.stringify({ '2': 'two', '1': 'one' }),
@@ -186,7 +240,8 @@ test('previews and imports selected ZIP translations one at a time', { skip: !ha
     library: lib,
     includeCodes: ['AMP'],
     expectedHash: preview.archiveHash,
-  });
+    authorized: true,
+    sourceNote: 'Test fixture: operator-authorized synthetic content',  });
   assert.equal(imported.imported, 1);
   assert.equal(lib.saved.length, 1);
   assert.equal(lib.saved[0].code, 'AMP');
@@ -221,7 +276,8 @@ test('previews and imports MSG and PHILLIPS chapter files with verse ranges inta
     library: lib,
     includeCodes: ['MSG', 'PHILLIPS'],
     expectedHash: preview.archiveHash,
-  });
+    authorized: true,
+    sourceNote: 'Test fixture: operator-authorized synthetic content',  });
   assert.equal(result.imported, 2);
   const msgRows = lib.saved.find(item => item.code === 'MSG').rows;
   const phillipsRows = lib.saved.find(item => item.code === 'PHILLIPS').rows;
@@ -235,7 +291,7 @@ test('requires explicit confirmation before replacing an installed ZIP translati
   const lib = fakeLibrary([{ code: 'AMP', name: 'Existing Amplified' }]);
   const preview = await inspectArchive(zip, { library: lib });
   await assert.rejects(
-    importArchive(zip, { library: lib, includeCodes: ['AMP'], expectedHash: preview.archiveHash }),
+    importArchive(zip, { library: lib, includeCodes: ['AMP'], expectedHash: preview.archiveHash, authorized: true, sourceNote: 'Test fixture: operator-authorized synthetic content' }),
     error => error.status === 409 && error.replaceRequired.includes('AMP'),
   );
   const result = await importArchive(zip, {
@@ -243,7 +299,8 @@ test('requires explicit confirmation before replacing an installed ZIP translati
     includeCodes: ['AMP'],
     replaceCodes: ['AMP'],
     expectedHash: preview.archiveHash,
-  });
+    authorized: true,
+    sourceNote: 'Test fixture: operator-authorized synthetic content',  });
   assert.equal(result.imported, 1);
 });
 
@@ -251,7 +308,7 @@ test('refuses import when the archive differs from the preview', { skip: !hasYau
   const zip = makeZip({ 'AMP/old/Genesis/1.json': JSON.stringify({ '1': 'one' }) });
   const lib = fakeLibrary();
   await assert.rejects(
-    importArchive(zip, { library: lib, includeCodes: ['AMP'], expectedHash: 'not-the-same-archive' }),
+    importArchive(zip, { library: lib, includeCodes: ['AMP'], expectedHash: 'not-the-same-archive', authorized: true, sourceNote: 'Test fixture: operator-authorized synthetic content' }),
     /changed since preview/i,
   );
   assert.equal(lib.saved.length, 0);
