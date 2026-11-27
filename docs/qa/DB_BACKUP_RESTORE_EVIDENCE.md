@@ -34,7 +34,7 @@ A  test/db-backup.test.js
 A  test/helpers/backupScenario.js
 A  test/helpers/tempBible.js
 A  test/translation-persistence.test.js
-A  docs/qa/DB_BACKUP_RESTORE_EVIDENCE.md, docs/qa/setup-database-section.png
+A  docs/qa/DB_BACKUP_RESTORE_EVIDENCE.md, docs/qa/screenshots/setup-database-section.png
 ```
 
 ## 2. Versions
@@ -57,7 +57,7 @@ npm run seed                             # public-domain seed DB inside the fres
 node --test test/db-backup.test.js test/db-backup-better-sqlite3.test.js
 node --test test/translation-persistence.test.js
 npm test                                 # scripts/run-tests.js + scripts/run-spoken-tests.js
-node test/browser/setup-database.js docs/qa/setup-database-section.png
+node test/browser/setup-database.js docs/qa/screenshots/setup-database-section.png
 npm run bibles -- add BSB WEB            # as CI does before building
 npm run build:apps
 ```
@@ -111,7 +111,7 @@ Every `/api/db/*` route returns **HTTP 403** to a request from another network a
 - a damaged backup is refused with its reason and the database stays healthy;
 - no page errors.
 
-The screenshot `setup-database-section.png` shows paths, sizes and translation codes only.
+The screenshot `screenshots/setup-database-section.png` shows paths, sizes and translation codes only.
 
 ## 6. Mac and Windows builds
 
