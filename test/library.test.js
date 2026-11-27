@@ -19,7 +19,7 @@ test('USFM: one book, footnotes and markers stripped, coverage reported', () => 
     const text = r.chapter === 3 && r.verse === 16 ? r.text.replace('world,', 'world,\\f + \\fr 3:16 \\ft a footnote\\f*') : r.text;
     usfm += `\\v ${r.verse} ${text}\n`;
   }
-  const rep = importFile({ content: usfm, filename: 'JHN.usfm', code: 'zzu', name: 'Test USFM', obtained: 'Test fixture built from KJV' });
+  const rep = importFile({ content: usfm, filename: 'JHN.usfm', code: 'zzu', name: 'Test USFM', obtained: 'Test fixture built from KJV', authorized: true });
   assert.strictEqual(rep.format, 'USFM');
   assert.strictEqual(rep.verses, 879);
   assert.strictEqual(rep.coverage, '1 books (0 OT, 1 NT)');
@@ -42,17 +42,19 @@ test('OSIS (container and milestone forms) and JSON (flat and nested)', () => {
   const byCh = {}; for (const r of kjv('Jude')) (byCh[r.chapter] = byCh[r.chapter] || []).push(r.text);
   const nested = JSON.stringify([{ abbrev: 'jud', chapters: Object.values(byCh) }]);
   assert.strictEqual(parse(nested, 'x.json').rows.length, kjv('Jude').length);
-  const rep = importFile({ content: osis, filename: 'mark.xml', code: 'ZZO', name: 'Test OSIS', obtained: 'Test fixture built from KJV' });
+  const rep = importFile({ content: osis, filename: 'mark.xml', code: 'ZZO', name: 'Test OSIS', obtained: 'Test fixture built from KJV', authorized: true });
   assert.strictEqual(rep.format, 'OSIS'); assert.strictEqual(rep.verses, rows.length);
 });
 
-test('manual imports accept an optional source note; KJV cannot be replaced', () => {
+test('manual imports require explicit authorization and record the source note; KJV cannot be replaced', () => {
   const content = JSON.stringify(kjv('Luke').map(r => ({ book: 'LUK', chapter: r.chapter, verse: r.verse, text: r.text })));
-  const rep = importFile({ content, code: 'ZZJ', name: 'Test without source note' });
+  assert.throws(() => importFile({ content, code: 'ZZJ', name: 'Test Luke' }), /authorized to import/i);
+  assert.throws(() => importFile({ content, code: 'ZZJ', name: 'Test Luke', authorized: true }), /source or permission basis/i);
+  const rep = importFile({ content, code: 'ZZJ', name: 'Test Luke', obtained: 'Test fixture built from KJV', authorized: true });
   assert.strictEqual(rep.code, 'ZZJ');
   assert.ok(rep.verses > 0);
   const meta = getDb().prepare("SELECT licence FROM translation_meta WHERE code = 'ZZJ'").get();
-  assert.strictEqual(meta.licence, '');
+  assert.strictEqual(meta.licence, 'Operator attested: Test fixture built from KJV');
   assert.throws(() => importFile({ content, code: 'KJV', name: 'King James Version' }), /KJV is built in/);
   assert.throws(() => parse('{"hello":{"world":1}}', 'x.json'), /No verses found/);
 });
@@ -84,7 +86,7 @@ test('range-based scripture remains one block in storage and lookup', async () =
 });
 
 test('an imported translation is offered as local, with what it covers; removing it removes it', async () => {
-  importFile({ content: JSON.stringify(kjv('Luke').map(r => ({ book: 'LUK', chapter: r.chapter, verse: r.verse, text: r.text }))), code: 'ZZM', name: 'Test Luke', obtained: 'Test fixture built from KJV' });
+  importFile({ content: JSON.stringify(kjv('Luke').map(r => ({ book: 'LUK', chapter: r.chapter, verse: r.verse, text: r.text }))), code: 'ZZM', name: 'Test Luke', obtained: 'Test fixture built from KJV', authorized: true });
   let t = (await listTranslations()).find(x => x.code === 'ZZM');
   assert.ok(t && t.available && t.provider === 'local'); assert.strictEqual(t.coverage, '1 books (0 OT, 1 NT)');
   // a verse it doesn't have: KJV, with the reason
@@ -125,10 +127,10 @@ test('JSON laid out book → chapter → verse (as many Bible datasets are), pla
 
 test('a translation that numbers verses differently is flagged (e.g. Psalms numbered the Latin way)', () => {
   const ps = kjv('Psalms');
-  const same = importFile({ content: JSON.stringify(ps.map(r => ({ book: 'PSA', chapter: r.chapter, verse: r.verse, text: r.text }))), code: 'ZZJ', name: 'Psalms as KJV', obtained: 'Test fixture built from KJV' });
+  const same = importFile({ content: JSON.stringify(ps.map(r => ({ book: 'PSA', chapter: r.chapter, verse: r.verse, text: r.text }))), code: 'ZZJ', name: 'Psalms as KJV', obtained: 'Test fixture built from KJV', authorized: true });
   assert.strictEqual(same.numberingDiffers, false);
   // every verse one later (a psalm title counted as verse 1): 150 verses past chapter ends
-  const shifted = importFile({ content: JSON.stringify(ps.map(r => ({ book: 'PSA', chapter: r.chapter, verse: r.verse + 1, text: r.text }))), code: 'ZZJ', name: 'Psalms shifted', obtained: 'Test fixture built from KJV' });
+  const shifted = importFile({ content: JSON.stringify(ps.map(r => ({ book: 'PSA', chapter: r.chapter, verse: r.verse + 1, text: r.text }))), code: 'ZZJ', name: 'Psalms shifted', obtained: 'Test fixture built from KJV', authorized: true });
   assert.strictEqual(shifted.numberingDiffers, true);
   assert.match(shifted.coverage, /verse numbering differs from KJV/);
   assert.ok(shifted.differsIn.length > 0 && /^Psalms \d+$/.test(shifted.differsIn[0]));
