@@ -366,6 +366,33 @@ test('next / previous verse endpoint', async () => {
   assert.strictEqual(st, 404);
 });
 
+test('verse-step API follows the selected local partial translation', async () => {
+  const source = [
+    { book: 'LUK', chapter: 1, verse: 1, text: 'Synthetic partial translation beginning.' },
+    { book: 'LUK', chapter: 1, verse: 3, text: 'Synthetic partial translation end of first stored chapter.' },
+    { book: 'LUK', chapter: 3, verse: 1, text: 'Synthetic partial translation next stored chapter.' },
+  ];
+  const query = new URLSearchParams({ code: 'ZZPTST', name: 'Test Partial Translation', filename: 'partial.json',
+    obtained: 'Authorized synthetic test fixture', authorized: 'true' });
+  await fetch(base + '/api/library/ZZPTST', { method: 'DELETE' });
+  try {
+    const imported = await fetch(base + '/api/library/import?' + query.toString(), {
+      method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: JSON.stringify(source),
+    });
+    const importBody = await imported.json();
+    assert.strictEqual(imported.status, 200, JSON.stringify(importBody));
+    const response = await fetch(base + '/api/verse/step?' + new URLSearchParams({
+      book: 'Luke', chapter: '1', verse: '3', dir: 'next', unit: 'verse', translation: 'ZZPTST',
+    }).toString());
+    const verse = await response.json();
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(verse.reference, 'Luke 3:1');
+    assert.strictEqual(verse.translation, 'ZZPTST');
+  } finally {
+    await fetch(base + '/api/library/ZZPTST', { method: 'DELETE' });
+  }
+});
+
 test('the preacher says "next verse" / "verse 17" while a verse is on screen', async () => {
   const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
   const current = { book: 'Romans', chapter: 8, verse: 28, translation: 'KJV' };

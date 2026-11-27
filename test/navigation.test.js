@@ -39,3 +39,67 @@ test('a cue resolves against the verse on screen, never past the chapter', () =>
   assert.strictEqual(nav.resolve(nav.cue('verse 99'), here), null);
   assert.strictEqual(nav.resolve(nav.cue('next verse'), null), null);
 });
+
+test('local translation navigation keeps missing verse numbers visible and respects explicit ranges', () => {
+  const { getDb } = require('../services/bibleDb');
+  const db = getDb();
+  db.prepare("DELETE FROM verses WHERE translation = 'ZZPTNV'").run();
+  const insert = db.prepare(`
+    INSERT INTO verses (translation, book, book_num, chapter, verse, verse_end, text, source)
+    VALUES ('ZZPTNV', ?, ?, ?, ?, ?, 'fixture', 'zip-import')
+  `);
+  try {
+    insert.run('Luke', 42, 1, 1, 0);
+    insert.run('Luke', 42, 1, 5, 0);
+    insert.run('Luke', 42, 1, 6, 8);
+    insert.run('Luke', 42, 3, 1, 0);
+    insert.run('Luke', 42, 3, 3, 0);
+    insert.run('Acts', 44, 1, 1, 0);
+
+    // Missing 2–4 are not silently skipped: the application can show its
+    // missing-translation fallback/notice for the exact reference.
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 1 }, 'next', 'verse', 'ZZPTNV'),
+      { book: 'Luke', chapter: 1, verse: 2 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 5 }, 'prev', 'verse', 'ZZPTNV'),
+      { book: 'Luke', chapter: 1, verse: 4 }
+    );
+
+    // Explicit source range 6–8 is navigated as one stored paragraph.
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 6, verseEnd: 8 }, 'next', 'verse', 'ZZPTNV'),
+      { book: 'Luke', chapter: 3, verse: 1 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 3, verse: 1 }, 'prev', 'verse', 'ZZPTNV'),
+      { book: 'Luke', chapter: 1, verse: 8 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 3, verse: 3 }, 'prev', 'verse', 'ZZPTNV'),
+      { book: 'Luke', chapter: 3, verse: 2 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 1 }, 'next', 'chapter', 'ZZPTNV'),
+      { book: 'Luke', chapter: 3, verse: 1 }
+    );
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 3, verse: 3 }, 'next', 'verse', 'ZZPTNV'),
+      { book: 'Acts', chapter: 1, verse: 1 }
+    );
+    assert.deepStrictEqual(
+      nav.resolve({ kind: 'step', dir: 'next', unit: 'verse' },
+        { book: 'Luke', chapter: 1, verse: 1, translation: 'ZZPTNV' }),
+      { book: 'Luke', chapter: 1, verse: 2 }
+    );
+
+    // Existing KJV navigation remains canonical when no local translation is supplied.
+    assert.deepStrictEqual(
+      nav.step({ book: 'Luke', chapter: 1, verse: 1 }, 'next'),
+      { book: 'Luke', chapter: 1, verse: 2 }
+    );
+  } finally {
+    db.prepare("DELETE FROM verses WHERE translation = 'ZZPTNV'").run();
+  }
+});
