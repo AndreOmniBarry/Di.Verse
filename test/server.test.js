@@ -372,23 +372,23 @@ test('verse-step API follows the selected local partial translation', async () =
     { book: 'LUK', chapter: 1, verse: 3, text: 'Synthetic partial translation end of first stored chapter.' },
     { book: 'LUK', chapter: 3, verse: 1, text: 'Synthetic partial translation next stored chapter.' },
   ];
-  const query = new URLSearchParams({ code: 'TPT', name: 'Test Partial TPT', filename: 'partial-tpt.json',
+  const query = new URLSearchParams({ code: 'ZZPTST', name: 'Test Partial TPT', filename: 'partial-tpt.json',
     obtained: 'Authorized synthetic test fixture', authorized: 'true' });
-  await fetch(base + '/api/library/TPT', { method: 'DELETE' });
+  await fetch(base + '/api/library/ZZPTST', { method: 'DELETE' });
   try {
     const imported = await fetch(base + '/api/library/import?' + query.toString(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(source),
     });
     assert.strictEqual(imported.status, 200, await imported.text());
     const response = await fetch(base + '/api/verse/step?' + new URLSearchParams({
-      book: 'Luke', chapter: '1', verse: '3', dir: 'next', unit: 'verse', translation: 'TPT',
+      book: 'Luke', chapter: '1', verse: '3', dir: 'next', unit: 'verse', translation: 'ZZPTST',
     }).toString());
     const verse = await response.json();
     assert.strictEqual(response.status, 200);
     assert.strictEqual(verse.reference, 'Luke 3:1');
-    assert.strictEqual(verse.translation, 'TPT');
+    assert.strictEqual(verse.translation, 'ZZPTST');
   } finally {
-    await fetch(base + '/api/library/TPT', { method: 'DELETE' });
+    await fetch(base + '/api/library/ZZPTST', { method: 'DELETE' });
   }
 });
 
