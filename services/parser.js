@@ -309,7 +309,8 @@ function buildTranslationPatterns(catalogue) {
         code: item.code,
         re: new RegExp(
           '\\b' + base + '\\s+(?:bible|translation|version|edition)\\b' +
-          '|\\b(?:in|from|using|with|switch(?:ing)?\\s+to|read(?:ing)?\\s+from|turn(?:ing)?\\s+to|use)\\s+(?:the\\s+)?' + base + '\\s*$'
+          // "…back to the King James" ("go back to", "switch back to") as well
+          '|\\b(?:in|from|using|with|switch(?:ing)?\\s+to|read(?:ing)?\\s+from|turn(?:ing)?\\s+to|use|back\\s+to)\\s+(?:the\\s+)?' + base + '\\s*$'
         )
       };
     });

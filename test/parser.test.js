@@ -62,6 +62,12 @@ test('installed catalogue aliases recognise full names and spaced spoken codes',
   assert.strictEqual(detectTranslation('we should keep moving', catalogue), null);
   assert.strictEqual(detectTranslation('switch to WE', catalogue), 'WE');
   assert.strictEqual(detectTranslation('King James was a British monarch', catalogue), null);
+  // switching back is said as "go back to / switch back to the King James"
+  const kjv = { KJV: 'King James Version', NKJV: 'New King James Version' };
+  for (const said of ['back to the King James', 'go back to the King James', 'switch back to King James', 'come back to the king james'])
+    assert.strictEqual(detectTranslation(said, kjv), 'KJV', said);
+  assert.strictEqual(detectTranslation('back to the New King James', kjv), 'NKJV');
+  assert.strictEqual(detectTranslation('we went back to the King James era of England', kjv), null);
   assert.strictEqual(detectTranslation('the sound was amplified', catalogue), null);
 });
 
