@@ -248,8 +248,9 @@ test('every installed edition passes the ten catalogue checks', { skip: !ENABLED
     // preacher naturally would, and record what was said and what was heard.
     const csv = ['code,name,example_requests_say_it_naturally,example_reference_with_edition,expected_reference,what_the_preacher_said,what_captions_or_whisper_heard,edition_and_reference_projected,result(Pass/Fail),notes',
       ...results.map(r => [r.code, r.name,
-        [`Can we have ${r.spokenName} on screen?`, `Can we read this same passage on ${r.spokenName}?`, `Put the ${r.spokenName} on screen.`,
-          `Keep this reference, but show it in the ${r.spokenName}.`, `Let's change to the ${r.spokenName}.`, `Read the next verse in the ${r.spokenName}.`].map(t => t.replace(/\bthe\s+the\b/gi, 'the')).join(' / '),
+        // codes and names mixed, as preachers say both ("on TPT", "in the Passion Translation")
+        [`Can we have ${r.code} on screen?`, `Can we read this same passage on ${r.code}?`, `Put the ${r.spokenName} on screen.`,
+          `Keep this reference, but show it in the ${r.spokenName}.`, `Let's change to the ${r.code}.`, `Read the next verse in the ${r.spokenName}.`].map(t => t.replace(/\bthe\s+the\b/gi, 'the')).join(' / '),
         r.sampleRequest, r.sample || '', '', '', '', '', ''].map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))];
     fs.writeFileSync(path.join(OUT, 'voice-test-list.csv'), csv.join('\n') + '\n');
   }
