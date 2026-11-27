@@ -68,13 +68,12 @@ const CUES = [
   [/^(?:(?:okay|ok|alright|right|now|so|and|then|please|let'?s)\s+){0,3}(?:the\s+)?next(?:\s+(?:one|1))?(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse', deferInterim: true }],
   // Natural continuation instructions. Exact/command-like forms only.
   [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:go\s+on|go\s+ahead|carry\s+on|continue|proceed|keep\s+going|keep\s+reading|read\s+on|move\s+on)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
-  [/\b(?:go\s+on|go\s+ahead|carry\s+on|keep\s+going|keep\s+reading|read\s+on)\s*(?:please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
   // "take it back", "previous verse", "the verse before", "back one".
   [/\btake\s+(?:it|us|that|me)\s+back\b|\b(?:previous|preceding|prior)\s+(?:verses?|1)\b|\b(?:the\s+)?verse\s+before(?:\s+(?:that|this|it))?\b|\b(?:go|come|step)\s+back\s+(?:a|1|one)\s+verse\b|\bback\s+(?:1|one)\s+verse\b|\b(?:go|come)\s+back\s+(?:1|one)\b|\bback\s+(?:1|one)\b|\bthe\s+last\s+(?:1|one)\b/g, { kind: 'step', dir: 'prev', unit: 'verse' }],
   [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:go\s+back|back\s+one|previous|previous\s+one)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'prev', unit: 'verse' }],
   // Repeat the currently displayed passage; this is not a previous-verse cue.
   [/^(?:(?:okay|ok|alright|right|now|please)\s+)*(?:read|show|repeat)\s+(?:that|it|this|the\s+verse)\s+again(?:\s+please)?[.!?]*$/g, { kind: 'repeat', deferInterim: true }],
-  [/^(?:again|repeat)[.!?]*$/g, { kind: 'repeat' }],
+  [/^(?:again|repeat)[.!?]*$/g, { kind: 'repeat', deferInterim: true }],
   [/\b(?:the\s+)?(?:next|following)\s+chapter\b/g, { kind: 'step', dir: 'next', unit: 'chapter' }],
   [/\b(?:previous|preceding|prior)\s+chapter\b|\bchapter\s+before\s+(?:that|this|it)\b|\bgo\s+back\s+(?:a|one)\s+chapter\b/g, { kind: 'step', dir: 'prev', unit: 'chapter' }],
   // "chapter 5 verse 3", "verse 17", "verses 17 to 19".
