@@ -56,7 +56,7 @@ const ok = (cond, label) => { assert.ok(cond, label); passed++; console.log('  â
   const alerts = () => op.evaluate(() => document.getElementById('alertBox') ? document.getElementById('alertBox').textContent : document.body.innerText);
   // a finished sentence through the real detection route, as listening sends it
   let utt = 100;
-  const say = (t) => op.evaluate(([t, u]) => { isListening = true; return detectScripture(t, '', activeTranslation, sessionId, true, { utt: u, via: 'captions' }); }, [t, utt++]);
+  const say = (t) => op.evaluate(([t, u]) => { isListening = true; autoPush = true; return detectScripture(t, '', activeTranslation, sessionId, true, { utt: u, via: 'captions' }); }, [t, utt++]);
 
   console.log('â€” Open Operator page picks up imported and removed translations â€”');
   ok(!(await options()).includes('TST'), 'TST not offered before the import');
@@ -64,7 +64,7 @@ const ok = (cond, label) => { assert.ok(cond, label); passed++; console.log('  â
   const before = await show('John', 3, 16, null, 'KJV');
   const rows = [];
   for (const [book, ch, n] of [['Genesis', 1, 31], ['Genesis', 2, 25], ['Genesis', 3, 24], ['John', 3, 36]]) for (let v = 1; v <= n; v++) rows.push({ book, chapter: ch, verse: v, text: `TST ${book} ${ch}:${v}` });
-  const imp = await fetch(base + '/api/library/import?code=TST&name=Test%20Translation&obtained=test%20fixture%20file&filename=t.json', { method: 'POST', body: JSON.stringify(rows) });
+  const imp = await fetch(base + '/api/library/import?code=TST&name=Test%20Translation&obtained=test%20fixture%20file&filename=t.json&authorized=true', { method: 'POST', body: JSON.stringify(rows) });
   ok(imp.ok, 'imported TST through the existing import route');
   listCalls = 0;
   await focus();

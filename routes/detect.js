@@ -88,7 +88,8 @@ router.post('/detect', async (req, res) => {
           const verseData = await getPassage(v.normalised || waiting, ch, vs, ve, activeTranslation, { live: true });
           if (verseData) {
             console.log(`[Parser] ${verseData.reference} — joined with "${waiting}" said just before`);
-            return answer({ type: 'explicit', verseData, confidence: 0.92, source: 'parser', notice: `${waiting} (said just before) + ${ch}:${vs} → ${verseData.reference}` });
+            // both parts were said outright (book, then numbers): as sure as a named reference, so it clears auto-push (0.93)
+            return answer({ type: 'explicit', verseData, confidence: 0.94, source: 'parser', notice: `${waiting} (said just before) + ${ch}:${vs} → ${verseData.reference}` });
           }
         }
       }

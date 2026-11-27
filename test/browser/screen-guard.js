@@ -26,7 +26,9 @@ const expect = [];
   const op = await b.newPage({ viewport: { width: 1440, height: 900 } });
   const errs = []; op.on('pageerror', e => errs.push(e.message));
   await op.goto('http://localhost:3981/operator'); await op.waitForTimeout(800);
-  await op.evaluate(() => { isListening = true; });
+  // auto-push is off by default since v1.11.1 (queue first); this check is about auto-push
+  if (await op.evaluate(() => autoPush)) throw new Error('auto-push should be off by default');
+  await op.evaluate(() => { isListening = true; autoPush = true; });
   // exactly what the page sends: interim = newest 14 words (utt n), final = full sentence with context (utt n)
   const interim = (t, utt) => op.evaluate(([t, utt]) => detectScripture(t.split(/\s+/).slice(-14).join(' '), '', activeTranslation, sessionId, true, { interim: true, utt }), [t, utt]);
   const final = (t, utt) => op.evaluate(([t, utt]) => { appendTranscription(t); transcriptionContext.push(t); if (transcriptionContext.length > 3) transcriptionContext.shift();
@@ -41,11 +43,15 @@ const expect = [];
   const grow2 = grow1 + ' that is seeing the Book of Genesis 32:36';
   await interim(grow2, 1); await screen('interim grows: "...the Book of Genesis 32:36" (doesn\'t exist)');
   await final(grow2, 1); await screen('final of that whole sentence arrives');
+  const inQueue = ref => op.evaluate(r => queue.some(q => q.reference === r), ref);
+  // since v1.11.1 exact quotes (0.92) wait in the queue: auto-push needs 0.93, which named references reach
+  const queuedHeb = await inQueue('Hebrews 4:15');
   await interim('in the Book of Genesis 32:32 it says therefore', 2); await final('in the Book of Genesis 32:32 it says therefore', 2);
   await screen('"in the Book of Genesis 32:32 it says therefore"');
   console.log('   queue top:', await op.evaluate(() => queue.slice(0, 4).map(q => q.reference + (q.type === 'implicit' ? '?' : '')).join(', ')));
   await final('let me go for the day breaketh and he said I will not let thee go except thou bless me', 3);
   await screen('preacher quotes Genesis 32:26 exactly');
+  const queuedGen = await inQueue('Genesis 32:26');
   await final('and Jabez prayed that the Lord would enlarge his coast and Hannah cried unto the Lord', 4);
   await screen('"...Jabez...Hannah cried unto the Lord" (suggestions)');
   await final('for we have not an high priest which cannot be touched with the feeling of our infirmities', 5);
@@ -72,16 +78,18 @@ const expect = [];
   await final('so again Hebrews 4:15 says', 10); await screen('"so again Hebrews 4:15 says"');
   await b.close();
   const want = {
-    'final of that whole sentence arrives': 'Hebrews 4:15',
+    'final of that whole sentence arrives': '(none)',          // the quote waits in the queue (checked below)
     '"in the Book of Genesis 32:32 it says therefore"': 'Genesis 32:32',
-    'preacher quotes Genesis 32:26 exactly': 'Genesis 32:26',
-    '"...Jabez...Hannah cried unto the Lord" (suggestions)': 'Genesis 32:26',
-    'Hebrews 4:15 quoted again 1 min later (shown recently)': 'Genesis 32:26',
+    'preacher quotes Genesis 32:26 exactly': 'Genesis 32:32',   // queued, not pushed
+    '"...Jabez...Hannah cried unto the Lord" (suggestions)': 'Genesis 32:32',
+    'Hebrews 4:15 quoted again 1 min later (shown recently)': 'Genesis 32:32',
     'late "John 3:16" result after the operator showed Romans 8:28': 'Romans 8:28',
     'interim grows: ...Isaiah 40:31': 'Isaiah 40:31',
     'final of the whole sentence': 'Isaiah 40:31',
     '"so again Hebrews 4:15 says"': 'Hebrews 4:15',
   };
+  assert.ok(queuedHeb, 'the Hebrews 4:15 quote is waiting in the queue');
+  assert.ok(queuedGen, 'the Genesis 32:26 quote is waiting in the queue');
   try {
     assert.deepStrictEqual(errs, [], 'page errors');
     for (const [label, screen] of expect) if (want[label]) assert.strictEqual(screen, want[label], label);

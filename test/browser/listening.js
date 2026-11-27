@@ -29,7 +29,7 @@ const results = [];
   // Whisper, simulated: the second listen hears the reference clearly
   await op.route('**/api/transcribe', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ text: 'turn with me to Romans 8:28', provider: 'groq' }) }));
   await op.goto('http://localhost:3983/operator'); await op.waitForTimeout(800);
-  await op.evaluate(() => { isListening = true; whisperReady = true; });
+  await op.evaluate(() => { isListening = true; whisperReady = true; autoPush = true; }); // auto-push is opt-in since v1.11.1
   let utt = 100;
   const final = t => op.evaluate(([t, u]) => { appendTranscription(t); transcriptionContext.push(t); if (transcriptionContext.length > 3) transcriptionContext.shift();
     return detectScripture(t, transcriptionContext.slice(0, -1).join(' '), activeTranslation, sessionId, true, { utt: u, via: 'captions' }); }, [t, utt++]);
