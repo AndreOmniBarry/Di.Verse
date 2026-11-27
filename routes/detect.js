@@ -59,7 +59,7 @@ router.post('/detect', async (req, res) => {
         if (target) {
           const verseData = await getPassage(target.book, target.chapter, target.verse, target.verseEnd, current.translation || activeTranslation, { live: true });
           if (verseData) {
-            console.log(`[Cue] ${command.kind === 'step' ? command.dir + ' ' + command.unit : 'verse ' + command.verse} → ${verseData.reference}`);
+            console.log(`[Cue] ${command.kind === 'step' ? command.dir + ' ' + command.unit : command.kind === 'repeat' ? 'repeat current passage' : 'verse ' + command.verse} → ${verseData.reference}`);
             return answer({ type: 'navigate', command: { kind: command.kind, dir: command.dir, unit: command.unit, verse: command.verse, chapter: command.chapter }, verseData, confidence: 0.95, source: 'cue' });
           }
         }
