@@ -62,9 +62,17 @@ Use the pulpit mic through the B link, or Chrome's own microphone on the Mac for
 | D5 | Back to KJV | "Let's go back to the King James" | Same verse in KJV | |
 | D6 | Unavailable edition | Name an edition you don't have installed | Alert "… requested, but it is unavailable …"; screen and dropdown unchanged; nothing labelled as that edition | |
 | D7 | Passage missing from a partial edition | Ask for a book a partial edition doesn't contain, in that edition | Honest message or labelled KJV fallback, never shown under the partial edition's name | |
-| D8 | **Every installed edition** | Work through `qa-output/voice-test-list.csv` (made by the catalogue QA command): say the "switch" phrase, then the "reference with edition" phrase | Each edition heard and projected correctly; fill the Y/N columns | |
+| D8 | **Every installed edition** | Work through `qa-output/voice-test-list.csv` (made by the catalogue QA command). Ask for each edition the way the preacher naturally would; the sheet's phrases are only examples | Each edition heard and projected correctly; fill in what was said, what was heard and the result | |
+| D9 | Natural variety | Ask in your own words, varying the sentence: "Can we have TLB on screen?", "Keep this reference, but show it in the Amplified", "Read the next verse in the NKJV", "Can we have the same passage in the Living Bible?" | The edition changes, the same verse or range stays (or moves on for "next verse"), that edition's text is projected | |
+| D10 | Sermon words don't switch | Preach normally using "message", "passion", "voice", "living", "good news" | No edition change unless an edition is actually being asked for | |
 
-D8 is the per-edition voice check. The list is generated from your real library, with a reference that edition really contains, so you are never guessing. Doing all 57+ in one sitting takes about 30 to 40 minutes. Any edition that fails, note what Whisper or the captions wrote in the transcript.
+**About `voice-test-list.csv`:** the phrases in it are **examples, not commands to memorise**. Di.Verse understands many ways of asking: have / put / show / display an edition on screen, read or see this (same) passage in another edition, change or switch to an edition, go back to the King James, a reference with an edition ("John 3:16 on TPT" or "in TPT"), and "read the next verse in the NKJV". It recognises codes, full names and aliases for every installed edition. For each edition, write down in the sheet:
+- what the preacher actually said;
+- what the captions or Whisper wrote (from Live transcription);
+- which edition and reference were projected;
+- Pass or Fail.
+
+Doing all 57+ in one sitting takes about 30 to 40 minutes. A Fail where the transcript shows a misheard name ("the past in translation") is a recognition-of-sound issue; a Fail where the transcript is right is a Di.Verse issue. Note which.
 
 ## E. During a real service (observe, don't interfere)
 
@@ -79,7 +87,7 @@ D8 is the per-edition voice check. The list is generated from your real library,
 | Area | Automated (cloud, every change) | Needs you (this plan) |
 |---|---|---|
 | Reference recognition, cues, split phrases, reading lock, stale-result guard | Yes, text fed to the real detection route and Operator page | Real voice and captions (C) |
-| Translation switching logic and honesty | Yes, parser, detection route and Operator page | Real voice per edition (D, D8) |
+| Translation switching logic and honesty, natural phrasings for every edition, sermon-word guards | Yes, parser, detection route and Operator page (text fed, not voice) | Real voice per edition (D, D8–D10) |
 | 57+ edition catalogue (counts, retrieval, prompt, partial editions) | Runs on your Mac with one command (not in the cloud) | Run the command once |
 | Whisper request format, provider fallback | Mocked providers | Real Groq / OpenAI (C9, C10) |
 | Audio worklet (voice detection, downmix) | Unit tests on generated audio | Real microphone and Focusrite (B, C) |

@@ -1161,6 +1161,11 @@ async function handleDetection(detection, meta) {
     var said = cmd.follow ? 'reading on' : cmd.kind === 'step' ? (cmd.dir === 'next' ? 'next ' : 'previous ') + cmd.unit : 'verse ' + cmd.verse;
     if (cmd.follow) readingUntil = Date.now() + 12000;
     var nav = Object.assign({}, detection.verseData, { confidence: 0.95, type: 'explicit', source: 'cue' });
+    // "read the next verse in the NKJV": the edition changes with the step (its real text came back)
+    if (detection.new_translation && baseTranslation(nav.translation) === detection.new_translation && !nav.fallback) {
+      said += ' in ' + detection.new_translation;
+      if (detection.new_translation !== activeTranslation) adoptTranslation(detection.new_translation);
+    }
     appendTranscription('[ "' + said + '" → ' + nav.reference + ' ]', false, true);
     if (meta.heardAt && meta.heardAt < lastScreenChange) { appendTranscription('[ "' + said + '" ignored — the screen changed after it was said ]', false, true); return; }
     if (autoPush) await pushVerse(nav, false, 'cue'); else addToQueue(nav);

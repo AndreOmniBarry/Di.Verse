@@ -98,17 +98,24 @@ router.post('/detect', async (req, res) => {
     if (!parsed) { dangling = danglingBook(text); if (dangling) attention.noteBook(dangling); }
 
     // ── LAYER 1a: the preacher moving through the passage on screen ──
-    if (!parsed && current && current.book) {
+    // also with an edition named in the same breath: "read the next verse in
+    // the NKJV" moves on AND changes edition (the edition's real text only)
+    const switchTo = parsed && parsed.translationOnly ? parsed.translation : null;
+    if ((!parsed || switchTo) && current && current.book) {
       const command = navigation.cue(text);
       // "verse 1…" while still speaking may become "verse 16": wait for the
       // next word or the end of the sentence before jumping to a number
       if (command && !(interim && command.kind === 'goto' && command.atEnd)) {
         const target = navigation.resolve(command, { ...current, book: normaliseBook(current.book) || current.book });
         if (target) {
-          const verseData = await getPassage(target.book, target.chapter, target.verse, target.verseEnd, current.translation || activeTranslation, { live: true });
-          if (verseData) {
-            console.log(`[Cue] ${command.kind === 'step' ? command.dir + ' ' + command.unit : 'verse ' + command.verse} → ${verseData.reference}`);
-            return answer({ type: 'navigate', command: { kind: command.kind, dir: command.dir, unit: command.unit, verse: command.verse, chapter: command.chapter }, verseData, confidence: 0.95, source: 'cue' });
+          const verseData = await getPassage(target.book, target.chapter, target.verse, target.verseEnd, switchTo || current.translation || activeTranslation, { live: true });
+          // a requested edition that can't give this passage falls through to
+          // the translation change, which the Operator page reports honestly
+          const stoodIn = switchTo && verseData && (verseData.fallback || String(verseData.translation).split('/')[0] !== switchTo);
+          if (verseData && !stoodIn) {
+            console.log(`[Cue] ${command.kind === 'step' ? command.dir + ' ' + command.unit : 'verse ' + command.verse} → ${verseData.reference}${switchTo ? ' in ' + switchTo : ''}`);
+            return answer({ type: 'navigate', command: { kind: command.kind, dir: command.dir, unit: command.unit, verse: command.verse, chapter: command.chapter }, verseData, confidence: 0.95, source: 'cue',
+              ...(switchTo ? { new_translation: switchTo } : {}) });
           }
         }
       }

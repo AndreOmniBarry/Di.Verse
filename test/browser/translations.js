@@ -142,6 +142,45 @@ const ok = (cond, label) => { assert.ok(cond, label); passed++; console.log('  �
   ok(s.ref === 'Psalms 23:2' && s.badge === 'KJV', 'a late answer never replaces a screen that moved on');
   slowASV = 0;
 
+  console.log('— Natural requests (examples of how a preacher asks, not fixed commands) —');
+  await op.evaluate(() => setTranslation('KJV', false));
+  let kjvRange = await show('John', 3, 16, 18, 'KJV');
+  ok(/John 3:16-18/.test(kjvRange.ref) && kjvRange.badge === 'KJV', 'John 3:16-18 KJV on screen');
+  await say('Can we have YLT on screen?');
+  s = await screen();
+  ok(/John 3:16-18/.test(s.ref) && s.badge === 'YLT' && /¹⁸/.test(s.text) && s.text !== kjvRange.text, '"Can we have YLT on screen?": same range, YLT text projected');
+  await say('Keep this reference, but show it in the American Standard Version.');
+  s = await screen();
+  ok(/John 3:16-18/.test(s.ref) && s.badge === 'ASV' && /only begotten Son/.test(s.text), '"Keep this reference, but show it in the ASV": range kept, ASV text');
+  ok((await selected()).join() === 'ASV,ASV', 'dropdown follows the natural request');
+  await say('Can we read this same passage on BBE?');
+  s = await screen();
+  ok(/John 3:16-18/.test(s.ref) && s.badge === 'BBE', '"Can we read this same passage on BBE?": range kept, BBE');
+  await op.evaluate(() => { cuesDone = {}; });
+  await say('Read the next verse in the YLT.');
+  s = await screen();
+  ok(s.ref === 'John 3:19' && s.badge === 'YLT', '"Read the next verse in the YLT": moves on to John 3:19 and changes edition');
+  ok((await selected()).join() === 'YLT,YLT', 'and YLT carries on');
+  const beforeMissing = await screen();
+  await say('Put the New Living Translation on screen.');
+  await say('Can we read this same passage in the Message?');
+  s = await screen();
+  ok(JSON.stringify(s) === JSON.stringify(beforeMissing), 'NLT and MSG (not installed): screen unchanged, never shown under their names');
+  ok(!/NLT|MSG/.test(s.badge) && (await selected()).join() === 'YLT,YLT', 'badge and selection unchanged');
+  await say('Read the next verse in the NKJV.');
+  s = await screen();
+  ok(s.badge !== 'NKJV' && s.ref === beforeMissing.ref, '"Read the next verse in the NKJV" (not installed): nothing moves on under a stand-in label');
+  await show('John', 3, 16, 18, 'KJV');
+  slowASV = 1500;
+  const n1 = say('Can we have this passage in the American Standard Version?');   // slow
+  await op.waitForTimeout(150);
+  const n2 = say("Let's change to the YLT.");                                     // newer
+  await Promise.all([n1, n2]); await op.waitForTimeout(1800);
+  s = await screen();
+  if (!(s.badge === 'YLT' && /John 3:16-18/.test(s.ref))) console.log('   screen:', s.ref, s.badge, '| transcript:', (await op.evaluate(() => [...document.querySelectorAll('#transcriptionFeed div')].slice(-6).map(e => e.textContent).join(' || '))));
+  ok(s.badge === 'YLT' && /John 3:16-18/.test(s.ref), 'overlapping natural requests: the newer one (YLT) wins, range kept');
+  slowASV = 0;
+
   ok(!errs.length, 'no page errors' + (errs.length ? ': ' + errs.join(' | ') : ''));
   console.log(`\n${passed} checks passed`);
   await b.close(); srv.kill(); fs.rmSync(data, { recursive: true, force: true });

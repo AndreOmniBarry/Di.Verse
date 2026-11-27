@@ -266,7 +266,10 @@ function buildTranslationPatterns(catalogue) {
         existing.conflicted = true;
         return;
       }
-      existing.requiresCue = existing.requiresCue && requiresCue;
+      // an ambiguous phrase stays guarded even when an installed edition's
+      // name repeats it ("The Message" must not make "the message of the
+      // cross" switch editions)
+      existing.requiresCue = AMBIGUOUS.has(key) || (existing.requiresCue && requiresCue);
       return;
     }
     aliases.set(key, { code, requiresCue: requiresCue || AMBIGUOUS.has(key), conflicted: false });
@@ -304,13 +307,29 @@ function buildTranslationPatterns(catalogue) {
       const escaped = phrase.split(' ').map(escapeRe).join('\\s+');
       if (!item.requiresCue) return { code: item.code, re: new RegExp('\\b' + escaped + '\\b') };
 
+      // Ambiguous names ("message", "passion", "voice", "living bible") and
+      // short codes ("WE", "NET") are only taken as an edition when they are
+      // requested, never because the word occurs in a sentence:
+      //   "…the Message Bible / translation / version"
+      //   "…in / from the Message"                      (end of sentence)
+      //   "this / that / it / the same passage … in / on / from the Message"
+      //   "switch / change / go (back) / turn … to the Message"
+      //   "can we / could you / let's … have / see / read / put / show / give us the Message"
+      // each optionally followed by "on screen", "up", "please", "now"…
       const base = phrase.replace(/^the\s+/, '').split(' ').map(escapeRe).join('\\s+');
+      const the = '(?:the\\s+)?';
+      const tail = '(?:\\s+(?:on(?:to)?\\s+(?:the\\s+)?screen|up|please|now|for\\s+us|instead|again|too|as\\s+well))*\\s*$';
+      const object = '(?:it|this|that|these|those|same|passage|passages|verse|verses|scripture|scriptures|text|one|reading|[0-9]+)';   // a number: the end of a spoken reference
+      const modal = '(?:(?:can|could|would|will|may|shall)\\s+(?:we|you|i|u|someone)\\s+(?:please\\s+)?|lets\\s+|let\\s+us\\s+|^(?:please\\s+)?)';
+      const request = '(?:(?:have|get|see|read|use|put|show|display|project|bring|give)(?:\\s+(?:us|me))?)';
       return {
         code: item.code,
         re: new RegExp(
           '\\b' + base + '\\s+(?:bible|translation|version|edition)\\b' +
-          // "…back to the King James" ("go back to", "switch back to") as well
-          '|\\b(?:in|from|using|with|switch(?:ing)?\\s+to|read(?:ing)?\\s+from|turn(?:ing)?\\s+to|use|back\\s+to)\\s+(?:the\\s+)?' + base + '\\s*$'
+          '|\\b(?:in|from|using|with|use|read(?:ing)?\\s+from)\\s+' + the + base + tail +
+          '|\\b' + object + '\\s+(?:up\\s+)?(?:in|on|from|into|with|using)\\s+' + the + base + tail +
+          '|\\b(?:switch(?:ing)?|change|changing|swap|move|go|going|come|coming|turn|turning|back|over)\\s+(?:it\\s+|this\\s+|that\\s+)?(?:back\\s+|over\\s+)?(?:to|into)\\s+' + the + base + tail +
+          '|(?:\\b|^)' + modal + request + '\\s+(?:up\\s+)?' + the + base + tail
         )
       };
     });
@@ -563,10 +582,12 @@ function parse(text, fallbackTranslation = 'KJV') {
   if (all.length) return all.length > 1 ? { ...all[0], more: all.slice(1) } : all[0];
 
   // Translation-only — preacher switching translation without stating a reference
-  // Also catches "King James Version" explicitly since KJV === fallback but still a signal
+  // Reported even when it is the edition already selected: the screen may be
+  // showing another one (a verse put up by hand in KJV while YLT is selected),
+  // and the Operator page does nothing when the screen already shows it.
   const clean = cleanText(text);
   const rawTranslation = detectTranslation(clean);
-  if (rawTranslation && (rawTranslation !== fallbackTranslation || text.toLowerCase().includes('king james'))) {
+  if (rawTranslation) {
     return { translationOnly: true, translation: rawTranslation, confidence: 0.95 };
   }
   return null;

@@ -9,7 +9,10 @@
 //   3 no availability from AI rows 8 no fallback to another edition
 //   4 spoken switch by code        9 code in the Whisper prompt
 //   5 spoken switch by name/alias 10 partial books + paragraph ranges handled
-// plus: importing, removing and restoring an edition updates the catalogue,
+//  11 natural requests (parser): several intent families, by code and by name
+//  12 natural requests (detect route): on screen / same passage / reference + edition
+// plus: sermon talk never switches editions (library-wide); and
+// importing, removing and restoring an edition updates the catalogue,
 // the spoken recognition and the Whisper prompt.
 //
 // Every edition is checked even after a failure, so the manifest is complete;
@@ -135,6 +138,25 @@ test('every installed edition passes the ten catalogue checks', { skip: !ENABLED
     const bad10 = ok10.filter(x => x !== true);
     check(10, bad10.length === 0, bad10.join('; '));
     r.sampleRequest = sample ? `Turn to ${sample.book} chapter ${sample.chapter} verse ${sample.verse} in ${spokenName}` : '';
+    r.sampleRequestOn = sample ? `${sample.book} ${sample.chapter} ${sample.verse} on ${spokenName}` : '';
+
+    // 11. natural requests: examples of each intent family, not required syntax
+    const forms = [code, ...(spokenName !== code ? [spokenName] : [])];
+    const natural = n => [
+      `can we have ${n} on screen`, `could you put ${n} up`, `show us the ${n}`,                        // on screen
+      `can we read this same passage on ${n}`, `let's see that in ${n}`, `read it on ${n}`,              // same passage
+      `can we have this passage in ${n} please`,                                                          // translation-only
+      `switch over to ${n}`, `change it to ${n}`, `let's change to the ${n}`,                             // switch
+      `keep this reference but show it in the ${n}`, `can we have the same passage in the ${n}`,         // keep the reference
+      `put the ${n} on screen`, `read the next verse in the ${n}`,
+    ].map(t => t.replace(/\bthe\s+the\b/gi, 'the'));
+    const missed11 = [];
+    for (const n of forms) for (const said of natural(n)) {
+      const got = parse(said, '__ACTIVE__');
+      if (!(got && got.translationOnly && got.translation === code)) missed11.push(`"${said}" -> ${got ? got.translation : 'nothing'}`);
+    }
+    r.naturalForms = forms.length * natural(code).length;
+    check(11, missed11.length === 0, missed11.slice(0, 4).join('; ') + (missed11.length > 4 ? ` (+${missed11.length - 4} more)` : ''));
     results.push(r);
   }
 
@@ -160,10 +182,26 @@ test('every installed edition passes the ten catalogue checks', { skip: !ENABLED
       const ok6 = d.type === 'explicit' && d.verseData && d.verseData.translation === r.code && !d.verseData.fallback && d.reference && d.reference.translation === r.code;
       r.checks[6] = ok6 ? 'pass' : 'FAIL';
       if (!ok6) r.notes.push('6: ' + JSON.stringify({ type: d.type, ref: d.verseData && d.verseData.reference, tr: d.verseData && d.verseData.translation, fallback: d.verseData && d.verseData.fallback }));
+      // 12. natural requests through the route
+      const missed12 = [];
+      for (const said of [`can we have ${r.spokenName} on screen`, `can we read this same passage on ${r.spokenName}`, `let's go back to ${r.spokenName}`].map(t => t.replace(/\bthe\s+the\b/gi, 'the'))) {
+        const x = await detect({ text: said, activeTranslation: '__ACTIVE__' });
+        if (!(x.type === 'translation_change' && x.new_translation === r.code)) missed12.push(`"${said}" -> ${x.new_translation || x.type}`);
+      }
+      const on = await detect({ text: r.sampleRequestOn, activeTranslation: r.code === 'KJV' ? 'ASV' : 'KJV' });
+      if (!(on.type === 'explicit' && on.verseData && on.verseData.translation === r.code && !on.verseData.fallback)) missed12.push(`"${r.sampleRequestOn}" -> ${on.verseData ? on.verseData.reference + ' ' + on.verseData.translation : on.type}`);
+      r.checks[12] = missed12.length ? 'FAIL' : 'pass';
+      if (missed12.length) r.notes.push('12: ' + missed12.join('; '));
     }
   } finally {
     const exited = new Promise(x => server.once('exit', x)); server.kill('SIGTERM'); await Promise.race([exited, new Promise(x => setTimeout(x, 5000))]);
   }
+
+  // sermon talk never switches editions, with this whole catalogue installed
+  const guardSentences = ['the message of the cross is power', 'we will focus on the message', 'God has a message for you', 'his passion for souls was great',
+    'the voice of the Lord is upon the waters', 'hear my voice o God', 'that was good news for them', 'a web of lies', 'the sound was amplified',
+    'the living bible is on my shelf at home', 'King James was a British monarch', 'we went back to the King James era of England', 'we should keep moving'];
+  const guardHits = guardSentences.map(t => [t, parse(t, '__ACTIVE__')]).filter(([, g]) => g && g.translationOnly).map(([t, g]) => `"${t}" -> ${g.translation}`);
 
   // import, remove and restore update the catalogue, spoken recognition and Whisper prompt
   const lifecycle = [];
@@ -199,21 +237,28 @@ test('every installed edition passes the ten catalogue checks', { skip: !ENABLED
     fs.mkdirSync(OUT, { recursive: true });
     fs.writeFileSync(path.join(OUT, 'translation-manifest.json'), JSON.stringify({ generatedAt: new Date().toISOString(), editions: results, aiOnly, aiOnlyOffered, lifecycle }, null, 2));
     const md = [`# Di.Verse translation QA manifest`, ``, `Generated ${new Date().toISOString()} from a read-only copy of the library. ${results.length} editions, ${failed.length} with a failed check.`, `No verse text is included: "fp" is an 8-character fingerprint of the stored text.`, ``,
-      `Checks: 1 code/name · 2 counts · 3 no AI-only availability · 4 switch by code · 5 switch by name · 6 reference + edition · 7 stored text · 8 no fallback · 9 Whisper prompt · 10 partial books / paragraph ranges`, ``,
-      `| Code | Name | Coverage | Rows | Verses covered | Ranges | AI rows | Sample | fp | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | Notes |`, `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`,
-      ...results.map(r => `| ${r.code} | ${r.name} | ${r.coverage} | ${r.rows} | ${r.covered} | ${r.ranges} | ${r.aiRows} | ${r.sample || '—'}${r.rangeSample ? ' (range ' + r.rangeSample + ')' : ''} | ${r.sampleFingerprint || ''} | ${[1,2,3,4,5,6,7,8,9,10].map(n => r.checks[n] === 'pass' ? '✓' : r.checks[n] ? '✗' : '—').join(' | ')} | ${r.notes.join('; ').replace(/\|/g, '/')} |`),
+      `Checks: 1 code/name · 2 counts · 3 no AI-only availability · 4 switch by code · 5 switch by name · 6 reference + edition · 7 stored text · 8 no fallback · 9 Whisper prompt · 10 partial books / paragraph ranges · 11 natural requests (parser, several intent families, code and name) · 12 natural requests (detect route)`, ``,
+      `| Code | Name | Coverage | Rows | Verses covered | Ranges | AI rows | Sample | fp | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | Notes |`, `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`,
+      ...results.map(r => `| ${r.code} | ${r.name} | ${r.coverage} | ${r.rows} | ${r.covered} | ${r.ranges} | ${r.aiRows} | ${r.sample || '—'}${r.rangeSample ? ' (range ' + r.rangeSample + ')' : ''} | ${r.sampleFingerprint || ''} | ${[1,2,3,4,5,6,7,8,9,10,11,12].map(n => r.checks[n] === 'pass' ? '✓' : r.checks[n] ? '✗' : '—').join(' | ')} | ${r.notes.join('; ').replace(/\|/g, '/')} |`),
       ``, `## AI cache rows`, ``, aiOnly.length ? `Editions with AI cache rows only (never installed text): ${aiOnly.join(', ')}. Offered as installed: ${aiOnlyOffered.length ? aiOnlyOffered.join(', ') + ' ✗' : 'none ✓'}` : 'No edition consists of AI cache rows only. ✓',
+      ``, `## Sermon talk never switches editions`, ``, guardHits.length ? 'Accidental switches: ' + guardHits.join('; ') + ' ✗' : `None of ${guardSentences.length} sermon sentences switched editions. ✓`,
       ``, `## Import, remove and restore`, ``, ...lifecycle.map(([l, ok]) => `- ${ok ? '✓' : '✗'} ${l}`), ``];
     fs.writeFileSync(path.join(OUT, 'translation-manifest.md'), md.join('\n'));
-    const csv = ['code,name,say_to_switch,say_reference_with_edition,expected_reference,heard_correctly(Y/N),projected_correctly(Y/N),notes',
-      ...results.map(r => [r.code, r.name, `switch to ${r.spokenName}`, r.sampleRequest, r.sample || '', '', '', ''].map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))];
+    // The phrases are EXAMPLES of how to ask, not required wording: say it the way the
+    // preacher naturally would, and record what was said and what was heard.
+    const csv = ['code,name,example_requests_say_it_naturally,example_reference_with_edition,expected_reference,what_the_preacher_said,what_captions_or_whisper_heard,edition_and_reference_projected,result(Pass/Fail),notes',
+      ...results.map(r => [r.code, r.name,
+        [`Can we have ${r.spokenName} on screen?`, `Can we read this same passage on ${r.spokenName}?`, `Put the ${r.spokenName} on screen.`,
+          `Keep this reference, but show it in the ${r.spokenName}.`, `Let's change to the ${r.spokenName}.`, `Read the next verse in the ${r.spokenName}.`].map(t => t.replace(/\bthe\s+the\b/gi, 'the')).join(' / '),
+        r.sampleRequest, r.sample || '', '', '', '', '', ''].map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))];
     fs.writeFileSync(path.join(OUT, 'voice-test-list.csv'), csv.join('\n') + '\n');
   }
-  console.log(`[Catalogue QA] ${results.length} editions checked; ${failed.length} with failures; lifecycle ${lifecycle.filter(x => x[1]).length}/${lifecycle.length}.`);
+  console.log(`[Catalogue QA] ${results.length} editions checked; ${failed.length} with failures; natural request forms ${results.reduce((a, r) => a + (r.naturalForms || 0), 0)} (parser) + ${results.length * 4} (route); sermon guard ${guardSentences.length - guardHits.length}/${guardSentences.length}; lifecycle ${lifecycle.filter(x => x[1]).length}/${lifecycle.length}.`);
   for (const r of failed) console.log(`  ✗ ${r.code}: ${r.notes.join('; ')}`);
 
   assert.deepEqual(aiOnlyOffered, [], 'editions with only AI cache rows offered as installed text');
   assert.ok(results.length >= MIN, `expected at least ${MIN} installed editions, found ${results.length}`);
   for (const [label, ok] of lifecycle) assert.ok(ok, label);
+  assert.deepStrictEqual(guardHits, [], 'sermon talk switched editions');
   assert.equal(failed.length, 0, failed.map(r => r.code).join(', ') + ' failed (see the manifest)');
 });
