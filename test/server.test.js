@@ -367,28 +367,27 @@ test('next / previous verse endpoint', async () => {
 });
 
 test('verse-step API follows the selected local partial translation', async () => {
-  const source = [
-    { book: 'LUK', chapter: 1, verse: 1, text: 'Synthetic partial translation beginning.' },
-    { book: 'LUK', chapter: 1, verse: 3, text: 'Synthetic partial translation end of first stored chapter.' },
-    { book: 'LUK', chapter: 3, verse: 1, text: 'Synthetic partial translation next stored chapter.' },
-  ];
-  const query = new URLSearchParams({ code: 'ZZPTST', name: 'Test Partial TPT', filename: 'partial-tpt.json',
-    obtained: 'Authorized synthetic test fixture', authorized: 'true' });
-  await fetch(base + '/api/library/ZZPTST', { method: 'DELETE' });
+  const db = require('../services/bibleDb').getDb();
+  const code = 'ZZPTST';
+  db.prepare('DELETE FROM verses WHERE translation = ?').run(code);
+  const insert = db.prepare(`
+    INSERT INTO verses (translation, book, book_num, chapter, verse, verse_end, text, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'zip-import')
+  `);
   try {
-    const imported = await fetch(base + '/api/library/import?' + query.toString(), {
-      method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: JSON.stringify(source),
-    });
-    assert.strictEqual(imported.status, 200, await imported.text());
+    insert.run(code, 'Luke', 42, 1, 1, 0, 'Synthetic partial translation beginning.');
+    insert.run(code, 'Luke', 42, 1, 3, 0, 'Synthetic partial translation end of first stored chapter.');
+    insert.run(code, 'Luke', 42, 3, 1, 0, 'Synthetic partial translation next stored chapter.');
+
     const response = await fetch(base + '/api/verse/step?' + new URLSearchParams({
-      book: 'Luke', chapter: '1', verse: '3', dir: 'next', unit: 'verse', translation: 'ZZPTST',
+      book: 'Luke', chapter: '1', verse: '3', dir: 'next', unit: 'verse', translation: code,
     }).toString());
     const verse = await response.json();
     assert.strictEqual(response.status, 200);
     assert.strictEqual(verse.reference, 'Luke 3:1');
-    assert.strictEqual(verse.translation, 'ZZPTST');
+    assert.strictEqual(verse.translation, code);
   } finally {
-    await fetch(base + '/api/library/ZZPTST', { method: 'DELETE' });
+    db.prepare('DELETE FROM verses WHERE translation = ?').run(code);
   }
 });
 
