@@ -119,6 +119,23 @@ test('accepts common testament folder spellings and flags mismatch without losin
   assert.equal(parseChapterPath('ESV/new/Genesis/1.json').testamentMismatch, true);
 });
 
+test('recognises partial translation archives without testament folders', () => {
+  const tptOt = parseChapterPath('TPT/Psalms/23.json');
+  assert.equal(tptOt.code, 'TPT');
+  assert.equal(tptOt.book, 'Psalms');
+  assert.equal(tptOt.testament, 'old');
+  assert.equal(tptOt.testamentInferred, true);
+
+  const tptNt = parseChapterPath('bible-imports/TPT/John/chapters/3.json');
+  assert.equal(tptNt.code, 'TPT');
+  assert.equal(tptNt.book, 'John');
+  assert.equal(tptNt.testament, 'new');
+  assert.equal(tptNt.testamentInferred, true);
+
+  assert.equal(parseChapterPath('random/Psalms/23.json'), null);
+  assert.equal(parseChapterPath('TPT/unknown-book/1.json'), null);
+});
+
 test('ignores paths outside the chapter archive convention', () => {
   assert.equal(parseChapterPath('AMP/old/Genesis/README.md'), null);
   assert.equal(parseChapterPath('AMP/old/NotABook/1.json'), null);
@@ -167,6 +184,31 @@ test('rejects malformed and empty chapter JSON', () => {
   assert.throws(() => parseChapterJson('{broken'), /Invalid JSON/);
   assert.throws(() => parseChapterJson({ title: 'heading only' }), /No valid verse/i);
   assert.throws(() => parseChapterJson([]), /must be an object/i);
+});
+
+test('previews and imports testament-less partial TPT chapters without assuming all 66 books', { skip: !hasYauzl }, async () => {
+  const zip = makeZip({
+    'bible-imports/TPT/Psalms/23.json': JSON.stringify({ '1': 'The Lord is my best friend and my shepherd.' }),
+    'TPT/John/chapters/3.json': JSON.stringify({ '16': 'A verse supplied by the authorised source.' }),
+  });
+  const lib = fakeLibrary();
+  const preview = await inspectArchive(zip, { library: lib });
+  const tpt = preview.translations.find(item => item.code === 'TPT');
+  assert.equal(tpt.canImport, true);
+  assert.equal(tpt.books, 2);
+  assert.deepEqual(tpt.bookNames, ['John', 'Psalms']);
+  assert.equal(tpt.testamentInferredFiles, 2);
+  assert.equal(tpt.verses, 2);
+
+  const imported = await importArchive(zip, {
+    library: lib,
+    includeCodes: ['TPT'],
+    expectedHash: preview.archiveHash,
+  });
+  assert.equal(imported.imported, 1);
+  assert.deepEqual(lib.saved[0].rows.map(row => [row.book, row.chapter, row.verse]), [
+    ['Psalms', 23, 1], ['John', 3, 16],
+  ]);
 });
 
 test('previews and imports selected ZIP translations one at a time', { skip: !hasYauzl }, async () => {
