@@ -25,6 +25,8 @@ test('the preacher\'s cues are understood', () => {
   assert.strictEqual(kind('the previous verse please'), 'prev verse');
   assert.strictEqual(kind('go to the next chapter'), 'next chapter');
   assert.strictEqual(kind('previous chapter'), 'prev chapter');
+  assert.strictEqual(kind('go back one chapter'), 'prev chapter');
+  assert.strictEqual(kind('take us to the next chapter'), 'next chapter');
   assert.strictEqual(kind('look at verse seventeen'), 'goto 17');
   assert.strictEqual(kind('verses 17 to 19'), 'goto 17-19');
   assert.strictEqual(kind('chapter five verse three'), 'goto 5:3');
@@ -57,7 +59,8 @@ test('natural next-verse variations are recognised without stealing sermon phras
   [
     'next point', 'the next point is important', 'next week',
     'the next generation', 'next subject', 'we need the next chapter of the project',
-    'continue the discussion', 'move on to the next topic', 'the work must go on', 'we need to go on'
+    'continue the discussion', 'move on to the next topic', 'the work must go on', 'we need to go on',
+    'the next verse is important', 'he referenced the previous verse'
   ].forEach(text => assert.strictEqual(nav.cue(text), null, text));
 });
 
