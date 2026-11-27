@@ -51,6 +51,7 @@ No owner database was used. All automated tests ran on disposable databases (pub
 | Run | Where | Tests | Passed | Failed | Skipped |
 |---|---|---|---|---|---|
 | `npm test` on `c109d6c`+ (natural requests) | cloud workspace, Node 22.23.5 | 187 | 184 | 0 | 3 |
+| CI run [#51](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46058925541) on `6c449f3` | GitHub Actions, ubuntu-latest | 175 | 171 | 0 | 4 |
 | `npm test` on `d6e0e8d` (before) | cloud workspace | 179 | 176 | 0 | 3 |
 | CI run [#48](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46050636330) on `d6e0e8d` (release candidate code) | GitHub Actions, ubuntu-latest | 167 | 163 | 0 | 4 |
 
@@ -245,7 +246,8 @@ These operations run synchronously, so Di.Verse pauses while they work. Back up 
 | [#46](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46046830651) (PR #20, evidence only) | `710f10a` | success |
 | [#47](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46048860073) (PR #21) | `0292b3c` | success |
 | [#48](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46050636330) (PR #21) | `d6e0e8d` | **success**: [tests](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46050636330/job/140680759586) 167 / 163 passed / 0 failed / 4 skipped; [installers](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46050636330/job/140681560927) built on macOS 15, `Verify installer archives` passed with the 1.11.1 file names, artifact [`Di.Verse-v1.11.1-installers`](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46050636330/artifacts/15223838360) (141,995,753 bytes, artifact zip SHA-256 `933e530712a909baa2a5fcb8f28d8e1e9268898545dd76dda640c2969ecc3dda`); release publish skipped as intended |
-| natural-request change (PR #21) | `c109d6c`+ | NATURAL_CI |
+| [#50](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46058722738) (PR #21) | `ce6348d` | success |
+| [#51](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46058925541) (PR #21) | `6c449f3` | **success**: [tests](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46058925541/job/140708148940) 175 / 171 passed / 0 failed / 4 skipped; [installers](https://github.com/AndreOmniBarry/Di.Verse/actions/runs/46058925541/job/140708924405) built and verified on macOS 15 |
 
 CI installs without optional dependencies, so the better-sqlite3 test file reports itself skipped there. Both engines are covered locally (§3).
 
