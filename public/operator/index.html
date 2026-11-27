@@ -6,240 +6,532 @@
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
   <title>Di.Verse</title>
   <style>
+    /* Di.Verse operator, v1.12 design language.
+       Dark navy and graphite surfaces, champagne gold for what is live or
+       selected, ivory text. Serif for scripture and titles, a system sans
+       for controls. No web fonts: it all works offline. */
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
-      --brand: #1A1A2E; --accent: #E94560; --mid: #4A4A6A;
-      --surface: #22223A; --surface2: #2A2A45; --text: #CCCCDD; --white: #FFFFFF;
+      --navy-950: #070D18; --navy-900: #0B1424; --navy-850: #0F1A2D; --navy-800: #142036; --navy-700: #1C2A44;
+      --graphite-700: #2A3242; --graphite-600: #3A4357; --graphite-500: #566074; --graphite-400: #7C8698;
+      --gold: #C9A961; --gold-strong: #D9BC78; --gold-soft: rgba(201,169,97,0.14); --gold-line: rgba(201,169,97,0.38);
+      --ivory: #F4EFE4; --ivory-dim: #D6D1C6; --muted: #A3ABB9;
+      --live: #4FBF8A; --warn: #E0A84A; --danger: #E06464; --danger-soft: rgba(224,100,100,0.12);
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      --radius: 8px; --radius-sm: 5px;
+      /* legacy names still used by inline styles and script-built markup */
+      --brand: var(--navy-900); --accent: var(--gold); --mid: var(--graphite-500); --surface: var(--navy-850); --surface2: var(--navy-800); --text: var(--ivory-dim); --white: var(--ivory);
     }
-    body { background: var(--brand); color: var(--text); font-family: Arial, sans-serif; height: 100vh; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
-    /* Two rows that grow as needed: nothing gets pushed off screen */
-    header { background: var(--surface); border-bottom: 2px solid var(--accent); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 20px; }
-    .header-rows { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; min-width: 0; }
-    .header-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .header-row .group-label { font-size: 0.6rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--mid); }
-    #translationSelect { border-color: var(--accent); color: var(--white); font-weight: bold; }
-    header h1 { font-size: 1.2rem; color: var(--white); letter-spacing: 2px; }
-    header h1 span { color: var(--accent); }
-    .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; display: inline-block; transition: all 0.3s; }
-    .status-dot.active { background: #2ECC71; box-shadow: 0 0 8px #2ECC71; }
-    .status-dot.warn { background: #F39C12; box-shadow: 0 0 8px #F39C12; animation: pulse 1s infinite; }
-    .status-dot.error { background: #E74C3C; box-shadow: 0 0 8px #E74C3C; animation: pulse 0.6s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-    .listening-label { font-size: 0.72rem; color: var(--mid); }
-    .listening-label.active { color: #2ECC71; }
-    .listening-label.warn { color: #F39C12; }
-    .listening-label.error { color: #E74C3C; }
-    select, .toggle-btn { background: var(--surface2); border: 1px solid var(--mid); color: var(--text); padding: 5px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; outline: none; }
-    select:hover, .toggle-btn:hover { border-color: var(--accent); color: var(--white); }
-    .btn { padding: 6px 12px; border: none; border-radius: 4px; font-size: 0.78rem; font-weight: bold; cursor: pointer; transition: all 0.2s; }
-    .btn-accent { background: var(--accent); color: white; }
-    .btn-accent:hover { background: #C73652; }
-    .btn-ghost { background: transparent; color: #666; border: 1px solid #444; }
-    .btn-ghost:hover { border-color: #E74C3C; color: #E74C3C; }
-    .btn-dim { background: var(--surface2); color: var(--text); border: 1px solid var(--mid); }
-    .btn-dim:hover { border-color: var(--accent); }
-    .nav-row { display: flex; margin-top: 8px; min-width: 0; max-width: 100%; }
-    .queue-item.story { border-left: 3px solid #8fb3ff; }
-    .q-actions { display: flex; margin: 6px 0 2px; }
-    .q-actions .btn { margin-right: 6px; padding: 5px 10px; font-size: 0.74rem; }
-    .q-ref-btn { float: right; background: none; border: 1px solid var(--mid); color: var(--text); border-radius: 3px; font-size: 0.62rem; padding: 0 6px; cursor: pointer; }
-    .q-ref-btn:hover { border-color: var(--accent); }
-    .nav-row .btn { margin-right: 5px; padding: 8px 7px; white-space: nowrap; flex: 0 0 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .nav-row .btn:last-child { margin-right: 0; }
-    .nav-row .nav-main { flex: 1 1 0; font-size: 0.8rem; }
-    .quick-row { display: flex; margin-bottom: 8px; }
-    .quick-row input { flex: 1; font-size: 0.95rem; padding: 9px 10px; }
-    .quick-row .btn { margin-left: 6px; }
-    .font-btn { background: var(--surface2); border: 1px solid var(--mid); color: var(--white); width: 28px; height: 28px; border-radius: 4px; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-    .font-btn:hover { border-color: var(--accent); background: var(--accent); }
-    .ws-badge { font-size: 0.58rem; color: var(--mid); background: var(--surface2); padding: 2px 6px; border-radius: 3px; }
-    .ws-badge.bad { color: #E74C3C; border: 1px solid #E74C3C; }
-    main { display: grid; grid-template-columns: 1fr 340px; overflow: hidden; }
-    .left { display: grid; grid-template-rows: 1fr 250px; border-right: 1px solid var(--surface2); overflow: hidden; }
-    .transcription-panel { padding: 16px; overflow-y: auto; }
-    .label { font-size: 0.62rem; letter-spacing: 2px; color: var(--mid); text-transform: uppercase; margin-bottom: 10px; }
-    #transcriptionFeed { font-size: 0.88rem; line-height: 1.8; color: #8888AA; }
-    #transcriptionFeed .hit { color: var(--accent); font-weight: bold; background: rgba(233,69,96,0.1); padding: 1px 4px; border-radius: 3px; }
-    #transcriptionFeed .sys { color: #555577; font-style: italic; }
-    #transcriptionFeed .err { color: #E74C3C; }
-    #transcriptionFeed .interim { color: #CCCCDD; opacity: 0.6; font-style: italic; }
-    .search-panel { padding: 14px 16px; background: var(--surface); border-top: 1px solid var(--surface2); }
-    .search-row { display: flex; gap: 8px; margin-top: 8px; }
-    input[type="text"], input[type="number"] { background: var(--brand); border: 1px solid var(--mid); color: var(--white); padding: 8px 10px; border-radius: 4px; font-size: 0.82rem; outline: none; transition: border-color 0.2s; }
-    input:focus { border-color: var(--accent); }
-    input::placeholder { color: #445; }
-    .hint { font-size: 0.62rem; color: #333355; margin-top: 6px; }
-    .right { display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
-    .now-playing { padding: 14px 16px; background: var(--surface); border-bottom: 1px solid var(--surface2); min-height: 110px; }
-    .verse-card { margin-top: 8px; padding: 10px 12px; background: var(--brand); border-radius: 6px; border-left: 3px solid var(--accent); }
-    .verse-card .ref { font-size: 0.72rem; color: var(--accent); font-weight: bold; margin-bottom: 4px; }
-    .verse-card .ref .trans { color: #666; font-weight: normal; margin-left: 6px; }
-    .verse-card .txt { font-size: 0.83rem; line-height: 1.5; color: var(--white); }
-    .empty-state { color: var(--mid); font-size: 0.8rem; font-style: italic; margin-top: 8px; }
-    .queue-panel { padding: 12px 16px; overflow-y: auto; }
-    .queue-item { background: var(--surface); border: 1px solid var(--surface2); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; }
-    .queue-item:hover { border-color: var(--accent); }
-    .queue-item.selected { border-color: var(--accent); background: rgba(233,69,96,0.07); }
-    .queue-item.implicit { border-left: 3px solid #F39C12; }
-    .queue-item.unverified { border-left: 3px solid #E74C3C; }
-    .queue-item .q-ref { font-size: 0.72rem; color: var(--accent); font-weight: bold; }
-    .queue-item .q-trans { font-size: 0.65rem; color: #666; margin-left: 6px; }
-    .queue-item .q-text { font-size: 0.8rem; color: var(--text); margin-top: 3px; line-height: 1.4; }
-    .queue-item .q-meta { font-size: 0.62rem; color: var(--mid); margin-top: 4px; }
-    .alert-box { background: rgba(231,76,60,0.12); border: 1px solid #E74C3C; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; }
-    .alert-box .a-title { font-size: 0.68rem; font-weight: bold; color: #E74C3C; letter-spacing: 1px; }
-    .alert-box .a-msg { font-size: 0.78rem; color: #FFAAAA; margin-top: 4px; line-height: 1.4; }
-    .alert-box .a-btn { font-size: 0.68rem; padding: 3px 8px; margin-top: 6px; background: transparent; border: 1px solid #E74C3C; color: #E74C3C; border-radius: 3px; cursor: pointer; }
-    .bottom { padding: 12px 16px; background: var(--surface); border-top: 1px solid var(--surface2); display: flex; flex-direction: column; gap: 8px; }
+    html, body { height: 100%; }
+    body { background: var(--navy-900); color: var(--ivory-dim); font-family: var(--sans); font-size: 14px; height: 100vh; overflow: hidden;
+      display: grid; grid-template-columns: 76px minmax(0, 1fr) 372px; grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "top top top" "rail work program"; }
+    .icon { width: 16px; height: 16px; flex: 0 0 auto; vertical-align: -3px; }
+    button { font-family: inherit; }
+    :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+    /* ── top bar ── */
+    header { grid-area: top; display: flex; align-items: center; gap: 18px; padding: 10px 18px; background: linear-gradient(180deg, var(--navy-850), var(--navy-900)); border-bottom: 1px solid var(--gold-line); min-width: 0; }
+    header h1 { font-family: var(--serif); font-weight: 600; font-size: 1.35rem; letter-spacing: 0.04em; color: var(--ivory); white-space: nowrap; }
+    header h1 span { color: var(--gold); }
+    header h1 small { font-family: var(--sans); font-size: 0.6rem; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--graphite-400); margin-left: 10px; vertical-align: 3px; }
+    .top-status { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border: 1px solid var(--graphite-700); border-radius: 999px; background: var(--navy-950); }
+    .top-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+    .group-label { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--graphite-400); }
+    #translationSelect { border-color: var(--gold-line); color: var(--ivory); font-weight: 600; }
+    .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--graphite-500); display: inline-block; transition: all 0.3s; }
+    .status-dot.active { background: var(--live); box-shadow: 0 0 0 3px rgba(79,191,138,0.18); }
+    .status-dot.warn { background: var(--warn); animation: pulse 1s infinite; }
+    .status-dot.error { background: var(--danger); animation: pulse 0.6s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+    .listening-label { font-size: 0.74rem; color: var(--muted); }
+    .listening-label.active { color: var(--live); } .listening-label.warn { color: var(--warn); } .listening-label.error { color: var(--danger); }
+    .ws-badge { font-size: 0.62rem; letter-spacing: 0.06em; color: var(--muted); padding: 2px 7px; border-radius: 999px; background: var(--navy-800); }
+    .ws-badge.bad { color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
+    .api-status { font-size: 0.62rem; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 999px; }
+    .api-status.ok { background: rgba(79,191,138,0.12); color: var(--live); }
+    .api-status.fail { background: var(--danger-soft); color: var(--danger); animation: pulse 1s infinite; }
+    .api-status.offline { background: rgba(224,168,74,0.14); color: var(--warn); }
+
+    /* ── controls ── */
+    select, .toggle-btn { background: var(--navy-800); border: 1px solid var(--graphite-700); color: var(--ivory-dim); padding: 6px 9px; border-radius: var(--radius-sm); font-size: 0.78rem; font-family: inherit; cursor: pointer; outline: none; }
+    select:hover, .toggle-btn:hover { border-color: var(--gold-line); color: var(--ivory); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 13px; border: 1px solid transparent; border-radius: var(--radius-sm); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.01em; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+    .btn-accent { background: var(--gold); color: var(--navy-950); }
+    .btn-accent:hover { background: var(--gold-strong); }
+    .btn-ghost { background: transparent; color: var(--muted); border-color: var(--graphite-600); }
+    .btn-ghost:hover { border-color: var(--danger); color: var(--danger); }
+    .btn-dim { background: var(--navy-800); color: var(--ivory-dim); border-color: var(--graphite-700); }
+    .btn-dim:hover { border-color: var(--gold-line); color: var(--ivory); }
+    .btn-quiet { background: transparent; color: var(--muted); border-color: transparent; padding: 5px 8px; }
+    .btn-quiet:hover { color: var(--ivory); background: var(--navy-800); }
+    .btn[disabled] { opacity: 0.45; cursor: default; }
+    input[type="text"], input[type="number"], textarea { background: var(--navy-950); border: 1px solid var(--graphite-700); color: var(--ivory); padding: 8px 10px; border-radius: var(--radius-sm); font-size: 0.85rem; font-family: inherit; outline: none; transition: border-color 0.15s; }
+    input:focus, textarea:focus, select:focus { border-color: var(--gold); }
+    input::placeholder, textarea::placeholder { color: var(--graphite-500); }
+    input[type="checkbox"] { accent-color: var(--gold); }
+    input[type="range"] { accent-color: var(--gold); width: 100%; }
+    input[type="color"] { width: 34px; height: 26px; border: 1px solid var(--graphite-700); border-radius: 4px; background: var(--navy-950); padding: 1px; cursor: pointer; }
+    .font-btn { background: var(--navy-800); border: 1px solid var(--graphite-700); color: var(--ivory); width: 30px; height: 30px; border-radius: var(--radius-sm); font-size: 1rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; }
+    .font-btn:hover { border-color: var(--gold); color: var(--gold); }
+    .switch { display: inline-flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ivory-dim); cursor: pointer; }
+
+    /* ── navigation rail ── */
+    nav.rail { grid-area: rail; display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; background: var(--navy-950); border-right: 1px solid var(--graphite-700); overflow-y: auto; }
+    .rail-btn { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 2px 8px; border: 0; border-radius: var(--radius); background: transparent; color: var(--graphite-400); font-size: 0.6rem; font-weight: 600; letter-spacing: 0.02em; line-height: 1.15; text-align: center; cursor: pointer; }
+    .rail-btn .icon { width: 21px; height: 21px; }
+    .rail-btn:hover { color: var(--ivory); background: var(--navy-850); }
+    .rail-btn.active { color: var(--gold); background: var(--gold-soft); }
+    .rail-btn.active::before { content: ''; position: absolute; left: -8px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--gold); }
+    .rail-btn .rail-count { position: absolute; top: 5px; right: 9px; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--gold); color: var(--navy-950); font-size: 0.58rem; line-height: 16px; }
+    .rail-btn .rail-count:empty { display: none; }
+
+    /* ── workspace ── */
+    main.work { grid-area: work; min-width: 0; min-height: 0; overflow: hidden; background: radial-gradient(120% 80% at 0% 0%, var(--navy-850), var(--navy-900) 60%); }
+    .view { display: none; height: 100%; min-height: 0; overflow-y: auto; padding: 18px 22px 24px; }
+    .view.active { display: flex; flex-direction: column; gap: 16px; }
+    .view-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .view-head h2 { font-family: var(--serif); font-weight: 600; font-size: 1.45rem; color: var(--ivory); letter-spacing: 0.01em; }
+    .view-head p { font-size: 0.78rem; color: var(--muted); }
+    .card { background: var(--navy-850); border: 1px solid var(--graphite-700); border-radius: var(--radius); padding: 14px 16px; }
+    .label { font-size: 0.64rem; font-weight: 600; letter-spacing: 0.2em; color: var(--graphite-400); text-transform: uppercase; margin-bottom: 10px; }
+    .label .soft { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--graphite-400); }
+    .hint { font-size: 0.7rem; color: var(--graphite-400); margin-top: 8px; line-height: 1.5; }
+    .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    kbd { font-family: var(--sans); font-size: 0.66rem; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--graphite-600); color: var(--ivory-dim); background: var(--navy-900); }
+
+    /* Live control */
+    #view-live { gap: 14px; }
+    .quick-row { display: flex; gap: 8px; }
+    .quick-row input { flex: 1; font-size: 1rem; padding: 11px 12px; }
+    .transcription-panel { flex: 1; min-height: 260px; display: flex; flex-direction: column; }
+    #transcriptionFeed { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; font-family: var(--serif); font-size: 1.02rem; line-height: 1.85; color: var(--muted); }
+    #transcriptionFeed .hit { color: var(--gold); font-weight: 600; background: var(--gold-soft); padding: 1px 5px; border-radius: 4px; }
+    #transcriptionFeed .sys { font-family: var(--sans); font-size: 0.8rem; color: var(--graphite-400); font-style: italic; }
+    #transcriptionFeed .err { font-family: var(--sans); font-size: 0.8rem; color: var(--danger); }
+    #transcriptionFeed .interim { color: var(--ivory); opacity: 0.55; font-style: italic; }
+    .feed-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; text-transform: none; letter-spacing: 0; font-weight: 400; }
+    .feed-tools select { max-width: 230px; font-size: 0.72rem; padding: 4px 7px; }
+    .feed-tools a { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--gold); text-decoration: none; border: 1px solid var(--graphite-700); border-radius: var(--radius-sm); padding: 4px 8px; }
+    .feed-tools a:hover { border-color: var(--gold-line); }
+    .engine { font-size: 0.68rem; color: var(--graphite-400); }
+    .vad-bar { height: 3px; background: var(--navy-800); border-radius: 2px; overflow: hidden; margin: 2px 0 10px; }
+    .vad-fill { height: 100%; background: var(--live); width: 0%; transition: width 0.1s; border-radius: 2px; }
+    .live-notes { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+    .live-notes:empty::before { content: 'Sermon titles, points and highlights the preacher announces appear here for approval.'; font-size: 0.76rem; color: var(--graphite-400); font-style: italic; }
+
+    /* Scripture */
+    .search-row { display: flex; gap: 8px; }
+    .mode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .mode-tile { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--graphite-700); border-radius: var(--radius); background: var(--navy-900); color: var(--ivory-dim); font-size: 0.76rem; font-weight: 600; text-align: left; cursor: pointer; }
+    .mode-tile:hover { border-color: var(--gold-line); }
+    .mode-tile.active { border-color: var(--gold); background: var(--gold-soft); color: var(--ivory); }
+    .mode-tile .thumb { position: relative; aspect-ratio: 16 / 9; border-radius: 4px; background: #24324C; overflow: hidden; }
+    .mode-tile .thumb i { position: absolute; display: block; background: var(--gold); opacity: 0.85; border-radius: 2px; }
+    .mode-tile .thumb b { position: absolute; display: block; background: #5D6E8C; border-radius: 2px; }
+
+    /* Songs */
+    .songs-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 14px; flex: 1; min-height: 320px; }
+    .song-list, .slide-list { overflow-y: auto; background: var(--navy-950); border: 1px solid var(--graphite-700); border-radius: var(--radius); padding: 6px; }
+    .song-list div, .slide-list div { font-size: 0.84rem; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; color: var(--ivory-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .slide-list div { white-space: normal; font-family: var(--serif); line-height: 1.45; }
+    .song-list div:hover, .slide-list div:hover { background: var(--navy-800); color: var(--ivory); }
+    .song-list div.active, .slide-list div.active { background: var(--gold-soft); color: var(--ivory); box-shadow: inset 3px 0 0 var(--gold); }
+
+    /* Sermon notes */
+    .note { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 14px; background: var(--navy-850); border: 1px solid var(--graphite-700); border-radius: var(--radius); }
+    .note.suggested { border-style: dashed; border-color: var(--gold-line); }
+    .note.onair { box-shadow: inset 3px 0 0 var(--gold); }
+    .note-kind { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); }
+    .note-kind .st { margin-left: 8px; padding: 1px 6px; border-radius: 999px; letter-spacing: 0.08em; font-size: 0.58rem; color: var(--navy-950); background: var(--gold); }
+    .note-kind .st.approved { background: var(--live); }
+    .note-text { font-family: var(--serif); font-size: 1.08rem; color: var(--ivory); line-height: 1.35; }
+    .note-text[contenteditable="true"] { outline: 1px solid var(--gold-line); border-radius: 4px; padding: 2px 4px; }
+    .note-heard { font-size: 0.74rem; color: var(--graphite-400); font-style: italic; }
+    .note-refs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 9px; border-radius: 999px; border: 1px solid var(--graphite-600); font-size: 0.72rem; color: var(--ivory-dim); }
+    .chip button { border: 0; background: transparent; color: var(--graphite-400); cursor: pointer; display: inline-flex; padding: 2px; border-radius: 50%; }
+    .chip button:hover { color: var(--danger); }
+    .chip small { color: var(--graphite-400); font-size: 0.62rem; }
+    .note-refs input { width: 150px; padding: 3px 8px; font-size: 0.74rem; }
+    .note-actions { grid-row: 1 / span 4; grid-column: 2; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+    .note-actions .btn { padding: 6px 10px; font-size: 0.74rem; justify-content: flex-start; }
+    .mini-note { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; max-width: 360px; padding: 6px 6px 6px 10px; border: 1px dashed var(--gold-line); border-radius: var(--radius); background: var(--navy-850); }
+    .mini-note .t { font-family: var(--serif); font-size: 0.86rem; color: var(--ivory); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mini-note .k { font-size: 0.58rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); white-space: nowrap; }
+    .mini-note .btn { padding: 4px 7px; }
+    .add-note { display: grid; grid-template-columns: 130px 70px minmax(0, 1fr) 170px auto; gap: 8px; }
+
+    /* Virtual set */
+    .vset { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 16px; min-height: 0; }
+    .profile-list { display: flex; flex-direction: column; gap: 6px; }
+    .profile { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; border: 1px solid var(--graphite-700); border-radius: var(--radius); background: var(--navy-850); cursor: pointer; font-size: 0.82rem; color: var(--ivory-dim); text-align: left; }
+    .profile:hover { border-color: var(--gold-line); }
+    .profile.selected { border-color: var(--gold); color: var(--ivory); }
+    .profile .live-tag { font-size: 0.56rem; font-weight: 700; letter-spacing: 0.16em; color: var(--navy-950); background: var(--live); padding: 2px 6px; border-radius: 999px; }
+    .preview-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--gold-line);
+      background-color: #1b2131; background-image: linear-gradient(45deg, #232a3b 25%, transparent 25%, transparent 75%, #232a3b 75%), linear-gradient(45deg, #232a3b 25%, transparent 25%, transparent 75%, #232a3b 75%); background-size: 22px 22px; background-position: 0 0, 11px 11px; }
+    .preview-frame iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; background: transparent; }
+    .preview-frame .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.2em; padding: 3px 8px; border-radius: 999px; background: rgba(7,13,24,0.8); color: var(--gold); }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 16px; }
+    .field { display: flex; flex-direction: column; gap: 5px; font-size: 0.72rem; color: var(--muted); }
+    .field select, .field input[type="text"] { width: 100%; }
+    .field output { color: var(--ivory-dim); font-size: 0.7rem; }
+    .palette { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+    /* History */
+    .history { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .history th { text-align: left; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--graphite-400); padding: 6px 10px; border-bottom: 1px solid var(--graphite-700); position: sticky; top: 0; background: var(--navy-900); }
+    .history td { padding: 8px 10px; border-bottom: 1px solid rgba(58,67,87,0.5); color: var(--ivory-dim); vertical-align: top; }
+    .history td.when { color: var(--graphite-400); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .history td.what { font-family: var(--serif); color: var(--ivory); }
+    .history .kind { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
+
+    /* Settings */
+    .links { display: flex; flex-wrap: wrap; gap: 8px; }
+    .links a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--graphite-700); border-radius: var(--radius-sm); color: var(--ivory-dim); text-decoration: none; font-size: 0.8rem; }
+    .links a:hover { border-color: var(--gold-line); color: var(--ivory); }
+    .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 0.78rem; align-items: center; }
+
+    /* ── program column: always visible ── */
+    aside.program { grid-area: program; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto auto; min-height: 0; min-width: 0; overflow: hidden; background: var(--navy-950); border-left: 1px solid var(--graphite-700); }
+    .now-playing { padding: 14px 16px; border-bottom: 1px solid var(--graphite-700); min-height: 120px; }
+    .onair-head { display: flex; align-items: center; justify-content: space-between; }
+    .onair-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.22em; color: var(--graphite-400); }
+    .onair-tag::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--graphite-500); }
+    .onair-tag.on { color: var(--danger); } .onair-tag.on::before { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+    .verse-card { margin-top: 10px; padding: 12px 14px; background: var(--navy-850); border-radius: var(--radius); border: 1px solid var(--gold-line); }
+    .verse-card .ref { font-size: 0.74rem; color: var(--gold); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+    .verse-card .ref .trans { color: var(--graphite-400); font-weight: 600; margin-left: 6px; }
+    .verse-card .txt { font-family: var(--serif); font-size: 0.98rem; line-height: 1.5; color: var(--ivory); }
+    .empty-state { color: var(--graphite-400); font-size: 0.8rem; font-style: italic; margin-top: 10px; }
+    .nav-row { display: flex; gap: 6px; margin-top: 10px; min-width: 0; }
+    .nav-row .btn { padding: 8px 8px; font-size: 0.76rem; white-space: nowrap; flex: 0 0 auto; min-width: 0; }
+    .nav-row .nav-main { flex: 1 1 0; }
+    .note-onair { padding: 10px 16px; border-bottom: 1px solid var(--graphite-700); display: none; align-items: center; gap: 10px; background: var(--gold-soft); }
+    .note-onair.show { display: flex; }
+    .note-onair .t { flex: 1; min-width: 0; font-family: var(--serif); font-size: 0.88rem; color: var(--ivory); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .note-onair .k { font-size: 0.56rem; font-weight: 700; letter-spacing: 0.2em; color: var(--gold); text-transform: uppercase; }
+    .queue-panel { padding: 12px 16px; overflow-y: auto; min-height: 0; }
+    .queue-item { background: var(--navy-850); border: 1px solid var(--graphite-700); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s; }
+    .queue-item:hover { border-color: var(--gold-line); }
+    .queue-item.selected { border-color: var(--gold); background: rgba(201,169,97,0.08); }
+    .queue-item.implicit { box-shadow: inset 3px 0 0 var(--warn); }
+    .queue-item.unverified { box-shadow: inset 3px 0 0 var(--danger); }
+    .queue-item.story { box-shadow: inset 3px 0 0 #8FA9D9; }
+    .queue-item .q-ref { font-size: 0.74rem; color: var(--gold); font-weight: 700; letter-spacing: 0.04em; }
+    .queue-item .q-trans { font-size: 0.64rem; color: var(--graphite-400); margin-left: 6px; }
+    .queue-item .q-text { font-family: var(--serif); font-size: 0.88rem; color: var(--ivory-dim); margin-top: 4px; line-height: 1.42; }
+    .queue-item .q-meta { font-size: 0.64rem; color: var(--graphite-400); margin-top: 5px; }
+    .q-actions { display: flex; gap: 6px; margin: 6px 0 2px; }
+    .q-actions .btn { padding: 5px 10px; font-size: 0.74rem; }
+    .q-ref-btn { float: right; background: none; border: 1px solid var(--graphite-600); color: var(--ivory-dim); border-radius: 4px; font-size: 0.62rem; padding: 0 7px; cursor: pointer; }
+    .q-ref-btn:hover { border-color: var(--gold); color: var(--gold); }
+    #alertContainer { padding: 0 16px; max-height: 140px; overflow-y: auto; }
+    .alert-box { background: var(--danger-soft); border: 1px solid rgba(224,100,100,0.55); border-radius: var(--radius); padding: 10px 12px; margin: 8px 0; }
+    .alert-box .a-title { font-size: 0.62rem; font-weight: 700; color: var(--danger); letter-spacing: 0.18em; }
+    .alert-box .a-msg { font-size: 0.8rem; color: #F2C4C4; margin-top: 4px; line-height: 1.4; }
+    .alert-box .a-btn { font-size: 0.68rem; padding: 3px 8px; margin-top: 6px; background: transparent; border: 1px solid rgba(224,100,100,0.6); color: var(--danger); border-radius: 4px; cursor: pointer; }
+    .bottom { padding: 12px 16px 14px; border-top: 1px solid var(--graphite-700); display: flex; flex-direction: column; gap: 10px; }
     .push-row { display: flex; gap: 8px; }
-    #alertContainer { padding: 0 16px; max-height: 120px; overflow-y: auto; }
-    .vad-bar { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-top: 2px; }
-    .vad-fill { height: 100%; background: #2ECC71; width: 0%; transition: width 0.1s; border-radius: 2px; }
-    .api-status { font-size: 0.6rem; padding: 2px 6px; border-radius: 3px; }
-    .api-status.ok { background: rgba(46,204,113,0.15); color: #2ECC71; }
-    .api-status.fail { background: rgba(231,76,60,0.15); color: #E74C3C; animation: pulse 1s infinite; }
-    .songs-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 8px; height: 120px; }
-    .song-list, .slide-list { overflow-y: auto; background: var(--brand); border: 1px solid var(--surface2); border-radius: 4px; padding: 4px; }
-    .song-list div, .slide-list div { font-size: 0.75rem; padding: 5px 6px; border-radius: 3px; cursor: pointer; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .song-list div:hover, .slide-list div:hover { background: var(--surface2); color: var(--white); }
-    .song-list div.active, .slide-list div.active { background: rgba(233,69,96,0.15); color: var(--white); }
-    .api-status.offline { background: rgba(243,156,18,0.15); color: #F39C12; }
+    .push-row .push { flex: 1; padding: 12px 0; font-size: 0.86rem; letter-spacing: 0.14em; }
+    .push-row #listenBtn { min-width: 92px; }
+
+    @media (max-width: 1180px) { body { grid-template-columns: 64px minmax(0, 1fr) 320px; } .rail-btn span { font-size: 0.55rem; } .add-note { grid-template-columns: 1fr 1fr; } .vset { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>Di<span>.</span>Verse <span style="color:var(--mid);font-size:0.7rem;font-weight:normal;">OPERATOR</span></h1>
-  <div class="header-rows">
-    <!-- Live: what you touch during the service -->
-    <div class="header-row">
-      <span class="ws-badge" id="wsStatus">WS</span>
+  <h1>Di<span>.</span>Verse<small>Operator</small></h1>
+  <div class="top-status" title="Connection, speech engine and listening state">
+    <span class="ws-badge" id="wsStatus">WS</span>
     <span class="api-status ok" id="apiStatus">API: ok</span>
     <div class="status-dot" id="dot"></div>
     <span class="listening-label" id="listenLabel">Not listening</span>
-      <span class="group-label">Bible</span>
-      <select id="translationSelect" title="Translations you have. Greyed ones need a licence — hover for why.">
+  </div>
+  <div class="top-controls">
+    <span class="group-label">Bible</span>
+    <select id="translationSelect" title="Translations you have. Greyed ones need a licence: hover for why.">
       <option value="KJV">KJV</option>
     </select>
-      <button class="toggle-btn" id="modeBtn" onclick="toggleMode()">◧ Lower-Third</button>
-      <select id="cameraSelect" title="Squeeze mode: how big the preacher's camera window is. Smaller = bigger scripture. Set the vMix camera layer to the same size." onchange="applyBackground()">
-      <option value="20" selected>Camera: 20% — UEFA squeeze, preacher top left</option>
-      <option value="25">Camera: 25%</option>
-      <option value="33">Camera: 33%</option>
-      <option value="46">Camera: 46% — preacher left, verse right</option>
-    </select>
-      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Auto-push only high-confidence scripture references (93% or higher); weaker matches stay in the queue for your review">
-      <input type="checkbox" id="autoPushToggle" onchange="autoPush = this.checked; savePref('autoPush', this.checked ? '1' : '')"> Auto-push
-    </label>
-      <label style="font-size:0.7rem;display:flex;align-items:center;gap:4px;cursor:pointer;" title="Off: Whisper runs only when Chrome captions miss a sentence. On: send every speech chunk to Whisper as well and display its independent transcript for comparison; this uses more transcription quota.">
-      <input type="checkbox" id="whisperToggle" onchange="whisperAlways = this.checked; savePref('whisperAlways', this.checked ? '1' : '')"> Whisper double-check
-    </label>
-      <button class="btn btn-ghost" onclick="clearScreen()">✕ Clear</button>
-      <span id="versionBadge" class="ws-badge" title="Di.Verse version running on this laptop">v…</span>
-      <a href="/setup" style="font-size:0.7rem;color:var(--mid);text-decoration:none;margin-right:8px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">Settings</a><a href="/about" style="font-size:0.7rem;color:var(--mid);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mid)'">About</a>
-    </div>
-    <!-- Look: how the caption appears -->
-    <div class="header-row">
-      <span class="group-label">Look</span>
-      <select id="themeSelect" onchange="applyTheme(this.value)">
-      <option value="dark-navy">Dark Navy</option>
-      <option value="pure-black">Pure Black</option>
-      <option value="church-white">Church White</option>
-      <option value="warm-gold">Warm Gold</option>
-      <option value="deep-burgundy">Deep Burgundy</option>
-      <option value="forest-green">Forest Green</option>
-      <option value="cinematic">Cinematic</option>
-    </select>
-      <select id="bgSelect" title="Caption background — still colours/gradients or live effects" onchange="applyBackground()">
-      <option value="theme">Background: theme colour</option>
-    </select>
-      <select id="frameSelect" title="Caption style" onchange="applyBackground()">
-      <option value="bar">Style: full bar</option>
-      <option value="glass">Style: liquid glass card</option>
-      <option value="minimal">Style: text only</option>
-    </select>
-      <select id="sizeSelect" title="Caption text size — Large or Extra large for big rooms; long verses split into pages instead of shrinking" onchange="applyBackground()">
-      <option value="normal">Text: normal</option>
-      <option value="large" selected>Text: large</option>
-      <option value="xl">Text: extra large (big room)</option>
-    </select>
-      <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
-    <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
-    </div>
+    <span class="group-label">Display</span>
+    <button class="toggle-btn" id="modeBtn" onclick="toggleMode()" title="Display mode (M). All modes: Scripture section.">Lower third</button>
+    <button class="btn btn-ghost" onclick="clearScreen()" title="Clear the screens (Esc)"><svg class="icon"><use href="/assets/icons.svg#i-x"/></svg>Clear</button>
+    <span id="versionBadge" class="ws-badge" title="Di.Verse version running on this laptop">v…</span>
   </div>
 </header>
 
-<main>
-  <div class="left">
-    <div class="transcription-panel">
-      <div class="label" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+<nav class="rail" aria-label="Sections">
+  <button class="rail-btn" data-view="live" title="Live Control (Alt+1)"><svg class="icon"><use href="/assets/icons.svg#i-live"/></svg><span>Live Control</span></button>
+  <button class="rail-btn" data-view="scripture" title="Scripture (Alt+2)"><svg class="icon"><use href="/assets/icons.svg#i-book"/></svg><span>Scripture</span></button>
+  <button class="rail-btn" data-view="sermon" title="Sermon Notes (Alt+3)"><svg class="icon"><use href="/assets/icons.svg#i-notes"/></svg><span>Sermon Notes</span><b class="rail-count" id="sermonCount"></b></button>
+  <button class="rail-btn" data-view="songs" title="Songs (Alt+4)"><svg class="icon"><use href="/assets/icons.svg#i-music"/></svg><span>Songs</span></button>
+  <button class="rail-btn" data-view="vset" title="Virtual Set (Alt+5)"><svg class="icon"><use href="/assets/icons.svg#i-layers"/></svg><span>Virtual Set</span></button>
+  <button class="rail-btn" data-view="history" title="Presentation History (Alt+6)"><svg class="icon"><use href="/assets/icons.svg#i-history"/></svg><span>History</span></button>
+  <button class="rail-btn" data-view="settings" title="Settings (Alt+7)"><svg class="icon"><use href="/assets/icons.svg#i-settings"/></svg><span>Settings</span></button>
+</nav>
+
+<main class="work">
+  <!-- Live Control: listening, quick search, sermon suggestions -->
+  <section class="view" id="view-live" aria-label="Live Control">
+    <div class="quick-row">
+      <input type="text" id="quickRef" placeholder="A reference or the words of a verse, then Enter: rom 8 28 · jn 3:16-18 · i wish above all things that thou mayest prosper   ( / jumps here )" autocomplete="off" spellcheck="false">
+      <button class="btn btn-accent" onclick="quickGo()"><svg class="icon"><use href="/assets/icons.svg#i-play"/></svg>Show</button>
+    </div>
+    <div class="card transcription-panel">
+      <div class="label row" style="justify-content:space-between;">
         <span>Live Transcription</span>
-        <span style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
-          <select id="audioInputSelect" title="Choose the microphone or virtual audio input (e.g. BlackHole for direct Mac audio)" onchange="savePref('audioInput', this.value); if (isListening) showAlert('Audio input changed. Stop and start listening to apply it.');" style="max-width:220px;padding:3px 6px;font-size:0.62rem;background:var(--surface2);border:1px solid var(--mid);border-radius:4px;color:var(--text);">
+        <span class="feed-tools">
+          <select id="audioInputSelect" title="Choose the microphone or virtual audio input (e.g. BlackHole for direct Mac audio)" onchange="savePref('audioInput', this.value); if (isListening) showAlert('Audio input changed. Stop and start listening to apply it.');">
             <option value="">Audio input: System default</option>
           </select>
-          <button type="button" onclick="refreshAudioInputs()" title="Refresh available audio inputs" style="padding:2px 6px;background:var(--surface2);border:1px solid var(--mid);border-radius:4px;color:var(--text);cursor:pointer;">↻</button>
-          <a href="/api/audio-bridge/connector.bat" title="Download the built-in Windows browser connector. No VB-CABLE, SonoBus or third-party audio driver required." style="font-size:0.62rem;color:var(--accent);text-decoration:none;border:1px solid var(--mid);border-radius:4px;padding:3px 6px;">Link Windows audio</a>
-          <span id="engineLabel" style="font-size:0.6rem;color:#7a7aa8;margin-right:4px;" title="Which speech engines are actively writing or checking the transcript"></span><span id="vadLabel" style="font-size:0.6rem;color:#555577;">VAD: ready</span>
+          <button type="button" class="btn btn-quiet" onclick="refreshAudioInputs()" title="Refresh available audio inputs"><svg class="icon"><use href="/assets/icons.svg#i-refresh"/></svg></button>
+          <a href="/api/audio-bridge/connector.bat" title="Download the built-in Windows browser connector. No VB-CABLE, SonoBus or third-party audio driver required."><svg class="icon"><use href="/assets/icons.svg#i-link"/></svg>Link Windows audio</a>
+          <span id="engineLabel" class="engine" title="Which speech engines are actively writing or checking the transcript"></span><span id="vadLabel" class="engine">VAD: ready</span>
         </span>
       </div>
       <div class="vad-bar"><div class="vad-fill" id="vadFill"></div></div>
-      <div id="transcriptionFeed" style="margin-top:10px;"><span class="sys">Transcription appears here when listening is active...</span></div>
+      <div id="transcriptionFeed"><span class="sys">Transcription appears here when listening is active...</span></div>
     </div>
-    <div class="search-panel">
-      <div class="label">Manual Search <span style="text-transform:none;letter-spacing:0;color:var(--mid);">— works any time, listening or not</span></div>
-      <div class="quick-row">
-        <input type="text" id="quickRef" placeholder="A reference or the words of a verse, then Enter — rom 8 28 · jn 3:16-18 · i wish above all things that thou mayest prosper   ( / jumps here )" autocomplete="off" spellcheck="false">
-        <button class="btn btn-accent" onclick="quickGo()">Show</button>
-      </div>
-      <div class="search-row">
-        <input type="text" id="bookInput" placeholder="Book — e.g. John" style="flex:2;">
-        <input type="number" id="chapterInput" placeholder="Ch" style="flex:0.7;min-width:52px;">
-        <input type="text" id="verseInput" placeholder="Vs (16 or 16-18)" inputmode="numeric" style="flex:1;min-width:70px;">
-        <button class="btn btn-dim" onclick="manualSearch()">Find</button>
-      </div>
-      <div class="hint">← → = previous/next verse (Shift = chapter; clicker works too) · ↑ ↓ = queue · Space = push · R = reference only · O = open a story's passage · Esc = clear · M = mode · +/- = font</div>
-      <div class="label" style="margin-top:12px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;">
-        <span>Songs <span style="text-transform:none;letter-spacing:0;">— click a slide · ↑/↓ or clicker to move · <a href="/admin" style="color:var(--mid);">manage songs</a></span></span>
-        <label style="text-transform:none;letter-spacing:0;font-size:0.72rem;color:var(--text);cursor:pointer;" title="Listen to the worship leader and move to the right slide automatically">
-          <input type="checkbox" id="followToggle" onchange="setFollow(this.checked)"> Follow the singer
-        </label>
-      </div>
-      <div class="songs-row">
-        <div style="display:flex;flex-direction:column;gap:6px;min-height:0;">
-          <input type="text" id="songSearch" placeholder="Search songs..." oninput="searchSongs(this.value)">
-          <div class="song-list" id="songList" style="flex:1;"></div>
-        </div>
-        <div class="slide-list" id="slideList"><div style="color:#445;cursor:default;">Pick a song</div></div>
-      </div>
+    <div class="card">
+      <div class="label row" style="justify-content:space-between;margin-bottom:8px;"><span>Sermon suggestions <span class="soft">· approve, or show straight away</span></span><button class="btn btn-quiet" onclick="showView('sermon')">All notes</button></div>
+      <div class="live-notes" id="liveNotes"></div>
     </div>
-  </div>
+  </section>
 
-  <div class="right">
-    <div class="now-playing">
-      <div class="label">On Screen Now</div>
-      <div id="nowPlaying"><div class="empty-state">Nothing displayed — logo showing</div></div>
-      <div class="nav-row" title="Move through the passage on screen. Keys: ← → verse, Shift+← → chapter, a clicker's Page Up / Page Down. The preacher can also say &quot;next verse&quot;, &quot;take it back&quot;, &quot;verse 17&quot;, &quot;next chapter&quot;.">
-        <button class="btn btn-dim" onclick="stepVerse('prev','chapter')">⏮ Ch</button>
-        <button class="btn btn-dim nav-main" onclick="stepVerse('prev','verse')">◀ Prev verse</button>
-        <button class="btn btn-dim nav-main" onclick="stepVerse('next','verse')">Next verse ▶</button>
-        <button class="btn btn-dim" onclick="stepVerse('next','chapter')">Ch ⏭</button>
+  <!-- Scripture: find a passage, choose how it is displayed and how it looks -->
+  <section class="view" id="view-scripture" aria-label="Scripture">
+    <div class="view-head"><h2>Scripture</h2><p>Manual search works any time, listening or not.</p></div>
+    <div class="card search-panel">
+      <div class="label">Find a passage</div>
+      <div class="search-row">
+        <input type="text" id="bookInput" placeholder="Book, e.g. John" style="flex:2;">
+        <input type="number" id="chapterInput" placeholder="Ch" style="flex:0.7;min-width:60px;">
+        <input type="text" id="verseInput" placeholder="Vs (16 or 16-18)" inputmode="numeric" style="flex:1;min-width:80px;">
+        <button class="btn btn-dim" onclick="manualSearch()"><svg class="icon"><use href="/assets/icons.svg#i-search"/></svg>Find</button>
+      </div>
+      <div class="hint">Left / Right: previous or next verse (Shift: chapter; a clicker works too) · Up / Down: queue · Space: push · R: reference only · O: open a story's passage · Esc: clear · M: mode · + / -: font</div>
+    </div>
+    <div class="card">
+      <div class="label">Display mode <span class="soft">· M cycles · Squeeze and Split resize the vMix camera automatically</span></div>
+      <div class="mode-grid" id="modeGrid"></div>
+      <div class="row" style="margin-top:12px;">
+        <select id="cameraSelect" title="Squeeze mode: how big the preacher's camera window is. Smaller = bigger scripture. Set the vMix camera layer to the same size." onchange="applyBackground()">
+          <option value="20" selected>Squeeze camera: 20% (preacher top left)</option>
+          <option value="25">Squeeze camera: 25%</option>
+          <option value="33">Squeeze camera: 33%</option>
+          <option value="46">Squeeze camera: 46% (preacher left, verse right)</option>
+        </select>
       </div>
     </div>
-    <div class="queue-panel">
-      <div class="label" style="margin-bottom:10px;">Queue <span id="queueCount" style="color:var(--mid);font-weight:normal;"></span></div>
-      <div id="queueContainer"><div style="color:#333355;font-size:0.8rem;font-style:italic;">Detected verses appear here...</div></div>
-    </div>
-    <div id="alertContainer"></div>
-    <div class="bottom">
-      <div class="push-row">
-        <button class="btn btn-accent" style="flex:1;padding:10px 0;font-size:0.88rem;" onclick="pushSelected()">PUSH TO SCREEN</button>
-        <button class="btn btn-dim" id="listenBtn" onclick="toggleListening()">Start</button>
+    <div class="card">
+      <div class="label">Caption look</div>
+      <div class="row">
+        <select id="themeSelect" onchange="applyTheme(this.value)">
+          <option value="dark-navy">Dark Navy</option>
+          <option value="pure-black">Pure Black</option>
+          <option value="church-white">Church White</option>
+          <option value="warm-gold">Warm Gold</option>
+          <option value="deep-burgundy">Deep Burgundy</option>
+          <option value="forest-green">Forest Green</option>
+          <option value="cinematic">Cinematic</option>
+        </select>
+        <select id="bgSelect" title="Caption background: still colours and gradients, or live effects" onchange="applyBackground()">
+          <option value="theme">Background: theme colour</option>
+        </select>
+        <select id="frameSelect" title="Caption style" onchange="applyBackground()">
+          <option value="bar">Style: full bar</option>
+          <option value="glass">Style: liquid glass card</option>
+          <option value="minimal">Style: text only</option>
+        </select>
+        <select id="sizeSelect" title="Caption text size. Large or Extra large for big rooms; long verses split into pages instead of shrinking" onchange="applyBackground()">
+          <option value="normal">Text: normal</option>
+          <option value="large" selected>Text: large</option>
+          <option value="xl">Text: extra large (big room)</option>
+        </select>
+        <span class="group-label" style="margin-left:6px;">Font</span>
+        <button class="font-btn" onclick="adjustFont(-2)" title="Font smaller (-)">-</button>
+        <button class="font-btn" onclick="adjustFont(2)" title="Font larger (+)">+</button>
       </div>
+      <div class="hint">A virtual-set profile with its own background replaces these colours while it is live. Choose "Di.Verse Classic" in Virtual Set to use them again.</div>
+    </div>
+  </section>
+
+  <!-- Sermon notes -->
+  <section class="view" id="view-sermon" aria-label="Sermon Notes">
+    <div class="view-head"><h2>Sermon Notes</h2><p>Heard wording is always kept. A note shows above the scripture and never clears it.</p></div>
+    <div class="card">
+      <div class="row">
+        <span class="group-label">Sermon</span>
+        <input type="text" id="sermonTitle" placeholder="Untitled sermon" style="flex:1;min-width:200px;" readonly title="Set by an approved title note">
+        <button class="btn btn-dim" onclick="newSermon()" title="Start a new sermon: earlier notes stay in the history"><svg class="icon"><use href="/assets/icons.svg#i-plus"/></svg>New sermon</button>
+        <label class="switch" title="Suggest titles, points and highlights from what the preacher says"><input type="checkbox" id="sermonDetect" checked onchange="savePref('sermonDetect', this.checked ? '1' : '0')"> Suggest from speech</label>
+      </div>
+    </div>
+    <div class="card">
+      <div class="label">Add a note</div>
+      <div class="add-note">
+        <select id="noteKind" onchange="document.getElementById('noteNumber').disabled = this.value !== 'point'">
+          <option value="point">Point</option><option value="title">Sermon title</option><option value="highlight">Highlight</option>
+        </select>
+        <input type="number" id="noteNumber" placeholder="No." min="1" max="99">
+        <input type="text" id="noteText" placeholder="Wording, e.g. Faith comes by hearing">
+        <input type="text" id="noteRef" placeholder="Reference (optional)">
+        <button class="btn btn-accent" onclick="addManualNote()"><svg class="icon"><use href="/assets/icons.svg#i-plus"/></svg>Add</button>
+      </div>
+      <div class="hint">A reference must exist in the Bible (e.g. Romans 10:17). Di.Verse never guesses one: only references the preacher says, the one on screen, or one you type are attached.</div>
+    </div>
+    <div id="noteList" style="display:flex;flex-direction:column;gap:10px;"></div>
+  </section>
+
+  <!-- Songs -->
+  <section class="view" id="view-songs" aria-label="Songs">
+    <div class="view-head"><h2>Songs</h2><p>Click a slide · Up / Down or a clicker to move · <a href="/admin" style="color:var(--gold);">manage songs</a></p></div>
+    <div class="row">
+      <input type="text" id="songSearch" placeholder="Search songs..." oninput="searchSongs(this.value)" style="flex:1;max-width:420px;">
+      <label class="switch" title="Listen to the worship leader and move to the right slide automatically"><input type="checkbox" id="followToggle" onchange="setFollow(this.checked)"> Follow the singer</label>
+    </div>
+    <div class="songs-row">
+      <div class="song-list" id="songList"></div>
+      <div class="slide-list" id="slideList"><div style="color:var(--graphite-400);cursor:default;">Pick a song</div></div>
+    </div>
+  </section>
+
+  <!-- Virtual set -->
+  <section class="view" id="view-vset" aria-label="Virtual Set">
+    <div class="view-head"><h2>Virtual Set</h2><p>Edit and preview a profile here. Nothing changes on the screens until you take it live.</p></div>
+    <div class="vset">
+      <div>
+        <div class="profile-list" id="profileList"></div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn btn-dim" onclick="vsNew()"><svg class="icon"><use href="/assets/icons.svg#i-plus"/></svg>New</button>
+          <button class="btn btn-dim" onclick="vsDuplicate()">Duplicate</button>
+          <button class="btn btn-quiet" onclick="vsDelete()" title="Delete this profile"><svg class="icon"><use href="/assets/icons.svg#i-trash"/></svg></button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0;">
+        <div class="preview-frame"><span class="tag">PREVIEW</span><iframe id="vsPreview" title="Virtual set preview" src="about:blank"></iframe></div>
+        <div class="row">
+          <button class="btn btn-dim" onclick="vsSample(false)">Sample verse</button>
+          <button class="btn btn-dim" onclick="vsSample(true)">Sample verse and point</button>
+          <span style="flex:1;"></span>
+          <span id="vsStatus" class="hint" style="margin:0;"></span>
+          <button class="btn btn-dim" onclick="vsSave(false)"><svg class="icon"><use href="/assets/icons.svg#i-check"/></svg>Save</button>
+          <button class="btn btn-accent" onclick="vsSave(true)" title="Save, then apply this profile to every screen and set the display mode"><svg class="icon"><use href="/assets/icons.svg#i-play"/></svg>Take live</button>
+        </div>
+        <div class="card">
+          <div class="form-grid" id="vsForm">
+            <label class="field">Profile name<input type="text" id="vsName" maxlength="60"></label>
+            <label class="field">Layout<select id="vsLayout"></select></label>
+            <label class="field">Background<select id="vsBackground"></select></label>
+            <label class="field">Typeface<select id="vsTypeface"><option value="serif">Serif (teaching)</option><option value="sans">Sans</option></select></label>
+            <label class="field">Text scale <output id="vsScaleOut"></output><input type="range" id="vsScale" min="0.7" max="1.6" step="0.05"></label>
+            <label class="field">Safe area margin <output id="vsSafeOut"></output><input type="range" id="vsSafe" min="0" max="10" step="0.5"></label>
+            <label class="field">Lower third width <output id="vsWidthOut"></output><input type="range" id="vsWidth" min="40" max="100" step="1"></label>
+            <label class="field">Horizontal offset <output id="vsXOut"></output><input type="range" id="vsX" min="-20" max="20" step="1"></label>
+            <label class="field">Vertical offset <output id="vsYOut"></output><input type="range" id="vsY" min="-20" max="20" step="1"></label>
+            <label class="field">Split ratio (scripture side) <output id="vsSplitOut"></output><input type="range" id="vsSplit" min="35" max="65" step="1"></label>
+            <label class="field">Transition<select id="vsTransition"></select></label>
+            <label class="field">Transition time <output id="vsMsOut"></output><input type="range" id="vsMs" min="0" max="2000" step="50"></label>
+            <label class="field">Ministry name<input type="text" id="vsMinistry" maxlength="60" placeholder="Shown top right when enabled"></label>
+            <label class="field">Tagline<input type="text" id="vsTagline" maxlength="80"></label>
+            <label class="field" style="justify-content:flex-end;"><span class="switch"><input type="checkbox" id="vsBrand"> Show ministry name on screen</span></label>
+            <div class="field">Palette
+              <div class="palette">
+                <input type="color" id="vsBase" title="Base"><input type="color" id="vsPanel" title="Panel"><input type="color" id="vsAccent" title="Accent"><input type="color" id="vsText" title="Text"><input type="color" id="vsMuted" title="Secondary text">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="hint" style="margin:0;">vMix: add a Web Browser input at <code>/projection?overlay=1</code> (1920 x 1080 or 3840 x 2160) above the camera. Squeeze and Split zoom the live camera into the window automatically when VMIX_URL is set.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Presentation history -->
+  <section class="view" id="view-history" aria-label="Presentation History">
+    <div class="view-head"><h2>Presentation History</h2>
+      <div class="row"><input type="text" id="historyFilter" placeholder="Filter" oninput="renderHistory()" style="width:200px;"><button class="btn btn-dim" onclick="loadHistory()"><svg class="icon"><use href="/assets/icons.svg#i-refresh"/></svg>Refresh</button></div>
+    </div>
+    <div class="card" style="padding:0;overflow:auto;flex:1;min-height:200px;">
+      <table class="history"><thead><tr><th>Time</th><th>Type</th><th>On screen</th><th>Detail</th></tr></thead><tbody id="historyBody"></tbody></table>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section class="view" id="view-settings" aria-label="Settings">
+    <div class="view-head"><h2>Settings</h2><p>Saved on this laptop.</p></div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="label">Listening</div>
+        <label class="switch" title="Off: Whisper runs only when Chrome captions miss a sentence. On: send every speech chunk to Whisper as well and display its independent transcript for comparison; this uses more transcription quota.">
+          <input type="checkbox" id="whisperToggle" onchange="whisperAlways = this.checked; savePref('whisperAlways', this.checked ? '1' : '')"> Whisper double-check
+        </label>
+        <div class="hint">Auto-push sits next to Push in the program column, so it is always in reach.</div>
+      </div>
+      <div class="card">
+        <div class="label">System</div>
+        <div class="links">
+          <a href="/setup"><svg class="icon"><use href="/assets/icons.svg#i-settings"/></svg>Setup and diagnostics</a>
+          <a href="/admin/bibles"><svg class="icon"><use href="/assets/icons.svg#i-book"/></svg>Bibles</a>
+          <a href="/admin"><svg class="icon"><use href="/assets/icons.svg#i-music"/></svg>Songs library</a>
+          <a href="/preacher" target="_blank"><svg class="icon"><use href="/assets/icons.svg#i-live"/></svg>Preacher monitor</a>
+          <a href="/projection" target="_blank"><svg class="icon"><use href="/assets/icons.svg#i-live"/></svg>Projection</a>
+          <a href="/about"><svg class="icon"><use href="/assets/icons.svg#i-circle"/></svg>About</a>
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Keyboard</div>
+        <div class="keys">
+          <kbd>Alt 1 to 7</kbd><span>Sections</span>
+          <kbd>/</kbd><span>Quick search</span>
+          <kbd>Space</kbd><span>Push the selected verse</span>
+          <kbd>Left Right</kbd><span>Previous or next verse (Shift: chapter), or slide</span>
+          <kbd>Up Down</kbd><span>Queue, or slide</span>
+          <kbd>R</kbd><span>Reference only</span>
+          <kbd>H</kbd><span>Hide the sermon note</span>
+          <kbd>M</kbd><span>Display mode</span>
+          <kbd>Esc</kbd><span>Clear the screens</span>
+          <kbd>+ -</kbd><span>Font size</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Program column: what is on screen, the queue and Push, visible in every section -->
+<aside class="program" aria-label="Program">
+  <div class="now-playing">
+    <div class="onair-head"><span class="onair-tag" id="onAirTag">ON SCREEN NOW</span></div>
+    <div id="nowPlaying"><div class="empty-state">Nothing displayed: logo showing</div></div>
+    <div class="nav-row" title="Move through the passage on screen. Keys: Left / Right verse, Shift chapter, a clicker's Page Up / Page Down. The preacher can also say &quot;next verse&quot;, &quot;take it back&quot;, &quot;verse 17&quot;, &quot;next chapter&quot;.">
+      <button class="btn btn-dim" onclick="stepVerse('prev','chapter')" title="Previous chapter"><svg class="icon"><use href="/assets/icons.svg#i-first"/></svg>Ch</button>
+      <button class="btn btn-dim nav-main" onclick="stepVerse('prev','verse')"><svg class="icon"><use href="/assets/icons.svg#i-prev"/></svg>Prev verse</button>
+      <button class="btn btn-dim nav-main" onclick="stepVerse('next','verse')">Next verse<svg class="icon"><use href="/assets/icons.svg#i-next"/></svg></button>
+      <button class="btn btn-dim" onclick="stepVerse('next','chapter')" title="Next chapter">Ch<svg class="icon"><use href="/assets/icons.svg#i-last"/></svg></button>
     </div>
   </div>
-</main>
+  <div class="note-onair" id="noteOnAir">
+    <div style="min-width:0;flex:1;"><div class="k" id="noteOnAirKind">Sermon note</div><div class="t" id="noteOnAirText"></div></div>
+    <button class="btn btn-dim" onclick="hideNote()" title="Hide the note (H). Scripture or lyrics stay."><svg class="icon"><use href="/assets/icons.svg#i-hide"/></svg>Hide</button>
+  </div>
+  <div class="queue-panel">
+    <div class="label" style="margin-bottom:10px;">Queue <span id="queueCount" class="soft"></span></div>
+    <div id="queueContainer"><div class="empty-state">Detected verses appear here...</div></div>
+  </div>
+  <div id="alertContainer"></div>
+  <div class="bottom">
+    <label class="switch" title="Auto-push only high-confidence scripture references (93% or higher); weaker matches stay in the queue for your review">
+      <input type="checkbox" id="autoPushToggle" onchange="autoPush = this.checked; savePref('autoPush', this.checked ? '1' : '')"> Auto-push confident matches
+    </label>
+    <div class="push-row">
+      <button class="btn btn-accent push" onclick="pushSelected()">PUSH TO SCREEN</button>
+      <button class="btn btn-dim" id="listenBtn" onclick="toggleListening()">Start</button>
+    </div>
+  </div>
+</aside>
 
 <script src="/projection/backgrounds.js"></script>
 <script src="/scripture-text.js"></script>
@@ -369,6 +661,7 @@ function connectWS() {
       }
     }
     if (msg.action === 'NOTICE') noteOnce(msg.message);
+    if (msg.action === 'SERMON_NOTES' && window.sermonNotesMessage) sermonNotesMessage(msg.notes);
     if (msg.action === 'TRANSLATION_CHANGE') setTranslation(msg.translation, true);
     if (msg.action === 'AUDIO_BRIDGE_STATUS') {
       remoteAudioBridgeConnected = !!msg.connected;
@@ -569,9 +862,12 @@ loadTranslations();
 // Lower-third → Squeeze (camera shrinks into a window, big scripture panel)
 // → Full-screen. Squeeze switches vMix automatically when VMIX_URL is set.
 var MODES = [
-  ['lower-third', '◧ Lower-Third'],
-  ['squeeze', '◰ Squeeze (preacher small, big text)'],
-  ['full-screen', '⬜ Full-Screen (scripture only)'],
+  ['lower-third', 'Lower third'],
+  ['squeeze', 'Squeeze (preacher small, big text)'],
+  ['split-right', 'Split: preacher left, scripture right'],
+  ['split-left', 'Split: scripture left, preacher right'],
+  ['cinematic', 'Cinematic teaching'],
+  ['full-screen', 'Full screen (scripture only)'],
 ];
 function toggleMode() {
   var i = MODES.findIndex(function(m) { return m[0] === displayMode; });
@@ -584,6 +880,7 @@ function setMode(mode, fromOperator) {
   displayMode = m[0];
   document.getElementById('modeBtn').textContent = m[1];
   savePref('mode', displayMode);
+  if (window.renderModeTiles) renderModeTiles();
   if (!fromOperator || !onScreen) return;
   if (onScreen.type === 'verse') pushVerse(onScreen.item, true, 'mode');
   else if (onScreen.type === 'slide') pushSlide(onScreen.index);
@@ -679,7 +976,7 @@ function searchSongs(q) {
       var songs = await res.json();
       var el = document.getElementById('songList');
       el.innerHTML = '';
-      if (!songs.length) { el.innerHTML = '<div style="color:#445;cursor:default;">No songs — add them in Admin</div>'; return; }
+      if (!songs.length) { el.innerHTML = '<div style="color:var(--graphite-400);cursor:default;">No songs yet: add them in Admin</div>'; return; }
       songs.forEach(function(song) {
         var d = document.createElement('div');
         d.textContent = song.title + (song.artist ? ' — ' + song.artist : '');
@@ -769,7 +1066,7 @@ function followLyrics(heard) {
 function renderSlides() {
   var el = document.getElementById('slideList');
   el.innerHTML = '';
-  if (!activeSlides.length) { el.innerHTML = '<div style="color:#445;cursor:default;">This song has no slides</div>'; return; }
+  if (!activeSlides.length) { el.innerHTML = '<div style="color:var(--graphite-400);cursor:default;">This song has no slides</div>'; return; }
   activeSlides.forEach(function(slide, i) {
     var d = document.createElement('div');
     d.textContent = (i + 1) + '. ' + (slide.section ? '[' + slide.section + '] ' : '') + slide.content.replace(/\s+/g, ' ');
@@ -843,14 +1140,14 @@ function renderQueue() {
   var count = document.getElementById('queueCount');
   count.textContent = queue.length > 0 ? '(' + queue.length + ')' : '';
   if (queue.length === 0) {
-    el.innerHTML = '<div style="color:#333355;font-size:0.8rem;font-style:italic;">Detected verses appear here...</div>';
+    el.innerHTML = '<div class="empty-state">Detected verses appear here...</div>';
     return;
   }
   el.innerHTML = queue.slice(0, 8).map(function(item, i) {
     // A Bible story being told: show its reference for note-takers, or open the passage
     if (item.type === 'story') {
       return '<div class="queue-item story' + (i===selectedIndex?' selected':'') + '" onclick="selectItem(' + i + ')">' +
-        '<div class="q-ref">📖 ' + escapeHTML(item.story.title) + '</div>' +
+        '<div class="q-ref">Bible story: ' + escapeHTML(item.story.title) + '</div>' +
         '<div class="q-text" style="font-style:italic;">' + escapeHTML(item.reference) + '</div>' +
         '<div class="q-actions"><button class="btn btn-dim" onclick="event.stopPropagation();pushReference(' + i + ')">Ref on screen</button>' +
         '<button class="btn btn-dim" onclick="event.stopPropagation();openPassage(' + i + ')">Open passage</button></div>' +
@@ -1044,7 +1341,7 @@ async function pushSelected() {
 function renderNowPlaying() {
   var el = document.getElementById('nowPlaying');
   if (!currentVerse && refOnScreen) { el.innerHTML = '<div class="verse-card"><div class="ref">Scriptural Reference</div><div class="txt" style="font-style:italic;">' + escapeHTML(refOnScreen) + ' <span style="opacity:0.6;font-style:normal;">(reference only)</span></div></div>'; return; }
-  if (!currentVerse) { el.innerHTML = '<div class="empty-state">Nothing displayed — logo showing</div>'; return; }
+  if (!currentVerse) { el.innerHTML = '<div class="empty-state">Nothing displayed: logo showing</div>'; return; }
   el.innerHTML = '<div class="verse-card"><div class="ref">' + escapeHTML(currentVerse.reference) +
     ' <span class="trans">' + escapeHTML(currentVerse.translation) + '</span></div>' +
     '<div class="txt">' + escapeHTML(DiVerseScriptureText.display(currentVerse.text)) + '</div></div>';
@@ -1471,6 +1768,7 @@ var base64 = btoa(binary);
       }
 
       appendTranscription('[WHISPER · ' + (result.provider || 'provider') + (result.model ? ' · ' + result.model : '') + '] ' + text);
+      if (window.sermonHear) sermonHear(text, heardAt);
       followLyrics(text);
       transcriptionContext.push(text);
       if (transcriptionContext.length > 3) transcriptionContext.shift();
@@ -1497,6 +1795,7 @@ var base64 = btoa(binary);
     if (text.length < 3) return;
     appendTranscription('[WHISPER · Windows · ' + (msg.provider || 'provider') +
       (msg.model ? ' · ' + msg.model : '') + '] ' + text);
+    if (window.sermonHear) sermonHear(text, msg.heardAt);
     followLyrics(text);
     transcriptionContext.push(text);
     if (transcriptionContext.length > 3) transcriptionContext.shift();
@@ -1645,7 +1944,7 @@ var base64 = btoa(binary);
     var t = remoteAudioBridgeConnected ? 'Windows audio · Whisper'
       : !isListening ? '' : activeUsesCustomAudioInput || whisperAlways
         ? (captionsBlocked || !SpeechRec || activeUsesCustomAudioInput ? 'Whisper' : 'Captions + Whisper check')
-        : (captionsBlocked || !SpeechRec ? 'Whisper' : captionsHealthy() ? 'Live captions ✓ · Whisper standby' : 'Whisper covering');
+        : (captionsBlocked || !SpeechRec ? 'Whisper' : captionsHealthy() ? 'Live captions · Whisper standby' : 'Whisper covering');
     if (t !== engineShown) { engineShown = t; document.getElementById('engineLabel').textContent = t; }
   }
 
@@ -1716,6 +2015,7 @@ var base64 = btoa(binary);
     showInterim('');
     clearTimeout(interimTimer);
     appendTranscription(text);
+    if (window.sermonHear) sermonHear(text);
     transcriptionContext.push(text);
     if (transcriptionContext.length > 3) transcriptionContext.shift();
     lastFastText = '';
@@ -1778,7 +2078,7 @@ var base64 = btoa(binary);
     var tag = e.target.tagName;
     // Typing in a box: leave keys alone. Checkboxes keep focus after a click,
     // so they must not swallow the clicker / arrow keys.
-    if ((tag === 'INPUT' && e.target.type !== 'checkbox') || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if ((tag === 'INPUT' && e.target.type !== 'checkbox') || tag === 'SELECT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
     if (e.key === '/')           { e.preventDefault(); document.getElementById('quickRef').focus(); return; }
     if (e.code === 'Space')      { e.preventDefault(); pushSelected(); }
     if (e.code === 'KeyR')       { pushReference(selectedIndex); }
@@ -1829,6 +2129,292 @@ var base64 = btoa(binary);
   
   try { buildBackgroundList(); restorePrefs(); }
   catch (err) { console.error('[Start-up]', err); showAlert('Some saved settings could not be restored: ' + err.message); }
+</script>
+<script>
+// ===== v1.12: sections, sermon notes, virtual set, presentation history =====
+// Separate from the scripture code above: it only calls the existing
+// setMode / showAlert / escapeHTML / savePref helpers.
+(function() {
+  function $(id) { return document.getElementById(id); }
+  function api(method, url, body) {
+    return fetch(url, { method: method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined })
+      .then(function(r) { return r.json().catch(function() { return {}; }).then(function(j) { if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; }); });
+  }
+  function icon(name) { return '<svg class="icon"><use href="/assets/icons.svg#i-' + name + '"/></svg>'; }
+
+  // ── sections ──
+  var VIEWS = ['live', 'scripture', 'sermon', 'songs', 'vset', 'history', 'settings'];
+  window.showView = function(name) {
+    if (VIEWS.indexOf(name) < 0) name = 'live';
+    VIEWS.forEach(function(v) { $('view-' + v).classList.toggle('active', v === name); });
+    [].forEach.call(document.querySelectorAll('.rail-btn'), function(b) { b.classList.toggle('active', b.getAttribute('data-view') === name); b.setAttribute('aria-current', b.getAttribute('data-view') === name ? 'page' : 'false'); });
+    savePref('view', name);
+    if (name === 'history') loadHistory();
+    if (name === 'vset') vsOpen();
+    if (name === 'sermon') loadNotes();
+  };
+  [].forEach.call(document.querySelectorAll('.rail-btn'), function(b) { b.onclick = function() { showView(b.getAttribute('data-view')); }; });
+  document.addEventListener('keydown', function(e) {
+    // Alt+1..7 (by key position, so it also works on a Mac keyboard)
+    if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-7]$/.test(e.code)) { e.preventDefault(); showView(VIEWS[Number(e.code.slice(5)) - 1]); return; }
+    var tag = e.target.tagName;
+    if ((tag === 'INPUT' && e.target.type !== 'checkbox') || tag === 'SELECT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+    if (e.code === 'KeyH' && !e.altKey && !e.ctrlKey && !e.metaKey) hideNote();
+  });
+
+  // ── display-mode tiles (Scripture section) ──
+  var THUMBS = {
+    'lower-third': '<i style="left:8%;right:8%;bottom:9%;height:22%"></i>',
+    'squeeze': '<b style="left:4%;top:7%;width:24%;height:24%"></b><i style="left:33%;right:4%;top:7%;bottom:7%"></i>',
+    'split-left': '<i style="left:4%;width:44%;top:14%;bottom:14%"></i><b style="right:4%;width:44%;top:14%;bottom:14%"></b>',
+    'split-right': '<b style="left:4%;width:44%;top:14%;bottom:14%"></b><i style="right:4%;width:44%;top:14%;bottom:14%"></i>',
+    'cinematic': '<b style="left:0;right:0;top:0;height:13%;background:#000"></b><b style="left:0;right:0;bottom:0;height:13%;background:#000"></b><i style="left:16%;right:16%;top:36%;height:28%"></i>',
+    'full-screen': '<i style="left:8%;right:8%;top:16%;bottom:16%"></i>'
+  };
+  window.renderModeTiles = function() {
+    var grid = $('modeGrid'); if (!grid) return;
+    grid.innerHTML = MODES.map(function(m) {
+      return '<button class="mode-tile' + (m[0] === displayMode ? ' active' : '') + '" onclick="setMode(\'' + m[0] + '\', true)"><span class="thumb">' + (THUMBS[m[0]] || '') + '</span>' + escapeHTML(m[1]) + '</button>';
+    }).join('');
+  };
+  renderModeTiles();
+
+  // ── sermon notes ──
+  var notes = [], noteOnAir = null, noteTimer = null, editing = null;
+  var KIND = { title: 'Sermon title', highlight: 'Highlight' };
+  function kindLabel(n) { return n.kind === 'point' ? (n.number ? 'Point ' + n.number : 'Point') : KIND[n.kind]; }
+  function textOf(n) { return n.display || n.original; }
+
+  window.loadNotes = function() {
+    return api('GET', '/api/sermon').then(function(d) {
+      notes = d.notes || [];
+      $('sermonTitle').value = (d.session && d.session.title) || '';
+      renderNotes();
+    }).catch(function(err) { console.warn('[Sermon]', err.message); });
+  };
+  function upsert(list) {
+    (list || []).forEach(function(n) {
+      var i = notes.findIndex(function(x) { return x.id === n.id; });
+      if (n.status === 'dismissed') { if (i >= 0) notes.splice(i, 1); return; }
+      if (i >= 0) notes[i] = n; else notes.push(n);
+      if (n.kind === 'title' && n.status === 'approved') $('sermonTitle').value = textOf(n);
+    });
+    renderNotes();
+  }
+  window.sermonNotesMessage = upsert;
+
+  function renderNotes() {
+    var pending = notes.filter(function(n) { return n.status === 'suggested'; });
+    $('sermonCount').textContent = pending.length ? String(pending.length) : '';
+    // Live Control strip: the newest suggestions
+    $('liveNotes').innerHTML = pending.slice(-6).reverse().map(function(n) {
+      return '<div class="mini-note"><span class="k">' + escapeHTML(kindLabel(n)) + '</span><span class="t" title="' + escapeHTML(n.original) + '">' + escapeHTML(textOf(n)) + '</span>' +
+        '<button class="btn btn-dim" title="Approve" onclick="noteApprove(' + n.id + ')">' + icon('check') + '</button>' +
+        '<button class="btn btn-dim" title="Show now" onclick="noteShow(' + n.id + ')">' + icon('play') + '</button>' +
+        '<button class="btn btn-quiet" title="Dismiss" onclick="noteDismiss(' + n.id + ')">' + icon('x') + '</button></div>';
+    }).join('');
+    var list = $('noteList');
+    if (!notes.length) { list.innerHTML = '<div class="empty-state">No notes yet. They appear as the preacher announces a title, a point or a key thought, or add one above.</div>'; return; }
+    list.innerHTML = notes.map(function(n) {
+      var heard = n.display && n.display !== n.original ? '<div class="note-heard">Heard: "' + escapeHTML(n.original) + '"</div>' : '';
+      var refs = n.refs.map(function(r, i) {
+        return '<span class="chip" title="' + escapeHTML({ spoken: 'Said by the preacher', 'on-screen': 'On screen when this was said', manual: 'Added by the operator' }[r.kind] || '') + '">' + escapeHTML(r.reference) + ' <small>' + escapeHTML(r.kind === 'on-screen' ? 'on screen' : r.kind) + '</small><button title="Remove" onclick="noteRemoveRef(' + n.id + ',' + i + ')">' + icon('x') + '</button></span>';
+      }).join('');
+      return '<div class="note ' + n.status + (noteOnAir === n.id ? ' onair' : '') + '" id="note-' + n.id + '">' +
+        '<div class="note-kind">' + escapeHTML(kindLabel(n)) + '<span class="st ' + n.status + '">' + (n.status === 'approved' ? 'Approved' : 'Suggested') + '</span>' +
+          (n.shown_count ? ' <span class="soft" style="letter-spacing:0;text-transform:none;font-weight:400;color:var(--graphite-400);">· shown ' + n.shown_count + 'x</span>' : '') + '</div>' +
+        '<div class="note-text" id="noteText-' + n.id + '"' + (editing === n.id ? ' contenteditable="true"' : '') + '>' + escapeHTML(textOf(n)) + '</div>' + heard +
+        '<div class="note-refs">' + refs + '<input type="text" placeholder="Add reference" onkeydown="if(event.key===\'Enter\')noteAddRef(' + n.id + ',this)"></div>' +
+        '<div class="note-actions">' +
+          (n.status !== 'approved' ? '<button class="btn btn-accent" onclick="noteApprove(' + n.id + ')">' + icon('check') + 'Approve</button>' : '') +
+          '<button class="btn btn-dim" onclick="noteShow(' + n.id + ')">' + icon('play') + (n.kind === 'title' ? 'Show 10 s' : 'Show') + '</button>' +
+          (n.kind === 'title' ? '<button class="btn btn-dim" onclick="noteShow(' + n.id + ',0)">Show until hidden</button>' : '') +
+          (editing === n.id ? '<button class="btn btn-dim" onclick="noteSaveEdit(' + n.id + ')">' + icon('check') + 'Save wording</button><button class="btn btn-quiet" onclick="noteUseHeard(' + n.id + ')">Use heard wording</button>'
+            : '<button class="btn btn-dim" onclick="noteEdit(' + n.id + ')">' + icon('edit') + 'Edit</button>') +
+          '<button class="btn btn-quiet" onclick="noteDismiss(' + n.id + ')">' + icon('trash') + (n.status === 'approved' ? 'Delete' : 'Dismiss') + '</button>' +
+        '</div></div>';
+    }).join('');
+  }
+  function fail(err) { showAlert(err.message); }
+  window.noteApprove = function(id) { api('PATCH', '/api/sermon/notes/' + id, { status: 'approved' }).then(function(n) { upsert([n]); }).catch(fail); };
+  window.noteDismiss = function(id) {
+    var n = notes.find(function(x) { return x.id === id; });
+    var req = n && n.status === 'approved' ? api('DELETE', '/api/sermon/notes/' + id) : api('PATCH', '/api/sermon/notes/' + id, { status: 'dismissed' });
+    req.then(function() { notes = notes.filter(function(x) { return x.id !== id; }); if (noteOnAir === id) hideNote(); renderNotes(); }).catch(fail);
+  };
+  window.noteEdit = function(id) { editing = id; renderNotes(); var el = $('noteText-' + id); if (el) { el.focus(); document.getSelection().selectAllChildren(el); } };
+  window.noteSaveEdit = function(id) {
+    var el = $('noteText-' + id), text = el ? el.textContent.trim() : '';
+    editing = null;
+    api('PATCH', '/api/sermon/notes/' + id, { display: text }).then(function(n) { upsert([n]); }).catch(fail);
+  };
+  window.noteUseHeard = function(id) { editing = null; api('PATCH', '/api/sermon/notes/' + id, { display: null }).then(function(n) { upsert([n]); }).catch(fail); };
+  window.noteAddRef = function(id, input) {
+    var ref = input.value.trim(); if (!ref) return;
+    api('POST', '/api/sermon/notes/' + id + '/refs', { reference: ref }).then(function(n) { upsert([n]); }).catch(fail);
+  };
+  window.noteRemoveRef = function(id, i) {
+    var n = notes.find(function(x) { return x.id === id; }); if (!n) return;
+    var refs = n.refs.slice(); refs.splice(i, 1);
+    api('PATCH', '/api/sermon/notes/' + id, { refs: refs }).then(function(x) { upsert([x]); }).catch(fail);
+  };
+  // Show (or replay): approving it on the way, since the operator chose it
+  window.noteShow = function(id, durationMs) {
+    var n = notes.find(function(x) { return x.id === id; });
+    var approve = n && n.status !== 'approved' ? api('PATCH', '/api/sermon/notes/' + id, { status: 'approved' }).then(function(x) { upsert([x]); }) : Promise.resolve();
+    approve.then(function() { return api('POST', '/api/sermon/notes/' + id + '/show', durationMs != null ? { durationMs: durationMs } : {}); })
+      .then(function(r) { upsert([r.note]); setNoteOnAir(r.note, r.durationMs); }).catch(fail);
+  };
+  window.hideNote = function() {
+    if (!noteOnAir) return;
+    api('POST', '/api/sermon/hide').catch(fail);
+    setNoteOnAir(null);
+  };
+  function setNoteOnAir(n, durationMs) {
+    clearTimeout(noteTimer);
+    noteOnAir = n ? n.id : null;
+    $('noteOnAir').classList.toggle('show', !!n);
+    if (n) {
+      $('noteOnAirKind').textContent = kindLabel(n) + (durationMs ? ' · ' + Math.round(durationMs / 1000) + ' s' : ' · until hidden');
+      $('noteOnAirText').textContent = textOf(n);
+      if (durationMs) noteTimer = setTimeout(function() { setNoteOnAir(null); }, durationMs);
+    }
+    renderNotes();
+  }
+  window.sermonScreen = function(msg) {   // ON_SCREEN from the server: another operator page showed or hid a note
+    if (msg && msg.note === null && noteOnAir) setNoteOnAir(null);
+  };
+  window.addManualNote = function() {
+    var kind = $('noteKind').value, text = $('noteText').value.trim();
+    if (!text) { $('noteText').focus(); return; }
+    api('POST', '/api/sermon/notes', { kind: kind, number: kind === 'point' ? Number($('noteNumber').value) || null : null, original: text, refText: $('noteRef').value.trim() })
+      .then(function(n) { upsert([n]); $('noteText').value = ''; $('noteRef').value = ''; if (kind === 'point') $('noteNumber').value = (n.number || 0) + 1; })
+      .catch(fail);
+  };
+  $('noteText').addEventListener('keydown', function(e) { if (e.key === 'Enter') addManualNote(); });
+  window.newSermon = function() {
+    var title = prompt('Title of the new sermon (optional):', '');
+    if (title === null) return;
+    api('POST', '/api/sermon/session', { title: title.trim() }).then(function(d) { notes = d.notes || []; $('sermonTitle').value = (d.session && d.session.title) || ''; renderNotes(); }).catch(fail);
+  };
+  // A finished sentence from any speech engine: the server suggests notes
+  window.sermonHear = function(text, heardAt) {
+    if (!$('sermonDetect').checked || !text || text.length < 8) return;
+    api('POST', '/api/sermon/observe', { text: text, heardAt: heardAt || Date.now() }).catch(function() {});
+  };
+  if (loadPref('sermonDetect') === '0') $('sermonDetect').checked = false;
+  $('noteNumber').value = '';
+  loadNotes();
+
+  // ── virtual set ──
+  var vs = { profiles: [], liveId: null, selected: null, layouts: [], backgrounds: [], transitions: [] };
+  var LAYOUT_NAMES = { 'lower-third': 'Lower third', squeeze: 'Squeeze', 'split-left': 'Split: scripture left', 'split-right': 'Split: scripture right', cinematic: 'Cinematic teaching', 'full-screen': 'Full screen' };
+  var BG_NAMES = { theme: 'Caption look (Scripture section)', transparent: 'Transparent (over camera)', 'navy-gradient': 'Navy gradient', graphite: 'Graphite', parchment: 'Parchment', 'cinematic-dark': 'Cinematic dark' };
+  var TR_NAMES = { fade: 'Fade', slide: 'Slide', none: 'Cut' };
+  function fill(sel, list, names) { $(sel).innerHTML = list.map(function(v) { return '<option value="' + v + '">' + escapeHTML(names[v] || v) + '</option>'; }).join(''); }
+  function vsLoad() {
+    return api('GET', '/api/vset').then(function(d) {
+      vs.profiles = d.profiles; vs.liveId = d.liveId;
+      if (!vs.layouts.length) { vs.layouts = d.layouts; fill('vsLayout', d.layouts, LAYOUT_NAMES); fill('vsBackground', d.backgrounds, BG_NAMES); fill('vsTransition', d.transitions, TR_NAMES); }
+      if (!vs.selected || !vs.profiles.some(function(p) { return p.id === vs.selected; })) vs.selected = vs.liveId || (vs.profiles[0] && vs.profiles[0].id);
+      vsRenderList(); vsFillForm();
+    });
+  }
+  window.vsOpen = function() {
+    var f = $('vsPreview');
+    if (f.getAttribute('src') === 'about:blank') { f.onload = function() { setTimeout(vsPreview, 300); }; f.src = '/projection?preview=1'; }
+    vsLoad().catch(fail);
+  };
+  function vsRenderList() {
+    $('profileList').innerHTML = vs.profiles.map(function(p) {
+      return '<button class="profile' + (p.id === vs.selected ? ' selected' : '') + '" onclick="vsSelect(' + p.id + ')"><span>' + escapeHTML(p.name) + '<br><span class="hint" style="margin:0;">' + escapeHTML(LAYOUT_NAMES[p.settings.layout] || p.settings.layout) + '</span></span>' + (p.id === vs.liveId ? '<span class="live-tag">LIVE</span>' : '') + '</button>';
+    }).join('');
+  }
+  window.vsSelect = function(id) { vs.selected = id; vsRenderList(); vsFillForm(); };
+  function current() { return vs.profiles.find(function(p) { return p.id === vs.selected; }); }
+  function vsFillForm() {
+    var p = current(); if (!p) return;
+    var st = p.settings;
+    $('vsName').value = p.name; $('vsLayout').value = st.layout; $('vsBackground').value = st.background; $('vsTypeface').value = st.typeface;
+    $('vsScale').value = st.textScale; $('vsSafe').value = st.safeArea; $('vsWidth').value = st.position.width; $('vsX').value = st.position.x; $('vsY').value = st.position.y;
+    $('vsSplit').value = st.splitRatio; $('vsTransition').value = st.transition.type; $('vsMs').value = st.transition.ms;
+    $('vsMinistry').value = st.ministry.name; $('vsTagline').value = st.ministry.tagline; $('vsBrand').checked = st.ministry.showBrand;
+    $('vsBase').value = st.palette.base; $('vsPanel').value = st.palette.panel; $('vsAccent').value = st.palette.accent; $('vsText').value = st.palette.text; $('vsMuted').value = st.palette.muted;
+    vsOutputs(); vsPreview(); $('vsStatus').textContent = p.id === vs.liveId ? 'This profile is live' : '';
+  }
+  function vsRead() {
+    return { name: $('vsName').value.trim(), settings: {
+      layout: $('vsLayout').value, background: $('vsBackground').value, typeface: $('vsTypeface').value,
+      textScale: Number($('vsScale').value), safeArea: Number($('vsSafe').value), splitRatio: Number($('vsSplit').value),
+      position: { width: Number($('vsWidth').value), x: Number($('vsX').value), y: Number($('vsY').value) },
+      transition: { type: $('vsTransition').value, ms: Number($('vsMs').value) },
+      ministry: { name: $('vsMinistry').value, tagline: $('vsTagline').value, showBrand: $('vsBrand').checked },
+      palette: { base: $('vsBase').value, panel: $('vsPanel').value, accent: $('vsAccent').value, text: $('vsText').value, muted: $('vsMuted').value }
+    } };
+  }
+  function vsOutputs() {
+    $('vsScaleOut').textContent = Math.round($('vsScale').value * 100) + '%';
+    $('vsSafeOut').textContent = $('vsSafe').value + '%';
+    $('vsWidthOut').textContent = $('vsWidth').value + '%';
+    $('vsXOut').textContent = $('vsX').value + '%';
+    $('vsYOut').textContent = $('vsY').value + '%';
+    $('vsSplitOut').textContent = $('vsSplit').value + ' / ' + (100 - $('vsSplit').value);
+    $('vsMsOut').textContent = $('vsMs').value + ' ms';
+  }
+  var sampleShown = false, sampleNote = false;
+  function vsPreview() {
+    var w = $('vsPreview').contentWindow; if (!w) return;
+    var draft = vsRead();
+    w.postMessage({ type: 'diverse:preview-profile', profile: { name: draft.name || 'draft', settings: draft.settings } }, location.origin);
+    if (sampleShown) w.postMessage({ type: 'diverse:preview-sample', mode: draft.settings.layout, note: sampleNote }, location.origin);
+  }
+  window.vsSample = function(withNote) { sampleShown = true; sampleNote = withNote; vsPreview(); };
+  [].forEach.call(document.querySelectorAll('#vsForm input, #vsForm select'), function(el) {
+    el.addEventListener('input', function() { vsOutputs(); vsPreview(); $('vsStatus').textContent = 'Unsaved changes'; });
+  });
+  window.vsSave = function(takeLive) {
+    var p = current(), draft = vsRead();
+    if (!draft.name) { $('vsName').focus(); return; }
+    var save = p ? api('PUT', '/api/vset/profiles/' + p.id, draft) : api('POST', '/api/vset/profiles', draft);
+    save.then(function(saved) {
+      vs.selected = saved.id;
+      if (!takeLive) return saved;
+      return api('POST', '/api/vset/live', { id: saved.id }).then(function() { setMode(saved.settings.layout, true); return saved; });
+    }).then(function() { return vsLoad(); }).then(function() { $('vsStatus').textContent = takeLive ? 'Live on every screen' : 'Saved'; }).catch(fail);
+  };
+  function uniqueName(base) { var n = base, i = 2; while (vs.profiles.some(function(p) { return p.name === n; })) n = base + ' ' + i++; return n; }
+  window.vsNew = function() {
+    api('POST', '/api/vset/profiles', { name: uniqueName('New profile'), settings: {} }).then(function(p) { vs.selected = p.id; return vsLoad(); }).catch(fail);
+  };
+  window.vsDuplicate = function() {
+    var p = current(); if (!p) return;
+    api('POST', '/api/vset/profiles', { name: uniqueName(p.name + ' copy'), settings: vsRead().settings }).then(function(x) { vs.selected = x.id; return vsLoad(); }).catch(fail);
+  };
+  window.vsDelete = function() {
+    var p = current(); if (!p) return;
+    if (!confirm('Delete the profile "' + p.name + '"?')) return;
+    api('DELETE', '/api/vset/profiles/' + p.id).then(function() { vs.selected = null; return vsLoad(); }).catch(fail);
+  };
+
+  // ── presentation history ──
+  var historyItems = [];
+  var KIND_NAMES = { scripture: 'Scripture', lyrics: 'Song', reference: 'Reference', note: 'Sermon note', clear: 'Cleared' };
+  window.loadHistory = function() {
+    api('GET', '/api/history?limit=500').then(function(d) { historyItems = d.items || []; renderHistory(); }).catch(fail);
+  };
+  window.renderHistory = function() {
+    var q = $('historyFilter').value.trim().toLowerCase();
+    var rows = historyItems.filter(function(h) { return !q || (h.label + ' ' + h.kind).toLowerCase().indexOf(q) >= 0; });
+    $('historyBody').innerHTML = rows.length ? rows.map(function(h) {
+      var d = new Date(h.at), det = h.detail || {};
+      var detail = [det.translation, det.displayMode, det.section].filter(Boolean).join(' · ');
+      return '<tr><td class="when">' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '</td>' +
+        '<td><span class="kind">' + escapeHTML(KIND_NAMES[h.kind] || h.kind) + '</span></td><td class="what">' + escapeHTML(h.label) + '</td><td>' + escapeHTML(detail) + '</td></tr>';
+    }).join('') : '<tr><td colspan="4" class="empty-state" style="padding:16px;">Nothing has been shown yet.</td></tr>';
+  };
+
+  showView(loadPref('view') || 'live');
+})();
 </script>
 </body>
 </html>

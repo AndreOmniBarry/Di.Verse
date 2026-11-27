@@ -1,0 +1,26 @@
+/* Di.Verse v1.12 design language for the supporting pages (Setup, Admin,
+   Bibles, About, Preacher). Loaded after each page's own styles: it maps the
+   older colour names onto navy, graphite, champagne gold and ivory. */
+:root {
+  --brand: #0B1424; --accent: #C9A961; --mid: #7C8698; --surface: #0F1A2D; --surface2: #1A263C;
+  --text: #D6D1C6; --white: #F4EFE4; --green: #4FBF8A;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+body { font-family: var(--sans); background: radial-gradient(120% 80% at 0% 0%, #0F1A2D, #0B1424 60%) fixed; }
+header { background: linear-gradient(180deg, #0F1A2D, #0B1424) !important; border-bottom: 1px solid rgba(201,169,97,0.38) !important; }
+header h1 { font-family: var(--serif); font-weight: 600; letter-spacing: 0.04em !important; }
+h2 { color: #7C8698; }
+.btn-accent { color: #070D18 !important; }
+.btn-accent:hover { background: #D9BC78 !important; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent) !important; outline: none; }
+a { color: var(--accent); }
+.err { color: #E06464; }
+/* status dots replace emoji in Setup and Bibles */
+.sdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: 1px; background: #566074; }
+.sdot.ok { background: #4FBF8A; box-shadow: 0 0 0 3px rgba(79,191,138,0.16); }
+.sdot.warn { background: #E0A84A; box-shadow: 0 0 0 3px rgba(224,168,74,0.16); }
+.sdot.fail { background: #E06464; box-shadow: 0 0 0 3px rgba(224,100,100,0.16); }
+.sdot.info { background: #C9A961; }
+.sdot.off { background: transparent; box-shadow: inset 0 0 0 2px #566074; }
+.icon { width: 16px; height: 16px; vertical-align: -3px; }

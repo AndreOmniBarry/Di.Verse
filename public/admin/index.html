@@ -99,7 +99,7 @@
       transition: all 0.2s;
     }
     .btn-accent { background: var(--accent); color: white; }
-    .btn-accent:hover { background: #C73652; }
+    .btn-accent:hover { background: #D9BC78; }
     .btn-green { background: var(--green); color: white; }
     .btn-green:hover { background: #0A6050; }
     .btn-dim {
@@ -133,7 +133,7 @@
       justify-content: space-between;
     }
     .song-item:hover { border-color: var(--accent); }
-    .song-item.active { border-color: var(--accent); background: rgba(233,69,96,0.07); }
+    .song-item.active { border-color: var(--accent); background: rgba(201,169,97,0.08); }
 
     .song-item .s-title {
       font-size: 0.85rem;
@@ -271,6 +271,7 @@
     }
     .toast.show { opacity: 1; }
   </style>
+  <link rel="stylesheet" href="/assets/theme.css">
 </head>
 <body>
 
@@ -279,7 +280,7 @@
     <h1>Di<span>.</span>Verse <span style="color:var(--mid);font-size:0.7rem;font-weight:normal;">SONG ADMIN</span></h1>
   </div>
   <div style="display:flex;gap:10px;align-items:center;">
-    <a href="/admin/bibles.html" class="btn btn-dim" style="text-decoration:none;color:var(--text);border:1px solid var(--mid);padding:6px 12px;border-radius:4px;font-size:0.78rem;">📖 Bibles</a>
+    <a href="/admin/bibles.html" class="btn btn-dim" style="text-decoration:none;color:var(--text);border:1px solid var(--mid);padding:6px 12px;border-radius:4px;font-size:0.78rem;">Bibles</a>
     <span class="header-sub" id="songCount">Loading...</span>
     <button class="btn btn-accent" onclick="showNewSongForm()">+ Add Song</button>
   </div>
@@ -300,7 +301,7 @@
   <!-- RIGHT: Editor -->
   <div class="editor-panel" id="editorPanel">
     <div class="empty-editor">
-      <div class="icon">🎵</div>
+      <div class="icon"><svg style="width:44px;height:44px;color:var(--accent)"><use href="/assets/icons.svg#i-music"/></svg></div>
       <p>Select a song to edit<br>or click <strong>+ Add Song</strong> to create one</p>
     </div>
   </div>
@@ -430,7 +431,7 @@
 
       <div class="action-bar">
         <button class="btn btn-accent" onclick="saveSong()" style="flex:1;">
-          ${isNew ? '✓ Create Song' : '✓ Save Changes'}
+          ${isNew ? 'Create Song' : 'Save Changes'}
         </button>
         ${!isNew ? `<button class="btn btn-danger" onclick="deleteSong(${song.id})">Delete</button>` : ''}
       </div>
@@ -451,7 +452,7 @@
               id="section-${i}"
               style="width:140px;padding:4px 8px;font-size:0.75rem;">
             <button class="btn btn-danger" style="padding:4px 8px;font-size:0.72rem;"
-              onclick="removeSlide(${i})">✕</button>
+              onclick="removeSlide(${i})" title="Remove slide" aria-label="Remove slide"><svg class="icon"><use href="/assets/icons.svg#i-x"/></svg></button>
           </div>
         </div>
         <textarea id="content-${i}" placeholder="Slide lyrics here...">${esc(slide.content)}</textarea>
@@ -564,7 +565,7 @@
     await loadSongs();
     document.getElementById('editorPanel').innerHTML = `
       <div class="empty-editor">
-        <div class="icon">🎵</div>
+        <div class="icon"><svg style="width:44px;height:44px;color:var(--accent)"><use href="/assets/icons.svg#i-music"/></svg></div>
         <p>Select a song to edit<br>or click <strong>+ Add Song</strong> to create one</p>
       </div>
     `;

@@ -10,7 +10,7 @@
 
     :root {
       --brand: #1A1A2E;
-      --accent: #E94560;
+      --accent: var(--accent);
       --mid: #4A4A6A;
       --surface: #22223A;
       --surface2: #2A2A45;
@@ -113,7 +113,7 @@
       width: 48px;
       height: 48px;
       border-radius: 50%;
-      background: rgba(233, 69, 96, 0.15);
+      background: rgba(201,169,97,0.15);
       border: 1px solid var(--accent);
       display: flex;
       align-items: center;
@@ -194,6 +194,7 @@
     }
     .back-link a:hover { color: var(--accent); }
   </style>
+  <link rel="stylesheet" href="/assets/theme.css">
 </head>
 <body>
 
@@ -207,13 +208,13 @@
     <div class="card-header">
       <svg class="favicon-preview" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
         <rect width="64" height="64" rx="12" fill="#1A1A2E"/>
-        <circle cx="32" cy="32" r="18" fill="none" stroke="#E94560" stroke-width="2"/>
-        <circle cx="32" cy="32" r="12" fill="none" stroke="#E94560" stroke-width="0.8" opacity="0.5"/>
-        <circle cx="32" cy="32" r="5" fill="#E94560"/>
-        <line x1="32" y1="27" x2="32" y2="14" stroke="#E94560" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="32" y1="37" x2="32" y2="50" stroke="#E94560" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>
-        <line x1="27" y1="32" x2="14" y2="32" stroke="#E94560" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>
-        <line x1="37" y1="32" x2="50" y2="32" stroke="#E94560" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>
+        <circle cx="32" cy="32" r="18" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <circle cx="32" cy="32" r="12" fill="none" stroke="var(--accent)" stroke-width="0.8" opacity="0.5"/>
+        <circle cx="32" cy="32" r="5" fill="var(--accent)"/>
+        <line x1="32" y1="27" x2="32" y2="14" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="32" y1="37" x2="32" y2="50" stroke="var(--accent)" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="27" y1="32" x2="14" y2="32" stroke="var(--accent)" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>
+        <line x1="37" y1="32" x2="50" y2="32" stroke="var(--accent)" stroke-width="0.8" opacity="0.5" stroke-linecap="round"/>
       </svg>
       <div class="header-text">
         <h1>Di<span>.</span>Verse</h1>

@@ -35,6 +35,7 @@
   .ok { color: var(--green); } .err { color: #ff7a8a; }
   .small { font-size: 0.75rem; color: #889; line-height: 1.5; }
 </style>
+  <link rel="stylesheet" href="/assets/theme.css">
 </head>
 <body>
 <header>
@@ -108,8 +109,8 @@
       var r = await fetch('/api/library/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) });
       var d = await r.json();
       if (!r.ok) throw new Error(d.error);
-      say('✓ ' + d.name + ' added — ' + d.coverage + ', ' + d.verses.toLocaleString() + ' verses. It is in the Operator\'s Bible list now.', true);
-    } catch (err) { say('✗ ' + err.message); }
+      say(d.name + ' added — ' + d.coverage + ', ' + d.verses.toLocaleString() + ' verses. It is in the Operator\'s Bible list now.', true);
+    } catch (err) { say(err.message); }
     load();
   }
 
@@ -117,7 +118,7 @@
     if (!confirm('Remove ' + code + ' from this computer?')) return;
     var r = await fetch('/api/library/' + encodeURIComponent(code), { method: 'DELETE' });
     var d = await r.json();
-    say(r.ok ? 'Removed ' + code + '.' : '✗ ' + d.error, r.ok);
+    say(r.ok ? 'Removed ' + code + '.' : d.error, r.ok);
     load();
   }
 
@@ -148,11 +149,11 @@
         d = await r.json();
       }
       if (!r.ok) throw new Error(d.error);
-      say('✓ ' + d.code + ' imported (' + d.format + '): ' + d.coverage + ', ' + d.verses.toLocaleString() + ' verses' +
+      say(d.code + ' imported (' + d.format + '): ' + d.coverage + ', ' + d.verses.toLocaleString() + ' verses' +
         (d.missingBooks.length && d.missingBooks.length < 66 ? '\nBooks not in the file: ' + d.missingBooks.join(', ') : '') +
         (d.missing && d.missingBooks.length === 0 ? '\n' + d.missing + ' verses of the usual layout are not in this text.' : '') +
-        (d.numberingDiffers ? '\n⚠ Its verse numbering differs from the KJV (e.g. ' + d.differsIn.join(', ') + '). A spoken "Psalm 23" may show a different passage in this translation — check before using it live.' : ''), true);
-    } catch (err) { say('✗ ' + err.message); }
+        (d.numberingDiffers ? '\nNote: its verse numbering differs from the KJV (e.g. ' + d.differsIn.join(', ') + '). A spoken "Psalm 23" may show a different passage in this translation — check before using it live.' : ''), true);
+    } catch (err) { say(err.message); }
     btn.disabled = false; btn.textContent = 'Import';
     load();
   }
@@ -208,7 +209,7 @@
       say('Archive preview complete. No database changes have been made.', true);
     } catch (error) {
       document.getElementById('archivePreview').textContent = '';
-      say('✗ ' + error.message);
+      say(error.message);
     } finally { btn.disabled = false; btn.textContent = 'Preview archive'; }
   }
 
@@ -240,11 +241,11 @@
       if (!response.ok) throw new Error(data.error || 'Archive import failed.');
       var lines = data.translations.map(function(t) { return t.code + ': ' + t.coverage + ', ' + t.verses.toLocaleString() + ' verses'; });
       if (data.failed && data.failed.length) lines.push('Failed: ' + data.failed.map(function(f) { return f.code + ' (' + f.error + ')'; }).join('; '));
-      say('✓ Imported ' + data.imported + ' translation(s).\n' + lines.join('\n'), data.failed && data.failed.length ? false : true);
+      say('Imported ' + data.imported + ' translation(s).\n' + lines.join('\n'), data.failed && data.failed.length ? false : true);
       archivePreviewReport = null;
       document.getElementById('archivePreview').textContent = 'Import finished. Refreshing installed translations…';
       load();
-    } catch (error) { say('✗ ' + error.message); }
+    } catch (error) { say(error.message); }
     finally { btn.disabled = !archivePreviewReport; btn.textContent = 'Import selected translations'; }
   }
 </script>

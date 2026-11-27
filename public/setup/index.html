@@ -42,6 +42,7 @@
   .ex b { color: #889; font-weight: normal; margin-right: 6px; }
   code { background: var(--surface2); padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; }
 </style>
+  <link rel="stylesheet" href="/assets/theme.css">
 </head>
 <body>
 <header>
@@ -85,13 +86,13 @@
   function say(t, ok) { var m = document.getElementById('msg'); m.className = ok ? 'ok' : 'err'; m.textContent = t; }
 
   // Everything a service depends on, with what to do about anything that isn't right
-  var ICON = { ok: '✅', warn: '⚠️', fail: '❌', off: '⚪' };
+  var ICON = { ok: '<span class="sdot ok"></span>', warn: '<span class="sdot warn"></span>', fail: '<span class="sdot fail"></span>', off: '<span class="sdot off"></span>' };
   async function check() {
     var el = document.getElementById('health');
     el.innerHTML = '<p>Checking…</p>';
     try {
       var d = await (await fetch('/api/health')).json();
-      var summary = d.worst === 'ok' ? '✅ Ready for the service.' : d.worst === 'warn' ? '⚠️ Ready, with something to look at below.' : '❌ Something needs fixing before the service — see below.';
+      var summary = d.worst === 'ok' ? ICON.ok + ' Ready for the service.' : d.worst === 'warn' ? ICON.warn + ' Ready, with something to look at below.' : ICON.fail + ' Something needs fixing before the service: see below.';
       el.innerHTML = '<div class="summary">' + summary + '</div>' + d.checks.map(function(c) {
         return '<div class="chk"><div class="dot">' + ICON[c.state] + '</div><div><b>' + esc(c.name) + '</b><span class="d">' + esc(c.detail) + '</span></div></div>';
       }).join('');
@@ -138,14 +139,14 @@
       var unchecked = h.exists && h.readable && h.integrity == null;
       var row = function(icon, name, detail) { return '<div class="chk"><div class="dot">' + icon + '</div><div><b>' + esc(name) + '</b><span class="d">' + detail + '</span></div></div>'; };
       el.innerHTML =
-        row(good ? '✅' : unchecked ? '🔎' : '❌', good ? 'Healthy' : unchecked ? 'Found and readable · integrity not checked yet' : (!h.exists ? 'Database file not found' : !h.readable ? 'Database file can\'t be read' : 'Integrity check failed'),
+        row(good ? ICON.ok : unchecked ? '<span class="sdot info"></span>' : ICON.fail, good ? 'Healthy' : unchecked ? 'Found and readable · integrity not checked yet' : (!h.exists ? 'Database file not found' : !h.readable ? 'Database file can\'t be read' : 'Integrity check failed'),
           '<code>' + esc(h.database) + '</code><br>' + (h.mode === 'packaged' ? 'Installed app (data kept outside the app)' : 'Running from the code folder (development)') +
           ' · ' + mb(h.bytes) + (h.walBytes ? ' + ' + mb(h.walBytes) + ' not yet written in' : '') + ' · engine ' + esc(h.engine) +
           (h.integrity && h.integrity !== 'ok' ? '<br><span class="err">' + esc(h.integrity) + '</span>' : '') +
           (h.integrityCheckedAt ? '<br>Integrity checked ' + esc(new Date(h.integrityCheckedAt).toLocaleString()) : unchecked ? '<br>Press <b style="display:inline">Check again</b> to run the full check (a few seconds on a large library; not during a live service).' : '')) +
-        row(h.lastBackup ? '🗂️' : '⚠️', h.lastBackup ? 'Last backup ' + esc(new Date(h.lastBackup).toLocaleString()) : 'No backup yet',
+        row(h.lastBackup ? ICON.ok : ICON.warn, h.lastBackup ? 'Last backup ' + esc(new Date(h.lastBackup).toLocaleString()) : 'No backup yet',
           h.backups + ' backup' + (h.backups === 1 ? '' : 's') + ' kept on this computer' + (h.lastBackup ? '' : '. Make one before importing or removing a translation.')) +
-        row('📖', h.translations.length + ' translation' + (h.translations.length === 1 ? '' : 's') + ' stored',
+        row('<span class="sdot info"></span>', h.translations.length + ' translation' + (h.translations.length === 1 ? '' : 's') + ' stored',
           h.translations.map(function(t) { return '<b style="display:inline;color:var(--white)">' + esc(t.code) + '</b> ' + t.verses.toLocaleString() + ' verses' + (t.coverage && t.coverage !== 'Full Bible' ? ' (' + esc(t.coverage) + ')' : ''); }).join(' · ') || 'None');
       var b = (await (await fetch('/api/db/backups')).json()).backups || [];
       bl.innerHTML = '<div style="margin-top:10px;font-size:0.72rem;color:var(--mid);letter-spacing:1px;text-transform:uppercase;">Backups (' + b.length + ') in <code style="text-transform:none;letter-spacing:0">' + esc(h.backupsFolder) + '</code></div>' +
@@ -158,8 +159,8 @@
   async function backupNow() {
     dbSay('Backing up…', true);
     var r = await fetch('/api/db/backups', { method: 'POST' }), d = await r.json();
-    if (!r.ok) return dbSay('✗ ' + d.error);
-    dbSay('✓ Backed up (' + mb(d.bytes) + ', checked).', true);
+    if (!r.ok) return dbSay(d.error);
+    dbSay('Backed up (' + mb(d.bytes) + ', checked).', true);
     loadDb();
   }
   async function restoreDb(name, when) {
@@ -167,8 +168,8 @@
     dbSay('Restoring…', true);
     var r = await fetch('/api/db/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, confirm: name }) });
     var d = await r.json();
-    if (!r.ok) { dbSay('✗ ' + d.error); return loadDb(); }
-    dbSay('✓ Restored. ' + d.verses.toLocaleString() + ' verses stored, integrity checked. The database from before is kept as a backup. Open Operator pages pick up the translation list within 30 seconds.', true);
+    if (!r.ok) { dbSay(d.error); return loadDb(); }
+    dbSay('Restored. ' + d.verses.toLocaleString() + ' verses stored, integrity checked. The database from before is kept as a backup. Open Operator pages pick up the translation list within 30 seconds.', true);
     loadDb();
   }
   loadDb();
@@ -177,7 +178,7 @@
     var d = await (await fetch('/api/setup')).json();
     document.getElementById('fields').innerHTML = FIELDS.map(function(f) {
       var v = d.settings[f[0]];
-      return '<div class="field"><div class="top"><b>' + f[1] + '</b><span class="state' + (v ? ' on' : '') + '">' + (v ? '✓ ' + esc(v) : 'not set') + '</span></div>' +
+      return '<div class="field"><div class="top"><b>' + f[1] + '</b><span class="state' + (v ? ' on' : '') + '">' + (v ? 'Set: ' + esc(v) : 'not set') + '</span></div>' +
         '<div class="why">' + f[2] + (f[3] ? ' <a class="get" href="' + f[3] + '" target="_blank" rel="noopener">Get a key →</a>' : '') + '</div>' +
         '<input id="' + f[0] + '" autocomplete="off" spellcheck="false" placeholder="' + (v ? 'Leave empty to keep the current one' : (f[0] === 'VMIX_URL' ? 'http://192.168.0.120:8088' : 'Paste the key here')) + '"></div>';
     }).join('');
@@ -191,8 +192,8 @@
     if (!Object.keys(body).length) return say('Paste a key (or the vMix address) first.');
     var r = await fetch('/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     var d = await r.json();
-    if (!r.ok) return say('✗ ' + d.error);
-    say('✓ Saved ' + d.saved.join(', ') + (d.restarting ? '. Di.Verse is restarting to use them (2 seconds) — open pages reconnect by themselves.' : '. Restart Di.Verse to use them.'), true);
+    if (!r.ok) return say(d.error);
+    say('Saved ' + d.saved.join(', ') + (d.restarting ? '. Di.Verse is restarting to use them (2 seconds) — open pages reconnect by themselves.' : '. Restart Di.Verse to use them.'), true);
     setTimeout(function() { load(); check(); }, d.restarting ? 3000 : 200);
   }
 
