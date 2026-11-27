@@ -14,10 +14,61 @@ function chapterIndex(book, chapter) {
   return allChapters().findIndex(c => c.book === book && c.chapter === chapter);
 }
 
-// ref: { book, chapter, verse, verseEnd? } → the verse to show next
+// Local translations can contain only some books/chapters. Use their actual
+// chapter order when crossing a chapter boundary, but preserve numeric verse
+// steps inside a chapter. A missing local verse must remain visible (getVerse
+// will explain/fallback) rather than being silently skipped by navigation.
+function stepLocalTranslation(ref, dir, unit, translation) {
+  const db = getDb();
+  const chapters = db.prepare(`
+    SELECT book, book_num, chapter,
+      MAX(COALESCE(NULLIF(verse_end, 0), verse)) AS last_verse
+    FROM verses
+    WHERE translation = ? AND COALESCE(substr(source, 1, 3), '') != 'ai_'
+    GROUP BY book, book_num, chapter
+    ORDER BY book_num, chapter
+  `).all(translation);
+  if (!chapters.length) return undefined; // keep the canonical/API navigation path
+
+  const index = chapters.findIndex(c => c.book === ref.book && c.chapter === Number(ref.chapter));
+  if (index < 0) return undefined;
+
+  if (unit === 'chapter') {
+    const target = chapters[index + (dir === 'next' ? 1 : -1)];
+    return target ? { book: target.book, chapter: target.chapter, verse: 1 } : null;
+  }
+
+  const here = chapters[index];
+  if (dir === 'next') {
+    const verse = Number(ref.verseEnd || ref.verse) + 1;
+    if (verse <= here.last_verse) return { book: here.book, chapter: here.chapter, verse };
+    const next = chapters[index + 1];
+    return next ? { book: next.book, chapter: next.chapter, verse: 1 } : null;
+  }
+
+  const verse = Number(ref.verse) - 1;
+  if (verse >= 1) return { book: here.book, chapter: here.chapter, verse };
+  const previous = chapters[index - 1];
+  if (!previous) return null;
+  const canonicalEnd = db.prepare(
+    'SELECT max_verse FROM bible_structure WHERE book = ? AND chapter = ?'
+  ).get(previous.book, previous.chapter);
+  return {
+    book: previous.book,
+    chapter: previous.chapter,
+    verse: canonicalEnd ? canonicalEnd.max_verse : previous.last_verse
+  };
+}
+// ref: { book, chapter, verse, verseEnd? } → the verse/passage to show next
 //   dir: 'next' | 'prev'; unit: 'verse' | 'chapter'
-// Returns { book, chapter, verse } or null at the very start / end of the Bible.
-function step(ref, dir, unit = 'verse') {
+// translation is optional; local translations navigate only through stored
+// passages, while remote and canonical translations retain the KJV structure.
+function step(ref, dir, unit = 'verse', translation) {
+  if (translation) {
+    const local = stepLocalTranslation(ref, dir, unit, String(translation).toUpperCase().split('/')[0]);
+    if (local !== undefined) return local;
+  }
+
   const list = allChapters();
   const i = chapterIndex(ref.book, Number(ref.chapter));
   if (i < 0) return null;
@@ -77,7 +128,7 @@ function cue(text) {
 // Where a cue takes us from the verse on screen. null if it doesn't apply.
 function resolve(command, current) {
   if (!command || !current || !current.book || !current.chapter) return null;
-  if (command.kind === 'step') return step(current, command.dir, command.unit);
+  if (command.kind === 'step') return step(current, command.dir, command.unit, current.translation);
   const chapter = command.chapter || Number(current.chapter);
   const c = allChapters().find(x => x.book === current.book && x.chapter === chapter);
   if (!c || command.verse > c.max_verse) return null;
