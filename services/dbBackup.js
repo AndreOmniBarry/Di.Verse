@@ -182,7 +182,8 @@ function health() {
   } catch (e) {
     out.integrity = 'could not open: ' + e.message;
   }
-  const last = list()[0];
+  // only backups Di.Verse made and checked (they have a .json record) count as the last backup
+  const last = list().find(b => b.verses != null);
   out.lastBackup = last ? last.createdAt : null;
   return out;
 }

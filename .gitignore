@@ -8,3 +8,4 @@ db/screen-state.json
 dist/
 logs/
 bible-imports/*.zip
+backups/

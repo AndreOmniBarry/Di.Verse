@@ -125,6 +125,10 @@ module.exports = function run(expectedEngine) {
     assert.strictEqual(h.mode, 'packaged'); // DIVERSE_DATA is set
     assert.ok(h.exists && h.readable);
     assert.strictEqual(h.engine, expectedEngine);
+    // the damaged and non-Bible files planted above have no .json record: never the "last backup"
+    const made = backup.list().filter(b => b.verses != null).map(b => b.createdAt).sort().pop();
+    assert.strictEqual(h.lastBackup, made);
+    assert.ok(h.backups >= backup.list().filter(b => b.verses != null).length);
     assert.ok(h.translations.find(x => x.code === 'KJV' && x.verses > 100));
   });
 };
