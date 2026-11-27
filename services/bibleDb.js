@@ -24,6 +24,17 @@ function getDb() {
   return db;
 }
 
+// Close the database so its file can be replaced (services/dbBackup.js,
+// restoring a backup). The WAL is checkpointed first so nothing is left in
+// bible.db-wal; the next getDb() opens the file afresh.
+function closeDb() {
+  if (!db) return;
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) { /* closing anyway */ }
+  db.close();
+  db = null;
+  localCache = null;
+}
+
 function initSchema() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS verses (
@@ -323,4 +334,4 @@ async function getPassage(book, chapter, verse, verseEnd, translation = 'KJV', o
   };
 }
 
-module.exports = { invalidateTranslations, localTranslations, getDb, getVerse, getPassage, searchVerses, getBookNum, listTranslations, events };
+module.exports = { closeDb, DB_PATH, invalidateTranslations, localTranslations, getDb, getVerse, getPassage, searchVerses, getBookNum, listTranslations, events };

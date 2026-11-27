@@ -14,8 +14,12 @@ process.emitWarning = function (warning, ...rest) {
   return emitWarning.call(process, warning, ...rest);
 };
 
+// DIVERSE_SQLITE_ENGINE=better-sqlite3 forces the add-on even where node:sqlite
+// exists (used by the tests, so both engines are checked on one machine)
 let builtIn = null;
-try { builtIn = require('node:sqlite').DatabaseSync; } catch (e) { builtIn = null; }
+if (process.env.DIVERSE_SQLITE_ENGINE !== 'better-sqlite3') {
+  try { builtIn = require('node:sqlite').DatabaseSync; } catch (e) { builtIn = null; }
+}
 
 function open(file, { readonly = false } = {}) {
   if (builtIn) {
