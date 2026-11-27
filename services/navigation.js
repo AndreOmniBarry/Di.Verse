@@ -65,7 +65,7 @@ const CUES = [
   // Explicit next-verse instructions.
   [/\b(?:the\s+)?(?:next|following)\s+(?:verses?|scripture\s+verses?)\b|\bverse\s+after\s+(?:that|this|it)\b|\bmove\s+(?:on\s+)?to\s+the\s+next\s+(?:one|1)\b|\b(?:take|bring)\s+(?:me|us|it)\s+to\s+the\s+next\s+(?:one|1)\b|\b(?:and\s+)?the\s+next\s*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
   // A short "next" / "the next one" is accepted only as a complete cue.
-  [/^(?:(?:okay|ok|alright|right|now|so|and|then|please|let'?s)\s+){0,3}(?:the\s+)?next(?:\s+(?:one|1))?(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
+  [/^(?:(?:okay|ok|alright|right|now|so|and|then|please|let'?s)\s+){0,3}(?:the\s+)?next(?:\s+(?:one|1))?(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse', deferInterim: true }],
   // Natural continuation instructions. Exact/command-like forms only.
   [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:go\s+on|go\s+ahead|carry\s+on|continue|proceed|keep\s+going|keep\s+reading|read\s+on|move\s+on)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
   [/\b(?:go\s+on|go\s+ahead|carry\s+on|keep\s+going|keep\s+reading|read\s+on)\s*(?:please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
@@ -73,7 +73,7 @@ const CUES = [
   [/\btake\s+(?:it|us|that|me)\s+back\b|\b(?:previous|preceding|prior)\s+(?:verses?|1)\b|\b(?:the\s+)?verse\s+before(?:\s+(?:that|this|it))?\b|\b(?:go|come|step)\s+back\s+(?:a|1|one)\s+verse\b|\bback\s+(?:1|one)\s+verse\b|\b(?:go|come)\s+back\s+(?:1|one)\b|\bback\s+(?:1|one)\b|\bthe\s+last\s+(?:1|one)\b/g, { kind: 'step', dir: 'prev', unit: 'verse' }],
   [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:go\s+back|back\s+one|previous|previous\s+one)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'prev', unit: 'verse' }],
   // Repeat the currently displayed passage; this is not a previous-verse cue.
-  [/^(?:(?:okay|ok|alright|right|now|please)\s+)*(?:read|show|repeat)\s+(?:that|it|this|the\s+verse)\s+again(?:\s+please)?[.!?]*$/g, { kind: 'repeat' }],
+  [/^(?:(?:okay|ok|alright|right|now|please)\s+)*(?:read|show|repeat)\s+(?:that|it|this|the\s+verse)\s+again(?:\s+please)?[.!?]*$/g, { kind: 'repeat', deferInterim: true }],
   [/^(?:again|repeat)[.!?]*$/g, { kind: 'repeat' }],
   [/\b(?:the\s+)?(?:next|following)\s+chapter\b/g, { kind: 'step', dir: 'next', unit: 'chapter' }],
   [/\b(?:previous|preceding|prior)\s+chapter\b|\bchapter\s+before\s+(?:that|this|it)\b|\bgo\s+back\s+(?:a|one)\s+chapter\b/g, { kind: 'step', dir: 'prev', unit: 'chapter' }],
@@ -101,7 +101,7 @@ function cue(text) {
         const chapter = what === 'goto' && m[1] ? parseInt(m[1]) : undefined;
         // "go to 17" is intentionally accepted only as a completed utterance.
         if (what === 'goto_number' && (m.index + m[0].length) < t.trim().length) continue;
-        best = { kind: 'goto', verse, ...(chapter ? { chapter } : {}), ...(verseEnd > verse ? { verseEnd: Math.min(verseEnd, verse + 9) } : {}), end, atEnd: end >= t.trim().length };
+        best = { kind: 'goto', verse, ...(chapter ? { chapter } : {}), ...(verseEnd > verse ? { verseEnd: Math.min(verseEnd, verse + 9) } : {}), ...(what === 'goto_number' ? { deferInterim: true } : {}), end, atEnd: end >= t.trim().length };
       } else {
         best = { ...what, end, atEnd: end >= t.trim().length };
       }
@@ -115,10 +115,12 @@ function resolve(command, current) {
   if (!command || !current || !current.book || !current.chapter) return null;
   if (command.kind === 'step') return step(current, command.dir, command.unit);
   if (command.kind === 'repeat') {
+    const verse = Number(current.verse);
+    if (!Number.isInteger(verse) || verse < 1) return null;
     return {
       book: current.book,
       chapter: Number(current.chapter),
-      verse: Number(current.verse),
+      verse,
       ...(Number(current.verseEnd) > Number(current.verse) ? { verseEnd: Number(current.verseEnd) } : {})
     };
   }
