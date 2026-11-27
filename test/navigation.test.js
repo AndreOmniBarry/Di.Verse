@@ -51,11 +51,13 @@ test('natural next-verse variations are recognised without stealing sermon phras
     'keep reading', 'read on', 'let us proceed', "let's proceed",
     "let's move on", 'what is the next verse?', 'take us to the next verse'
   ].forEach(text => assert.strictEqual(kind(text), 'next verse', text));
+  assert.strictEqual(nav.cue('next').deferInterim, true);
+  assert.strictEqual(nav.cue('next verse').deferInterim, undefined);
 
   [
     'next point', 'the next point is important', 'next week',
     'the next generation', 'next subject', 'we need the next chapter of the project',
-    'continue the discussion', 'move on to the next topic'
+    'continue the discussion', 'move on to the next topic', 'the work must go on', 'we need to go on'
   ].forEach(text => assert.strictEqual(nav.cue(text), null, text));
 });
 
@@ -65,6 +67,7 @@ test('specific verse instructions accept natural word order and ordinals', () =>
   assert.strictEqual(command('take us to the seventeenth verse').verse, 17);
   assert.strictEqual(command('go to verse 17').verse, 17);
   assert.strictEqual(command('go to 17').verse, 17);
+  assert.strictEqual(command('go to 17').deferInterim, true);
   assert.strictEqual(command('verses twenty one to twenty three').verse, 21);
   assert.strictEqual(command('verses 17 through 19').verseEnd, 19);
 });
