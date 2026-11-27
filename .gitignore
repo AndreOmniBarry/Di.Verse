@@ -9,3 +9,4 @@ dist/
 logs/
 bible-imports/*.zip
 backups/
+qa-output/
