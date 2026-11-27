@@ -374,6 +374,7 @@ test('verse-step API follows the selected local partial translation', async () =
   ];
   const query = new URLSearchParams({ code: 'TPT', name: 'Test Partial TPT', filename: 'partial-tpt.json',
     obtained: 'Authorized synthetic test fixture', authorized: 'true' });
+  await fetch(base + '/api/library/TPT', { method: 'DELETE' });
   try {
     const imported = await fetch(base + '/api/library/import?' + query.toString(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(source),
