@@ -63,13 +63,15 @@ function normaliseCueText(text) {
 // ordinary sermon sentences must never advance scripture accidentally.
 const CUES = [
   // Explicit next-verse instructions.
-  [/\b(?:the\s+)?(?:next|following)\s+(?:verses?|scripture\s+verses?)\b|\bverse\s+after\s+(?:that|this|it)\b|\bmove\s+(?:on\s+)?to\s+the\s+next\s+(?:one|1)\b|\b(?:take|bring)\s+(?:me|us|it)\s+to\s+the\s+next\s+(?:one|1)\b/g, { kind: 'step', dir: 'next', unit: 'verse' }],
+  [/^(?:(?:okay|ok|alright|right|now|so|and|please|let'?s)\s+){0,3}(?:(?:let'?s|let\s+us)\s+)?(?:(?:go|move|jump|turn)\s+(?:(?:us|me)\s+)?(?:on\s+)?to\s+|(?:take|bring)\s+(?:me|us|it)\s+to\s+|read\s+)?(?:the\s+)?(?:next|following)\s+(?:(?:scripture)\s+)?(?:verses?|one|1)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
+  [/^what(?:\s+is)?\s+(?:the\s+)?(?:next|following)\s+(?:scripture\s+)?verses?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
+  [/^(?:(?:okay|ok|alright|right|now|please)\s+)*(?:the\s+)?verse\s+after\s+(?:that|this|it)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
   // A short "next" / "the next one" is accepted only as a complete cue.
   [/^(?:(?:okay|ok|alright|right|now|so|and|then|please|let'?s)\s+){0,3}(?:the\s+)?next(?:\s+(?:one|1))?(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse', deferInterim: true }],
   // Natural continuation instructions. Exact/command-like forms only.
   [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:go\s+on|go\s+ahead|carry\s+on|continue|proceed|keep\s+going|keep\s+reading|read\s+on|move\s+on)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
   // "take it back", "previous verse", "the verse before", "back one".
-  [/\btake\s+(?:it|us|that|me)\s+back\b|\b(?:previous|preceding|prior)\s+(?:verses?|1)\b|\b(?:the\s+)?verse\s+before(?:\s+(?:that|this|it))?\b|\b(?:go|come|step)\s+back\s+(?:a|1|one)\s+verse\b|\bback\s+(?:1|one)\s+verse\b|\b(?:go|come)\s+back\s+(?:1|one)\b|\bback\s+(?:1|one)\b|\bthe\s+last\s+(?:1|one)\b/g, { kind: 'step', dir: 'prev', unit: 'verse' }],
+  [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:can|could|would)\s+you\s+)?(?:(?:let'?s|let\s+us)\s+)?(?:take\s+(?:it|us|that|me)\s+back(?:\s+(?:one|1)\s+verse)?|(?:go|come|step)\s+back(?:\s+(?:a|one|1)(?:\s+verse)?)?|back\s+(?:one|1)(?:\s+verse)?|(?:the\s+)?(?:previous|preceding|prior)\s+verse|(?:the\s+)?verse\s+before(?:\s+(?:that|this|it))?|the\s+last\s+one)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'prev', unit: 'verse' }],
   [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:go\s+back|back\s+one|previous|previous\s+one)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'prev', unit: 'verse' }],
   // Repeat the currently displayed passage; this is not a previous-verse cue.
   [/^(?:(?:okay|ok|alright|right|now|please)\s+)*(?:read|show|repeat)\s+(?:that|it|this|the\s+verse)\s+again(?:\s+please)?[.!?]*$/g, { kind: 'repeat', deferInterim: true }],
