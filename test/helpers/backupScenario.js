@@ -70,7 +70,7 @@ module.exports = function run(expectedEngine) {
     assert.strictEqual(backup.list().length, before + 1);
     assert.match(r.safetyBackup, /before-restore/);
     assert.strictEqual(countIn(path.join(backup.DIR, r.safetyBackup), 'TST'), 0, 'safety backup is the database that was replaced');
-    assert.strictEqual(backup.health().integrity, 'ok');
+    assert.strictEqual(backup.health({ integrity: true }).integrity, 'ok');
     assert.ok(!fs.existsSync(bibleDb.DB_PATH + '.restoring'));
   });
 
@@ -92,7 +92,7 @@ module.exports = function run(expectedEngine) {
     const n = count('TST');
     assert.throws(() => backup.restore(bad, bad), /can't be used/);
     assert.strictEqual(count('TST'), n);
-    assert.strictEqual(backup.health().integrity, 'ok');
+    assert.strictEqual(backup.health({ integrity: true }).integrity, 'ok');
   });
 
   test('a missing backup and a database that is not a Bible are refused', () => {
@@ -116,11 +116,17 @@ module.exports = function run(expectedEngine) {
       assert.throws(() => backup.restore(first.name, first.name), /Restore failed \(simulated broken file\)\. The previous database is back/);
     } finally { bibleDb.getDb = real; }
     assert.strictEqual(count('TST'), 0, 'the database from before the restore is in place');
-    assert.strictEqual(backup.health().integrity, 'ok');
+    assert.strictEqual(backup.health({ integrity: true }).integrity, 'ok');
   });
 
   test('health reports the active database and its translations', () => {
-    const h = backup.health();
+    backup._resetLastCheck();
+    const quick = backup.health();
+    assert.strictEqual(quick.integrity, null, 'a plain health report does not run the slow check');
+    const h = backup.health({ integrity: true });
+    assert.strictEqual(h.integrity, 'ok');
+    assert.ok(h.integrityCheckedAt);
+    assert.strictEqual(backup.health().integrity, 'ok', 'the last result is reported afterwards');
     assert.strictEqual(h.database, bibleDb.DB_PATH);
     assert.strictEqual(h.mode, 'packaged'); // DIVERSE_DATA is set
     assert.ok(h.exists && h.readable);

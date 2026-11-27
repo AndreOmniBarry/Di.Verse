@@ -56,7 +56,7 @@
     <a id="repExport" href="/api/diag/export" class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:6px;letter-spacing:0;text-transform:none;text-decoration:none;">Export</a></h2>
   <div id="report"><p>Loading…</p></div>
 
-  <h2>Bible database <button class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:8px;letter-spacing:0;text-transform:none;" onclick="loadDb()">Check again</button>
+  <h2>Bible database <button class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:8px;letter-spacing:0;text-transform:none;" onclick="loadDb(true)" title="Runs a full integrity check: a few seconds on a large library, during which Di.Verse pauses. Avoid during a live service.">Check again</button>
     <button class="btn btn-dim" style="padding:4px 10px;font-size:0.72rem;margin-left:6px;letter-spacing:0;text-transform:none;" onclick="backupNow()">Back up now</button></h2>
   <div id="dbHealth"><p>Checking…</p></div>
   <div id="dbBackups"></div>
@@ -128,18 +128,21 @@
   // Which Bible database is in use, whether it's healthy, what's in it, and its backups
   function mb(b) { return b == null ? '—' : (b / 1048576).toFixed(1) + ' MB'; }
   function dbSay(t, ok) { var m = document.getElementById('dbMsg'); m.className = ok ? 'ok' : 'err'; m.textContent = t; }
-  async function loadDb() {
+  // full: run the full integrity check now (Check again); otherwise show the last result
+  async function loadDb(full) {
     var el = document.getElementById('dbHealth'), bl = document.getElementById('dbBackups');
     try {
-      var h = await (await fetch('/api/db/health')).json();
+      var h = await (await fetch('/api/db/health' + (full ? '?integrity=1' : ''))).json();
       if (h.error) throw new Error(h.error);
       var good = h.exists && h.readable && h.integrity === 'ok';
+      var unchecked = h.exists && h.readable && h.integrity == null;
       var row = function(icon, name, detail) { return '<div class="chk"><div class="dot">' + icon + '</div><div><b>' + esc(name) + '</b><span class="d">' + detail + '</span></div></div>'; };
       el.innerHTML =
-        row(good ? '✅' : '❌', good ? 'Healthy' : (!h.exists ? 'Database file not found' : !h.readable ? 'Database file can\'t be read' : 'Integrity check failed'),
+        row(good ? '✅' : unchecked ? '🔎' : '❌', good ? 'Healthy' : unchecked ? 'Found and readable · integrity not checked yet' : (!h.exists ? 'Database file not found' : !h.readable ? 'Database file can\'t be read' : 'Integrity check failed'),
           '<code>' + esc(h.database) + '</code><br>' + (h.mode === 'packaged' ? 'Installed app (data kept outside the app)' : 'Running from the code folder (development)') +
           ' · ' + mb(h.bytes) + (h.walBytes ? ' + ' + mb(h.walBytes) + ' not yet written in' : '') + ' · engine ' + esc(h.engine) +
-          (h.integrity && h.integrity !== 'ok' ? '<br><span class="err">' + esc(h.integrity) + '</span>' : '')) +
+          (h.integrity && h.integrity !== 'ok' ? '<br><span class="err">' + esc(h.integrity) + '</span>' : '') +
+          (h.integrityCheckedAt ? '<br>Integrity checked ' + esc(new Date(h.integrityCheckedAt).toLocaleString()) : unchecked ? '<br>Press <b style="display:inline">Check again</b> to run the full check (a few seconds on a large library; not during a live service).' : '')) +
         row(h.lastBackup ? '🗂️' : '⚠️', h.lastBackup ? 'Last backup ' + esc(new Date(h.lastBackup).toLocaleString()) : 'No backup yet',
           h.backups + ' backup' + (h.backups === 1 ? '' : 's') + ' kept on this computer' + (h.lastBackup ? '' : '. Make one before importing or removing a translation.')) +
         row('📖', h.translations.length + ' translation' + (h.translations.length === 1 ? '' : 's') + ' stored',

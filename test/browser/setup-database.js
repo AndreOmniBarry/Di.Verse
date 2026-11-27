@@ -44,8 +44,10 @@ const ok = (cond, label) => { assert.ok(cond, label); passed++; console.log('  �
     const backups = async () => (await (await fetch(base + '/api/db/backups')).json()).backups;
 
     console.log('— Health —');
+    ok(/integrity not checked yet/.test(await text('#dbHealth')), 'opening Setup does not run the slow full check');
+    await p.click('h2:has-text("Bible database") >> text=Check again'); await p.waitForTimeout(1500);
     const h = await text('#dbHealth');
-    ok(/Healthy/.test(h), 'shows Healthy');
+    ok(/Healthy/.test(h) && /Integrity checked/.test(h), 'Check again runs it: Healthy, with the time of the check');
     ok(h.includes(path.join(data, 'db', 'bible.db')), 'shows the active database (the throwaway copy)');
     ok(/Installed app|development/.test(h), 'shows packaged / development mode');
     ok(/engine node:sqlite|engine better-sqlite3/.test(h), 'shows the SQLite engine');

@@ -32,6 +32,12 @@ const NAME = /^bible-[0-9TZ-]+(?:-[a-z0-9-]{1,40})?(?:-\d+)?\.db$/;
 
 const quote = p => "'" + String(p).replace(/'/g, "''") + "'";
 
+// The last full integrity check of the live database: { result, at }.
+// A full check of a large library takes seconds and blocks the server, so
+// the Setup page shows this instead of re-checking on every load; it is
+// refreshed by "Check again", and after every restore.
+let lastCheck = null;
+
 // 'ok', or what SQLite found wrong (first few lines)
 function integrity(db) {
   const rows = db.prepare('PRAGMA integrity_check').all();
@@ -139,12 +145,14 @@ function restore(name, confirm) {
     try {
       swapIn(file);
       const result = integrity(bibleDb.getDb());
+      lastCheck = { result, at: new Date().toISOString() };
       if (result !== 'ok') throw new Error('integrity check after restore failed: ' + result);
     } catch (err) {
       // put the previous database back
       try { bibleDb.closeDb(); } catch (e) {}
       swapIn(path.join(DIR, safety.name));
       bibleDb.getDb();
+      lastCheck = null;   // the failed check was of the file that was taken out again
       afterReopen();
       throw new Error('Restore failed (' + err.message + '). The previous database is back in place.');
     }
@@ -155,7 +163,9 @@ function restore(name, confirm) {
 }
 
 // What the operator sees under Setup → Bible database
-function health() {
+// options.integrity: run a full integrity check now (seconds on a large
+// library, and nothing else is served meanwhile); otherwise report the last one
+function health(options = {}) {
   const file = bibleDb.DB_PATH;
   const out = {
     mode: paths.packaged ? 'packaged' : 'development',
@@ -169,7 +179,9 @@ function health() {
   try { out.walBytes = fs.statSync(file + '-wal').size; } catch (e) { out.walBytes = 0; }
   try {
     const db = bibleDb.getDb();
-    out.integrity = integrity(db);
+    if (options.integrity) lastCheck = { result: integrity(db), at: new Date().toISOString() };
+    out.integrity = lastCheck ? lastCheck.result : null;          // null = not checked since Di.Verse started
+    out.integrityCheckedAt = lastCheck ? lastCheck.at : null;
     const counts = Object.fromEntries(db.prepare('SELECT translation, COUNT(*) AS c FROM verses WHERE substr(source, 1, 3) != \'ai_\' GROUP BY translation').all().map(r => [r.translation, r.c]));
     const meta = Object.fromEntries(db.prepare('SELECT code, name, coverage, source, installed_at FROM translation_meta').all().map(m => [m.code, m]));
     const local = bibleDb.localTranslations();
@@ -188,4 +200,4 @@ function health() {
   return out;
 }
 
-module.exports = { create, list, restore, health, checkFile, DIR };
+module.exports = { create, list, restore, health, checkFile, DIR, _resetLastCheck: () => { lastCheck = null; } };

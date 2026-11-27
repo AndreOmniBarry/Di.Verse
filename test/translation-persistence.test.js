@@ -92,7 +92,7 @@ test('it is still there after the server restarts', async () => {
 });
 
 test('database health is operator-only data and reports the translation', async () => {
-  const h = await (await fetch(base + '/api/db/health')).json(); // loopback = operator laptop
+  const h = await (await fetch(base + '/api/db/health?integrity=1')).json(); // loopback = operator laptop
   assert.strictEqual(h.integrity, 'ok');
   assert.ok(h.database.startsWith(temp.dir));
   assert.ok(h.translations.find(x => x.code === 'TST' && x.verses === 174));

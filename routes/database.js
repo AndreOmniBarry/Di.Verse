@@ -8,7 +8,8 @@ const backup = require('../services/dbBackup');
 router.use('/db', (req, res, next) => req.app.locals.isOperator(req) ? next()
   : res.status(403).json({ error: 'Operator laptop only' }));
 
-router.get('/db/health', (req, res) => res.json(backup.health()));
+// ?integrity=1 runs a full integrity check now (Setup -> Check again)
+router.get('/db/health', (req, res) => res.json(backup.health({ integrity: req.query.integrity === '1' })));
 
 router.get('/db/backups', (req, res) => res.json({ backups: backup.list() }));
 
