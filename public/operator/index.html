@@ -963,11 +963,11 @@ async function handleDetection(detection, meta) {
   // The preacher moving through the passage: "next verse", "take it back", "verse 17"
   if (detection.type === 'navigate' && detection.verseData) {
     var cmd = detection.command || {};
-    var sig = cmd.kind === 'step' ? 'step:' + cmd.dir + ':' + cmd.unit : 'goto:' + (cmd.chapter || '') + ':' + cmd.verse;
+    var sig = cmd.kind === 'step' ? 'step:' + cmd.dir + ':' + cmd.unit : cmd.kind === 'repeat' ? 'repeat:current' : 'goto:' + (cmd.chapter || '') + ':' + cmd.verse;
     var done = cuesDone[meta.utt] || (cuesDone[meta.utt] = {});
     if (meta.utt == null || done[sig]) return; // the same cue heard again in the same sentence
     done[sig] = true;
-    var said = cmd.kind === 'step' ? (cmd.dir === 'next' ? 'next ' : 'previous ') + cmd.unit : 'verse ' + cmd.verse;
+    var said = cmd.kind === 'step' ? (cmd.dir === 'next' ? 'next ' : 'previous ') + cmd.unit : cmd.kind === 'repeat' ? 'repeat current passage' : 'verse ' + cmd.verse;
     var nav = Object.assign({}, detection.verseData, { confidence: 0.95, type: 'explicit', source: 'cue' });
     appendTranscription('[ "' + said + '" → ' + nav.reference + ' ]', false, true);
     if (meta.heardAt && meta.heardAt < lastScreenChange) { appendTranscription('[ "' + said + '" ignored — the screen changed after it was said ]', false, true); return; }
