@@ -121,6 +121,11 @@
     load();
   }
 
+  document.getElementById('file').addEventListener('change', function() {
+    document.getElementById('fileAuthorization').checked = false;
+    document.getElementById('obtained').value = '';
+  });
+
   async function doImport() {
     var files = document.getElementById('file').files;
     if (!files.length) return say('Choose the file(s) first.');
@@ -158,6 +163,8 @@
   var archiveInput = document.getElementById('archiveFile');
   if (archiveInput) archiveInput.addEventListener('change', function() {
     archivePreviewReport = null;
+    document.getElementById('archiveAuthorization').checked = false;
+    document.getElementById('archiveSourceNote').value = '';
     document.getElementById('archivePreview').textContent = 'Selection changed. Preview the archive again.';
     document.getElementById('archiveImportBtn').disabled = true;
   });
