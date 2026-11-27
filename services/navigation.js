@@ -63,7 +63,7 @@ function normaliseCueText(text) {
 // ordinary sermon sentences must never advance scripture accidentally.
 const CUES = [
   // Explicit next-verse instructions.
-  [/\b(?:the\s+)?(?:next|following)\s+(?:verses?|scripture\s+verses?)\b|\bverse\s+after\s+(?:that|this|it)\b|\bmove\s+(?:on\s+)?to\s+the\s+next\s+(?:one|1)\b|\b(?:take|bring)\s+(?:me|us|it)\s+to\s+the\s+next\s+(?:one|1)\b|\b(?:and\s+)?the\s+next\s*$/g, { kind: 'step', dir: 'next', unit: 'verse' }],
+  [/\b(?:the\s+)?(?:next|following)\s+(?:verses?|scripture\s+verses?)\b|\bverse\s+after\s+(?:that|this|it)\b|\bmove\s+(?:on\s+)?to\s+the\s+next\s+(?:one|1)\b|\b(?:take|bring)\s+(?:me|us|it)\s+to\s+the\s+next\s+(?:one|1)\b/g, { kind: 'step', dir: 'next', unit: 'verse' }],
   // A short "next" / "the next one" is accepted only as a complete cue.
   [/^(?:(?:okay|ok|alright|right|now|so|and|then|please|let'?s)\s+){0,3}(?:the\s+)?next(?:\s+(?:one|1))?(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'verse', deferInterim: true }],
   // Natural continuation instructions. Exact/command-like forms only.
@@ -74,8 +74,8 @@ const CUES = [
   // Repeat the currently displayed passage; this is not a previous-verse cue.
   [/^(?:(?:okay|ok|alright|right|now|please)\s+)*(?:read|show|repeat)\s+(?:that|it|this|the\s+verse)\s+again(?:\s+please)?[.!?]*$/g, { kind: 'repeat', deferInterim: true }],
   [/^(?:again|repeat)[.!?]*$/g, { kind: 'repeat', deferInterim: true }],
-  [/\b(?:the\s+)?(?:next|following)\s+chapter\b/g, { kind: 'step', dir: 'next', unit: 'chapter' }],
-  [/\b(?:previous|preceding|prior)\s+chapter\b|\bchapter\s+before\s+(?:that|this|it)\b|\bgo\s+back\s+(?:a|one)\s+chapter\b/g, { kind: 'step', dir: 'prev', unit: 'chapter' }],
+  [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:(?:go|move|jump|turn)\s+(?:(?:us|me)\s+)?(?:to\s+)?|read\s+)?(?:the\s+)?(?:next|following)\s+chapter(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'next', unit: 'chapter' }],
+  [/^(?:(?:okay|ok|alright|right|now|so|please)\s+)*(?:(?:let'?s|let\s+us)\s+)?(?:(?:go|move|jump|turn)\s+(?:(?:us|me)\s+)?(?:back\s+)?(?:to\s+)?|read\s+)?(?:the\s+)?(?:previous|preceding|prior)\s+chapter(?:\s+please)?[.!?]*$|^(?:(?:okay|ok|alright|right|now|please)\s+)*(?:chapter\s+before\s+(?:that|this|it)|go\s+back\s+(?:a|one)\s+chapter)(?:\s+please)?[.!?]*$/g, { kind: 'step', dir: 'prev', unit: 'chapter' }],
   // "chapter 5 verse 3", "verse 17", "verses 17 to 19".
   [/\b(?:chapters?\s+(\d{1,3})\s*(?:,|and)?\s*)?(?:verses?|versus|vs)\s+(\d{1,3})(?:\s*(?:to|through|thru|till|until|and|-|–)\s*(?:verses?\s+)?(\d{1,3}))?\b/g, 'goto'],
   // Reversed word order and number-only destinations: "take me to the 17th verse",
