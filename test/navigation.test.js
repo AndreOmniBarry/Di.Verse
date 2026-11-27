@@ -39,3 +39,42 @@ test('a cue resolves against the verse on screen, never past the chapter', () =>
   assert.strictEqual(nav.resolve(nav.cue('verse 99'), here), null);
   assert.strictEqual(nav.resolve(nav.cue('next verse'), null), null);
 });
+
+test('natural next-verse variations are recognised without stealing sermon phrases', () => {
+  const kind = t => {
+    const c = nav.cue(t);
+    return c && (c.kind === 'step' ? c.dir + ' ' + c.unit : c.kind);
+  };
+  [
+    'next', 'the next', 'the next one', 'okay next', 'and the next one',
+    'go on', 'go ahead', 'carry on', 'continue', 'keep going',
+    'keep reading', 'read on', 'let us proceed', "let's proceed",
+    "let's move on", 'what is the next verse?', 'take us to the next verse'
+  ].forEach(text => assert.strictEqual(kind(text), 'next verse', text));
+
+  [
+    'next point', 'the next point is important', 'next week',
+    'the next generation', 'next subject', 'we need the next chapter of the project',
+    'continue the discussion', 'move on to the next topic'
+  ].forEach(text => assert.strictEqual(nav.cue(text), null, text));
+});
+
+test('specific verse instructions accept natural word order and ordinals', () => {
+  const command = text => nav.cue(text);
+  assert.strictEqual(command('take me to the 17th verse').verse, 17);
+  assert.strictEqual(command('take us to the seventeenth verse').verse, 17);
+  assert.strictEqual(command('go to verse 17').verse, 17);
+  assert.strictEqual(command('go to 17').verse, 17);
+  assert.strictEqual(command('verses twenty one to twenty three').verse, 21);
+  assert.strictEqual(command('verses 17 through 19').verseEnd, 19);
+});
+
+test('repeat cues re-show the current passage instead of stepping backwards', () => {
+  const here = { book: 'Romans', chapter: 8, verse: 28, verseEnd: 30 };
+  const command = nav.cue('read that again');
+  assert.deepStrictEqual(command && command.kind, 'repeat');
+  assert.deepStrictEqual(nav.resolve(command, here), {
+    book: 'Romans', chapter: 8, verse: 28, verseEnd: 30
+  });
+  assert.strictEqual(nav.resolve(nav.cue('read that again'), null), null);
+});
