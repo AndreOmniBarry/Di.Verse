@@ -42,3 +42,18 @@ test('ordinary church talk is never suggested', () => {
     'I want you to know that this year is your year of increase', 'the choir will come and minister now'])
     assert.strictEqual(finder.judge(finder.find(t)), null, t);
 });
+
+// Needs a modern translation on this computer (BSB / WEB / MSB, installed by
+// default); skipped where only the KJV is present
+const { getDb } = require('../services/bibleDb');
+const hasModern = ['BSB', 'WEB', 'MSB'].some(c => getDb().prepare('SELECT COUNT(*) AS n FROM verses WHERE translation = ?').get(c).n > 30000);
+test('modern (NIV-style) wording finds the verse too', { skip: !hasModern && 'no modern translation installed' }, () => {
+  const cases = {
+    'I can do all this through him who gives me strength': 'Philippians 4:13',
+    'come to me all you who are weary and burdened and I will give you rest': 'Matthew 11:28',
+    'for I know the plans I have for you plans to prosper you and not to harm you': 'Jeremiah 29:11',
+    'love is patient love is kind it does not envy it does not boast': '1 Corinthians 13:4',
+    'be strong and courageous do not be afraid do not be discouraged for the Lord your God will be with you': 'Joshua 1:9',
+  };
+  for (const [said, want] of Object.entries(cases)) assert.strictEqual(ref(finder.find(said, 5)[0]), want, said);
+});

@@ -153,16 +153,23 @@ function parse(content, filename = '') {
 
 module.exports = { parse };
 
-// Import a single file into the local library. A source note is optional metadata.
-function importFile({ content, filename = '', code, name, obtained = '' }) {
+// Import a single file into the local library. An explicit operator attestation and source note are required.
+function importFile({ content, filename = '', code, name, obtained = '', authorized = false }) {
   const { store } = require('./library');
   code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!code) throw new Error('Give the translation a code, e.g. NKJV');
   if (!name || !String(name).trim()) throw new Error('Give the translation its full name, e.g. New King James Version');
+  if (authorized !== true) {
+    const error = new Error('Confirm that you are authorized to import this Bible file before continuing.');
+    error.status = 403;
+    throw error;
+  }
+  const sourceNote = String(obtained || '').trim();
+  if (!sourceNote) throw new Error('Enter the source or permission basis for this Bible file.');
   const { format, rows } = parse(content, filename);
   const report = store(code, String(name).trim(), rows, {
     source: 'import:' + format,
-    licence: String(obtained || '').trim(),
+    licence: `Operator attested: ${sourceNote}`,
     note: filename,
   });
   return { ...report, format };

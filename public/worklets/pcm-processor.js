@@ -3,12 +3,14 @@
 // isn't fed silence (its main source of invented text) and a reference like
 // "John 3:16" isn't split across two fixed-length chunks.
 const OUT_RATE = 16000;
-const SPEECH_RMS = 0.007;        // block RMS above this counts as speech (low: quiet preachers, distant mics)
+const START_RMS = 0.0035;       // low enough for quiet PA feeds and distant microphones
+const RELEASE_RMS = 0.0025;     // hysteresis keeps syllables from chattering on/off
+const NOISE_LEARN_ALPHA = 0.002; // slowly learns the room level only between speech bursts
 // Defaults; the operator page passes the active provider's values
 // (Groq bills each request as 10 s minimum, so it gets longer chunks)
 const DEFAULT_MIN_SECONDS = 2.5; // don't cut before this much audio
 const DEFAULT_MAX_SECONDS = 8;   // always cut by this point
-const PAUSE_SECONDS = 0.45;      // silence that ends an utterance
+const PAUSE_SECONDS = 0.65;      // keep small pauses inside one Bible reference together
 const MIN_SPEECH_SECONDS = 0.4;  // less speech than this = drop the chunk
 
 class PCMProcessor extends AudioWorkletProcessor {
@@ -22,18 +24,43 @@ class PCMProcessor extends AudioWorkletProcessor {
     this._out = [];
     this._speechSamples = 0;
     this._silenceRun = 0;
-    this._levelTick = 0;
+    this._levelSamples = 0;
+    this._noiseFloor = 0.0015;
+    this._speechActive = false;
+    this._mono = null;
   }
 
   process(inputs) {
-    const input = inputs[0];
-    if (!input || !input[0]) return true;
-    const samples = input[0];
+    const channels = inputs[0];
+    if (!channels || !channels[0]) return true;
+
+    // The browser may still deliver stereo even when mono was requested.
+    // Average channels before VAD/resampling so a voice panned to the right
+    // does not disappear simply because channel zero is quiet.
+    let samples = channels[0];
+    if (channels.length > 1) {
+      if (!this._mono || this._mono.length !== samples.length) this._mono = new Float32Array(samples.length);
+      for (let i = 0; i < samples.length; i++) {
+        let sum = 0;
+        for (let ch = 0; ch < channels.length; ch++) sum += channels[ch][i] || 0;
+        this._mono[i] = sum / channels.length;
+      }
+      samples = this._mono;
+    }
 
     let sumSq = 0;
     for (let i = 0; i < samples.length; i++) sumSq += samples[i] * samples[i];
     const rms = Math.sqrt(sumSq / samples.length);
-    const isSpeech = rms > SPEECH_RMS;
+    const startThreshold = Math.max(START_RMS, Math.min(0.012, this._noiseFloor * 2.5));
+    const releaseThreshold = Math.max(RELEASE_RMS, Math.min(0.008, this._noiseFloor * 1.65));
+    const isSpeech = rms > (this._speechActive ? releaseThreshold : startThreshold);
+
+    // Learn the ambient floor gradually during non-speech periods. Capping the
+    // learned sample prevents loud transient noise from disabling quiet voice.
+    if (!this._speechActive && !isSpeech) {
+      const ambient = Math.min(rms, 0.02);
+      this._noiseFloor += (ambient - this._noiseFloor) * NOISE_LEARN_ALPHA;
+    }
 
     // Linear-interpolation resample to 16 kHz
     while (this._pos < samples.length - 1) {
@@ -46,14 +73,28 @@ class PCMProcessor extends AudioWorkletProcessor {
     this._pos -= samples.length;
 
     const blockOut = samples.length / this._ratio;
-    if (isSpeech) { this._speechSamples += blockOut; this._silenceRun = 0; }
-    else this._silenceRun += blockOut;
+    if (isSpeech) {
+      this._speechActive = true;
+      this._speechSamples += blockOut;
+      this._silenceRun = 0;
+    } else if (this._speechActive) {
+      this._silenceRun += blockOut;
+    }
 
-    // Level meter for the operator UI, ~10 times a second
-    if (++this._levelTick % 37 === 0) this.port.postMessage({ level: rms, speech: isSpeech });
+    // Level meter at a true 10 Hz, independent of device sample rate/block size.
+    this._levelSamples += samples.length;
+    if (this._levelSamples >= sampleRate * 0.1) {
+      this._levelSamples %= sampleRate * 0.1;
+      this.port.postMessage({
+        level: rms,
+        speech: isSpeech,
+        noiseFloor: this._noiseFloor,
+        threshold: this._speechActive ? releaseThreshold : startThreshold,
+      });
+    }
 
     const len = this._out.length;
-    const pauseEnded = len >= this._minSeconds * OUT_RATE && this._silenceRun >= PAUSE_SECONDS * OUT_RATE;
+    const pauseEnded = this._speechActive && len >= this._minSeconds * OUT_RATE && this._silenceRun >= PAUSE_SECONDS * OUT_RATE;
     if (pauseEnded || len >= this._maxSeconds * OUT_RATE) this._flush();
     // Long silence with no speech: discard instead of growing forever
     else if (this._speechSamples === 0 && len >= DEFAULT_MIN_SECONDS * OUT_RATE) this._reset();
@@ -72,6 +113,7 @@ class PCMProcessor extends AudioWorkletProcessor {
     this._out = [];
     this._speechSamples = 0;
     this._silenceRun = 0;
+    this._speechActive = false;
   }
 }
 registerProcessor('pcm-processor', PCMProcessor);

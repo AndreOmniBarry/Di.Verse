@@ -366,6 +366,33 @@ test('next / previous verse endpoint', async () => {
   assert.strictEqual(st, 404);
 });
 
+test('verse-step API follows the selected local partial translation', async () => {
+  const source = [
+    { book: 'LUK', chapter: 1, verse: 1, text: 'Synthetic partial translation beginning.' },
+    { book: 'LUK', chapter: 1, verse: 3, text: 'Synthetic partial translation end of first stored chapter.' },
+    { book: 'LUK', chapter: 3, verse: 1, text: 'Synthetic partial translation next stored chapter.' },
+  ];
+  const query = new URLSearchParams({ code: 'ZZPTST', name: 'Test Partial Translation', filename: 'partial.json',
+    obtained: 'Authorized synthetic test fixture', authorized: 'true' });
+  await fetch(base + '/api/library/ZZPTST', { method: 'DELETE' });
+  try {
+    const imported = await fetch(base + '/api/library/import?' + query.toString(), {
+      method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: JSON.stringify(source),
+    });
+    const importBody = await imported.json();
+    assert.strictEqual(imported.status, 200, JSON.stringify(importBody));
+    const response = await fetch(base + '/api/verse/step?' + new URLSearchParams({
+      book: 'Luke', chapter: '1', verse: '3', dir: 'next', unit: 'verse', translation: 'ZZPTST',
+    }).toString());
+    const verse = await response.json();
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(verse.reference, 'Luke 3:1');
+    assert.strictEqual(verse.translation, 'ZZPTST');
+  } finally {
+    await fetch(base + '/api/library/ZZPTST', { method: 'DELETE' });
+  }
+});
+
 test('the preacher says "next verse" / "verse 17" while a verse is on screen', async () => {
   const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
   const current = { book: 'Romans', chapter: 8, verse: 28, translation: 'KJV' };
@@ -479,4 +506,93 @@ test('session report: success rate, missed references word for word, false alarm
     assert.match(txt, /on screen: John 3:16 \(auto\)/);
     assert.ok(fs.readdirSync(path.join(data, 'logs', 'sessions')).some(f => f.endsWith('.jsonl')), 'kept on the Di.Verse computer');
   } finally { await stopTestServer(srv); fs.rmSync(data, { recursive: true, force: true }); }
+});
+
+
+test('Windows audio connector is paired, loopback-only and streams PCM through Whisper', async () => {
+  const download = await fetch(base + '/api/audio-bridge/connector.bat');
+  assert.strictEqual(download.status, 200);
+  assert.match(download.headers.get('content-disposition'), /DiVerse-Windows-Audio-Bridge\.bat/);
+  const batch = await download.text();
+  assert.match(batch, /listenaddress=127\.0\.0\.1/);
+  assert.match(batch, /connectaddress=/);
+  assert.match(batch, /Run this file again using Run as administrator/);
+  const token = (batch.match(/audio-bridge\?token=([a-f0-9]{48})/) || [])[1];
+  assert.ok(token, 'connector includes a one-run pairing token');
+
+  const invalidPage = await fetch(base + '/audio-bridge?token=wrong');
+  assert.strictEqual(invalidPage.status, 403);
+  const page = await fetch(base + '/audio-bridge?token=' + token);
+  assert.strictEqual(page.status, 200);
+  assert.match(page.headers.get('content-type'), /text\/html/);
+  assert.match(await page.text(), /Start sending audio/);
+  assert.strictEqual((await fetch(base + '/audio-bridge/')).status, 403, 'the trailing-slash route still requires the pairing token');
+
+  const bad = new WebSocket(`ws://localhost:${PORT}?type=audio-bridge&token=wrong`);
+  const badCode = await new Promise(resolve => bad.on('close', resolve));
+  assert.strictEqual(badCode, 1008);
+
+  const operator = new WebSocket(`ws://localhost:${PORT}?type=operator`);
+  await new Promise(resolve => operator.on('open', resolve));
+  const waitFor = action => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timed out waiting for ' + action)), 2500);
+    operator.on('message', function handler(raw) {
+      const msg = JSON.parse(raw);
+      if (msg.action !== action) return;
+      clearTimeout(timer);
+      operator.off('message', handler);
+      resolve(msg);
+    });
+  });
+
+  const bridge = new WebSocket(`ws://localhost:${PORT}?type=audio-bridge&token=${token}`);
+  await new Promise(resolve => bridge.on('open', resolve));
+  const connected = waitFor('AUDIO_BRIDGE_STATUS');
+  bridge.send(JSON.stringify({ action: 'AUDIO_BRIDGE_INFO', inputLabel: 'Focusrite USB Audio', sampleRate: 48000 }));
+  const status = await connected;
+  assert.strictEqual(status.connected, true);
+  assert.strictEqual(status.inputLabel, 'Focusrite USB Audio');
+
+  const failed = waitFor('AUDIO_BRIDGE_ERROR');
+  bridge.send(JSON.stringify({ action: 'AUDIO_CHUNK', sequence: 1, sampleRate: 16000 }));
+  bridge.send(Buffer.alloc(32000));
+  const error = await failed;
+  assert.match(error.message, /No transcription key/);
+
+  bridge.close(); operator.close();
+});
+
+test('listening harder: a book now and its numbers next are joined; an unclear reference asks for a second listen and is completed by what follows; reading holds the screen', async () => {
+  const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fast: true, via: 'captions', ...body }) }).then(r => r.json());
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'SHOW_VERSE', verse: { reference: 'Genesis 1:1', translation: 'KJV', text: 'x', book: 'Genesis', chapter: 1, verse: 1 } }) });
+  let d = await detect({ text: 'turn with me to Romans' });
+  assert.strictEqual(d.type, 'none'); assert.strictEqual(d.listenAgain, true);
+  d = await detect({ text: 'chapter eight verse twenty eight' });          // not Genesis 8:28 (the book on screen)
+  assert.strictEqual(d.verseData.reference, 'Romans 8:28');
+  d = await detect({ text: 'that is the book of Genesis 32:36' });         // doesn't exist
+  assert.strictEqual(d.source, 'nearest'); assert.strictEqual(d.listenAgain, true);
+  d = await detect({ text: 'I will not let thee go' });                    // a loose match to a likely reading
+  assert.strictEqual(d.type, 'explicit'); assert.strictEqual(d.verseData.reference, 'Genesis 32:26');
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'SHOW_VERSE', verse: { reference: 'Mark 9:9', translation: 'KJV', text: 'x', book: 'Mark', chapter: 9, verse: 9 } }) });
+  d = await detect({ text: 'and as they came down from the mountain Jesus charged them saying tell the vision to no man' });
+  assert.strictEqual(d.type, 'reading');                                   // not Matthew 17:9, whose words these are
+  d = await detect({ text: 'and they kept that saying with themselves questioning one with another' });
+  assert.strictEqual(d.type, 'navigate'); assert.strictEqual(d.verseData.reference, 'Mark 9:10');
+});
+
+test('a story told across two sentences is offered once; a reference-only note goes to the screens', async () => {
+  const detect = body => fetch(base + '/api/detect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fast: true, via: 'captions', ...body }) }).then(r => r.json());
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'CLEAR' }) });
+  let d = await detect({ text: 'up the mountain to offer him on the altar', context: 'remember Moses? no, remember when Abraham took his son Isaac' });
+  assert.deepStrictEqual((d.stories || []).map(s => s.reference), ['Genesis 22:1–19']);
+  d = await detect({ text: 'and Abraham took the knife to sacrifice Isaac', context: '' });   // same story, moments later: not offered again
+  assert.strictEqual(d.stories, undefined);
+  const ws = new WebSocket(`ws://localhost:${PORT}?type=projection`);
+  await new Promise(r => ws.on('open', r));
+  const got = new Promise(r => ws.on('message', m => { const msg = JSON.parse(m); if (msg.action === 'SHOW_REFERENCE') r(msg); }));
+  await fetch(base + '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'SHOW_REFERENCE', reference: 'Genesis 22:1–19', title: 'Abraham offers Isaac' }) });
+  const msg = await got; ws.close();
+  assert.strictEqual(msg.reference, 'Genesis 22:1–19');
 });

@@ -119,6 +119,16 @@
     @keyframes bgDrift { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
     html:not(.overlay) .sq-window::after { content: 'vMix camera'; position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center;
       color: rgba(255,255,255,0.25); font-size: 2vh; letter-spacing: 0.1em; text-transform: uppercase; }
+    /* Reference only: a small lower third for note-takers ("Scriptural
+       Reference — Genesis 22:1–19"), the camera stays full screen */
+    #refNote { position: fixed; left: 4vw; bottom: 5vh; z-index: 12; opacity: 0; transform: translateY(1vh); transition: opacity 0.35s ease, transform 0.35s ease; pointer-events: none;
+      padding: 1.6vh 3vw 1.8vh 2.6vw; border-radius: 1.8vh; background: rgba(10,12,28,0.78); border: 1px solid rgba(255,255,255,0.16); border-top-color: rgba(255,255,255,0.45);
+      box-shadow: 0 1.5vh 4vh rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.35); max-width: 70vw; }
+    #refNote.show { opacity: 1; transform: translateY(0); }
+    #refNote .rn-label { font-size: 1.7vh; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent, #E94560); margin-bottom: 0.5vh; }
+    #refNote .rn-ref { font-size: 4.6vh; font-weight: 700; font-style: italic; color: #FFFFFF; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+    #refNote .rn-title { font-size: 2.1vh; color: rgba(255,255,255,0.75); margin-top: 0.4vh; }
+    #refNote .rn-title:empty { display: none; }
     #reconnect { position: fixed; bottom: 10px; right: 14px; font-size: 0.62rem; color: rgba(255,255,255,0.2); display: none; z-index: 20; }
   </style>
 </head>
@@ -143,8 +153,10 @@
     <div class="sq-panel"><div class="sq-text" id="sqText"></div><div class="sq-page" id="sqPage"></div></div>
     <div class="sq-ref"><span id="sqRef"></span><span class="badge" id="sqBadge">KJV</span></div>
   </div>
+  <div id="refNote"><div class="rn-label" id="rnLabel">Scriptural Reference</div><div class="rn-ref" id="rnRef"></div><div class="rn-title" id="rnTitle"></div></div>
   <div id="reconnect">Reconnecting...</div>
 <script src="/projection/backgrounds.js"></script>
+<script src="/scripture-text.js"></script>
 <script>
   var OVERLAY = /[?&]overlay(=|&|$)/.test(location.search);
   if (OVERLAY) document.documentElement.classList.add('overlay');
@@ -378,22 +390,23 @@
     try { applyTheme(theme); } catch (err) { report('theme: ' + err.message); }
     if (fontSize !== undefined) fontDelta = fontSize;
     var box = boxFor(verse.displayMode);
-    show(box, verse.reference, verse.translation, verse.text);
+    show(box, verse.reference, verse.translation, verse.text, true);
   }
 
   // The words go up first, so whatever else fails the verse is on screen;
   // the background and the sizing follow, each on its own
-  function show(box, ref, badge, text) {
+  function show(box, ref, badge, text, formatScripture) {
+    var visibleText = formatScripture ? DiVerseScriptureText.display(text) : text;
     document.getElementById(BOXES[box].ref).textContent = ref;
     document.getElementById(BOXES[box].badge).textContent = badge;
-    document.getElementById(BOXES[box].text).textContent = text;
+    document.getElementById(BOXES[box].text).textContent = visibleText;
     document.getElementById(box).classList.add('show');
     try { paintBackgrounds(); } catch (err) { report('background: ' + err.message); } // start the live effect now the box is visible
-    try { fit(box, text); }
+    try { fit(box, visibleText); }
     catch (err) {
       report('layout: ' + err.message);
       var el = document.getElementById(BOXES[box].text);
-      el.textContent = text;
+      el.textContent = visibleText;
       if (!parseFloat(getComputedStyle(el).fontSize)) el.style.fontSize = '5vh';
     }
   }
@@ -411,7 +424,18 @@
     document.getElementById('lowerThird').classList.remove('show');
     document.getElementById('fullScreen').classList.remove('show');
     document.getElementById('squeeze').classList.remove('show');
+    document.getElementById('refNote').classList.remove('show');
     for (var k in renderers) renderers[k].stop(); // nothing on screen: no GPU work
+  }
+
+  // Reference only, for note-takers: the passage itself isn't shown
+  function showReference(msg) {
+    hide();
+    try { applyTheme(msg.theme); } catch (err) { report('theme: ' + err.message); }
+    document.getElementById('rnLabel').textContent = msg.label || 'Scriptural Reference';
+    document.getElementById('rnRef').textContent = msg.reference || '';
+    document.getElementById('rnTitle').textContent = msg.title || '';
+    document.getElementById('refNote').classList.add('show');
   }
 
   // A screen left open (vMix, the projector) loads the new page by itself
@@ -450,6 +474,7 @@
       try {
         var msg = JSON.parse(e.data);
         if (msg.action === 'SHOW_VERSE')   showVerse(msg.verse, msg.theme, msg.fontSize);
+        else if (msg.action === 'SHOW_REFERENCE') showReference(msg);
         else if (msg.action === 'SHOW_LYRICS') showLyrics(msg.lyrics, msg.theme, msg.fontSize);
         else if (msg.action === 'APPLY_BACKGROUND') applyBackground(msg.background, msg.frame, msg.size, msg.camera);
         else if (msg.action === 'CLEAR')   hide();

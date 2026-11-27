@@ -91,11 +91,21 @@ function bookFolderName(value) {
   return String(value || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Return archive metadata for a supported chapter file path, or null. */
+/** Return archive metadata for a supported chapter file path, or null.
+ * Accepts the standard CODE/TESTAMENT/BOOK/CHAPTER.json layout and the
+ * testament-less CODE/BOOK/CHAPTER.json layout used by some partial editions.
+ * Testament-less imports are only inferred for translations in our known
+ * catalogue; unknown folder names are never guessed to be translation codes.
+ */
 function parseChapterPath(fileName) {
   const parts = safeEntryPath(fileName);
   if (!parts.length || !/^\d+\.json$/i.test(parts[parts.length - 1])) return null;
 
+  const chapter = Number(parts[parts.length - 1].replace(/\.json$/i, ''));
+  if (!Number.isSafeInteger(chapter) || chapter < 1 || chapter > LIMITS.chapterNumber) return null;
+
+  // Preferred, explicit testament path. This remains compatible with older
+  // archive packs and supports one optional enclosing directory.
   let testamentIndex = -1;
   let testament = null;
   for (let i = 1; i < parts.length - 2; i++) {
@@ -106,30 +116,41 @@ function parseChapterPath(fileName) {
       break;
     }
   }
-  if (testamentIndex < 1) return null;
 
-  const code = normalizedCode(parts[testamentIndex - 1]);
-  if (!code) return null;
+  if (testamentIndex >= 1) {
+    const code = normalizedCode(parts[testamentIndex - 1]);
+    if (!code) return null;
+    const book = findBook(bookFolderName(parts[testamentIndex + 1]));
+    if (!book) return null;
+    const middle = parts.slice(testamentIndex + 2, -1);
+    if (middle.length > 1 || (middle.length === 1 && !/^chapters?$/i.test(middle[0]))) return null;
+    const expectedTestament = book.num <= 39 ? 'old' : 'new';
+    return {
+      code, testament, book: book.name, chapter,
+      testamentMismatch: testament !== expectedTestament,
+      testamentInferred: false,
+      fileName,
+    };
+  }
 
-  const book = findBook(bookFolderName(parts[testamentIndex + 1]));
+  // Some sources, including partial translations, package only CODE/BOOK/
+  // CHAPTER.json (optionally BOOK/chapters/CHAPTER.json). Allow one wrapper
+  // directory, and infer OT/NT from the recognised book rather than requiring
+  // a complete 66-book testament tree.
+  const hasChaptersFolder = /^chapters?$/i.test(parts[parts.length - 2]);
+  const bookIndex = parts.length - (hasChaptersFolder ? 3 : 2);
+  const codeIndex = bookIndex - 1;
+  if (codeIndex < 0 || codeIndex > 1) return null;
+  const code = normalizedCode(parts[codeIndex]);
+  if (!code || !TRANSLATION_NAMES[code]) return null;
+  const book = findBook(bookFolderName(parts[bookIndex]));
   if (!book) return null;
+  if (hasChaptersFolder && parts.length - bookIndex !== 3) return null;
+  if (!hasChaptersFolder && parts.length - bookIndex !== 2) return null;
 
-  // The folder may optionally contain a `chapters` subfolder immediately
-  // below the book; no other intermediate path is part of this convention.
-  const middle = parts.slice(testamentIndex + 2, -1);
-  if (middle.length > 1 || (middle.length === 1 && !/^chapters?$/i.test(middle[0]))) return null;
-
-  const chapter = Number(parts[parts.length - 1].replace(/\.json$/i, ''));
-  if (!Number.isSafeInteger(chapter) || chapter < 1 || chapter > LIMITS.chapterNumber) return null;
-
-  const expectedTestament = book.num <= 39 ? 'old' : 'new';
   return {
-    code,
-    testament,
-    book: book.name,
-    chapter,
-    testamentMismatch: testament !== expectedTestament,
-    fileName,
+    code, testament: book.num <= 39 ? 'old' : 'new', book: book.name, chapter,
+    testamentMismatch: false, testamentInferred: true, fileName,
   };
 }
 
@@ -342,6 +363,7 @@ async function inspectArchive(buffer, options = {}) {
       let invalidVerses = 0;
       let duplicateChapterFiles = 0;
       let testamentMismatches = 0;
+      let testamentInferredFiles = 0;
 
       for (const { entry, meta } of files) {
         const key = `${meta.book}|${meta.chapter}`;
@@ -350,6 +372,7 @@ async function inspectArchive(buffer, options = {}) {
         books.add(meta.book);
         chapters.add(key);
         if (meta.testamentMismatch) testamentMismatches++;
+        if (meta.testamentInferred) testamentInferredFiles++;
         try {
           const parsed = parseChapterJson(await readEntry(zipfile, entry));
           verses += parsed.verses.reduce((sum, item) => sum + (item.verseEnd || item.verse) - item.verse + 1, 0);
@@ -366,12 +389,14 @@ async function inspectArchive(buffer, options = {}) {
         name: TRANSLATION_NAMES[code] || (existing && existing.name) || code,
         files: files.length,
         books: books.size,
+        bookNames: [...books].sort((a, b) => a.localeCompare(b)),
         chapters: chapters.size,
         verses,
         invalidFiles,
         invalidVerses,
         duplicateChapterFiles,
         testamentMismatches,
+        testamentInferredFiles,
         invalidDetails,
         alreadyInstalled: Boolean(existing),
         canImport: code !== 'KJV' && verses > 0 && invalidFiles === 0 && duplicateChapterFiles === 0,
@@ -390,6 +415,17 @@ async function inspectArchive(buffer, options = {}) {
 }
 
 async function importArchive(buffer, options = {}) {
+  if (options.authorized !== true) {
+    const error = new Error('Confirm that you are authorized to import these Bible files before continuing.');
+    error.status = 403;
+    throw error;
+  }
+  const sourceNote = String(options.sourceNote || '').trim();
+  if (!sourceNote) {
+    const error = new Error('Enter the source or permission basis for this Bible archive.');
+    error.status = 400;
+    throw error;
+  }
   const lib = options.library || defaultLibrary;
   const preview = await inspectArchive(buffer, { library: lib });
   if (options.expectedHash && options.expectedHash !== preview.archiveHash) {
@@ -449,7 +485,7 @@ async function importArchive(buffer, options = {}) {
         const name = TRANSLATION_NAMES[code] || (prior && prior.name) || code;
         const report = lib.store(code, name, rows, {
           source: 'zip-import',
-          licence: '',
+          licence: `Operator attested: ${sourceNote}`,
           note: `Imported from ZIP archive (${files.length} chapter files)`,
         });
         results.push({ ...report, chapterFiles: files.length });

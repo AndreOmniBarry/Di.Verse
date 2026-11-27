@@ -53,8 +53,10 @@
 
   <h2>Import a ZIP archive</h2>
   <div class="card">
-    <div class="small">Select a ZIP with paths such as AMP/old/Genesis/1.json and AMP/new/Matthew/1.json. Preview the detected translations before importing.</div>
+    <div class="small">Select a ZIP with chapter files. Preview detected translations before importing. Di.Verse records your attestation; it cannot verify publisher permissions for you.</div>
     <label>ZIP archive</label><input type="file" id="archiveFile" accept=".zip,application/zip">
+    <label>Source / permission basis</label><textarea id="archiveSourceNote" rows="2" placeholder="e.g. Authorized copy supplied under my publisher licence"></textarea>
+    <div class="small" style="margin-top:8px;"><label style="display:flex;align-items:flex-start;gap:8px;color:var(--text);"><input id="archiveAuthorization" type="checkbox" style="width:auto;margin-top:2px;"> I confirm that I have the legal right or permission to import and use every selected translation in this archive.</label></div>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-dim" id="archivePreviewBtn" onclick="previewArchiveZip()">Preview archive</button>
       <button class="btn btn-accent" id="archiveImportBtn" onclick="importArchiveZip()" disabled>Import selected translations</button>
@@ -64,14 +66,15 @@
 
   <h2>Import a Bible file</h2>
   <div class="card">
-    <div class="small">JSON, USFM (one file per book is fine — select them all), OSIS XML or Zefania XML. An optional source note can be recorded.</div>
+    <div class="small">JSON, USFM (one file per book is fine — select them all), OSIS XML or Zefania XML. Di.Verse records your attestation; it cannot verify publisher permissions for you.</div>
     <label>File(s)</label><input type="file" id="file" multiple accept=".json,.usfm,.sfm,.xml,.osis,.txt">
     <div class="row">
       <div><label>Code</label><input id="code" placeholder="NKJV" maxlength="12"></div>
       <div style="flex:3"><label>Full name</label><input id="name" placeholder="New King James Version"></div>
     </div>
-    <label>Optional source note</label>
-    <textarea id="obtained" rows="2" placeholder="Optional source or edition note"></textarea>
+    <label>Source / permission basis</label>
+    <textarea id="obtained" rows="2" placeholder="e.g. Authorized copy supplied under my publisher licence"></textarea>
+    <div class="small" style="margin-top:8px;"><label style="display:flex;align-items:flex-start;gap:8px;color:var(--text);"><input id="fileAuthorization" type="checkbox" style="width:auto;margin-top:2px;"> I confirm that I have the legal right or permission to import and use this translation.</label></div>
     <div style="margin-top:12px;"><button class="btn btn-accent" id="importBtn" onclick="doImport()">Import</button></div>
   </div>
   <div id="msg"></div>
@@ -88,7 +91,7 @@
     document.getElementById('installed').innerHTML =
       seeded.map(function(s) { return '<tr><td class="code">' + s[0] + '</td><td>' + s[1] + '</td><td><span class="tag full">Full Bible</span></td><td class="small">Built in</td><td></td></tr>'; }).join('') +
       d.installed.map(function(m) {
-        return '<tr><td class="code">' + esc(m.code) + '</td><td>' + esc(m.name) + (m.licence && /^import:/.test(m.source) ? '<div class="small">' + esc(m.licence) + '</div>' : '') + '</td>' +
+        return '<tr><td class="code">' + esc(m.code) + '</td><td>' + esc(m.name) + (m.licence && (/^import:/.test(m.source) || m.source === 'zip-import') ? '<div class="small">Source / permission basis: ' + esc(m.licence) + '</div>' : '') + '</td>' +
           '<td><span class="tag' + (m.coverage === 'Full Bible' ? ' full' : '') + '">' + esc(m.coverage) + '</span>' + (m.missing && m.coverage === 'Full Bible' ? ' <span class="small">' + m.missing + ' verses not in this text</span>' : '') + '</td>' +
           '<td class="small">' + esc(from(m.source)) + '</td>' +
           '<td style="text-align:right"><button class="btn btn-dim" onclick="removeT(\'' + esc(m.code) + '\')">Remove</button></td></tr>';
@@ -118,9 +121,16 @@
     load();
   }
 
+  document.getElementById('file').addEventListener('change', function() {
+    document.getElementById('fileAuthorization').checked = false;
+    document.getElementById('obtained').value = '';
+  });
+
   async function doImport() {
     var files = document.getElementById('file').files;
     if (!files.length) return say('Choose the file(s) first.');
+    if (!document.getElementById('fileAuthorization').checked) return say('Confirm that you are authorized to import this Bible file.');
+    if (!document.getElementById('obtained').value.trim()) return say('Enter the source or permission basis for this Bible file.');
     var btn = document.getElementById('importBtn');
     btn.disabled = true; btn.textContent = 'Importing…';
     try {
@@ -129,7 +139,7 @@
       for (var i = 0; i < files.length; i++) parts.push(await files[i].text());
       var body = parts.join('\n');
       var q = new URLSearchParams({ code: document.getElementById('code').value, name: document.getElementById('name').value,
-        obtained: document.getElementById('obtained').value, filename: files[0].name });
+        obtained: document.getElementById('obtained').value, filename: files[0].name, authorized: 'true' });
       var r = await fetch('/api/library/import?' + q, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: body });
       var d = await r.json();
       if (r.status === 409 && d.replaceRequired && d.replaceRequired.length && confirm(d.error + '\nReplace the existing translation?')) {
@@ -153,6 +163,8 @@
   var archiveInput = document.getElementById('archiveFile');
   if (archiveInput) archiveInput.addEventListener('change', function() {
     archivePreviewReport = null;
+    document.getElementById('archiveAuthorization').checked = false;
+    document.getElementById('archiveSourceNote').value = '';
     document.getElementById('archivePreview').textContent = 'Selection changed. Preview the archive again.';
     document.getElementById('archiveImportBtn').disabled = true;
   });
@@ -181,10 +193,14 @@
         if (t.invalidVerses) flags.push(t.invalidVerses + ' invalid verse record(s) skipped');
         if (t.duplicateChapterFiles) flags.push(t.duplicateChapterFiles + ' duplicate chapter(s)');
         if (t.testamentMismatches) flags.push(t.testamentMismatches + ' testament path mismatch(es)');
+        if (t.testamentInferredFiles) flags.push('OT/NT folders are absent in ' + t.testamentInferredFiles + ' file(s); book names used to infer testament');
         if (t.code === 'KJV') flags.push('built-in KJV is protected');
         if (!t.verses) flags.push('no valid verses found');
         html += '<tr><td><input type="checkbox" style="width:auto" data-archive-code="' + esc(t.code) + '" ' + (t.canImport ? 'checked' : 'disabled') + '></td>';
-        html += '<td><strong>' + esc(t.code) + '</strong><div class="small">' + esc(t.name) + '</div></td><td>' + t.books + '</td><td>' + t.chapters + '</td><td>' + t.verses.toLocaleString() + '</td><td>' + esc(flags.join('; ') || 'Ready') + '</td></tr>';
+        var bookNames = Array.isArray(t.bookNames) ? t.bookNames : [];
+        html += '<td><strong>' + esc(t.code) + '</strong><div class="small">' + esc(t.name) + '</div></td><td>' + t.books +
+          (bookNames.length ? '<div class="small">' + esc(bookNames.join(', ')) + '</div>' : '') +
+          '</td><td>' + t.chapters + '</td><td>' + t.verses.toLocaleString() + '</td><td>' + esc(flags.join('; ') || 'Ready') + '</td></tr>';
       });
       html += '</tbody></table>';
       document.getElementById('archivePreview').innerHTML = html;
@@ -199,6 +215,8 @@
   async function importArchiveZip() {
     var file = document.getElementById('archiveFile').files[0];
     if (!file || !archivePreviewReport) return say('Preview the selected ZIP archive first.');
+    if (!document.getElementById('archiveAuthorization').checked) return say('Confirm that you are authorized to import every selected translation.');
+    if (!document.getElementById('archiveSourceNote').value.trim()) return say('Enter the source or permission basis for this Bible archive.');
     var selected = Array.prototype.slice.call(document.querySelectorAll('[data-archive-code]:checked'));
     var codes = selected.map(function(input) { return input.getAttribute('data-archive-code'); });
     if (!codes.length) return say('Select at least one importable translation.');
@@ -213,7 +231,8 @@
     var btn = document.getElementById('archiveImportBtn');
     btn.disabled = true; btn.textContent = 'Importing…';
     try {
-      var query = new URLSearchParams({ codes: codes.join(','), replace: replace.join(','), hash: archivePreviewReport.archiveHash });
+      var query = new URLSearchParams({ codes: codes.join(','), replace: replace.join(','), hash: archivePreviewReport.archiveHash,
+        authorized: 'true', sourceNote: document.getElementById('archiveSourceNote').value.trim() });
       var response = await fetch('/api/library/archive/import?' + query.toString(), {
         method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: file
       });

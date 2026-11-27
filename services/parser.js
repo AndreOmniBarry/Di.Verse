@@ -20,12 +20,12 @@ const BOOK_MAP = {
   '1 chronicles':13,'1chronicles':13,'1ch':13,'first chronicles':13,
   '2 chronicles':14,'2chronicles':14,'2ch':14,'second chronicles':14,
   'ezra':15,'ezr':15,
-  'nehemiah':16,'neh':16,
+  'nehemiah':16,'nehemia':16,'neh':16,
   'esther':17,'est':17,
   'job':18,
   'psalms':19,'psalm':19,'psa':19,'ps':19,
-  'proverbs':20,'pro':20,'prov':20,
-  'ecclesiastes':21,'ecc':21,'eccl':21,
+  'proverbs':20,'proverb':20,'pro':20,'prov':20,'purvas':20,'poovams':20,'poovans':20,'provabs':20,'proverbes':20,
+  'ecclesiastes':21,'ecclesiastic':21,'ecclesiastics':21,'ecc':21,'eccl':21,
   'song of solomon':22,'song':22,'sos':22,'song of songs':22,
   'isaiah':23,'isa':23,
   'jeremiah':24,'jer':24,
@@ -40,10 +40,10 @@ const BOOK_MAP = {
   'micah':33,'mic':33,
   'nahum':34,'nah':34,
   'habakkuk':35,'hab':35,
-  'zephaniah':36,'zep':36,
+  'zephaniah':36,'zephania':36,'zephanaiah':36,'zefaniah':36,'zep':36,
   'haggai':37,'hag':37,
   'zechariah':38,'zec':38,'zech':38,
-  'malachi':39,'mal':39,
+  'malachi':39,'malachai':39,'mal':39,
   'matthew':40,'mat':40,'matt':40,'mt':40,
   'mark':41,'mar':41,'mrk':41,'mk':41,
   'luke':42,'luk':42,'lk':42,
@@ -53,7 +53,7 @@ const BOOK_MAP = {
   '1 corinthians':46,'1corinthians':46,'1co':46,'1cor':46,'first corinthians':46,
   '2 corinthians':47,'2corinthians':47,'2co':47,'2cor':47,'second corinthians':47,
   'galatians':48,'gal':48,
-  'ephesians':49,'eph':49,
+  'ephesians':49,'ephesian':49,'ephisians':49,'efficient':49,'efficiency':49,'eph':49,
   'philippians':50,'phi':50,'php':50,'phil':50,
   'colossians':51,'col':51,
   '1 thessalonians':52,'1thessalonians':52,'1th':52,'first thessalonians':52,
@@ -266,7 +266,10 @@ function buildTranslationPatterns(catalogue) {
         existing.conflicted = true;
         return;
       }
-      existing.requiresCue = existing.requiresCue && requiresCue;
+      // an ambiguous phrase stays guarded even when an installed edition's
+      // name repeats it ("The Message" must not make "the message of the
+      // cross" switch editions)
+      existing.requiresCue = AMBIGUOUS.has(key) || (existing.requiresCue && requiresCue);
       return;
     }
     aliases.set(key, { code, requiresCue: requiresCue || AMBIGUOUS.has(key), conflicted: false });
@@ -304,12 +307,29 @@ function buildTranslationPatterns(catalogue) {
       const escaped = phrase.split(' ').map(escapeRe).join('\\s+');
       if (!item.requiresCue) return { code: item.code, re: new RegExp('\\b' + escaped + '\\b') };
 
+      // Ambiguous names ("message", "passion", "voice", "living bible") and
+      // short codes ("WE", "NET") are only taken as an edition when they are
+      // requested, never because the word occurs in a sentence:
+      //   "…the Message Bible / translation / version"
+      //   "…in / from the Message"                      (end of sentence)
+      //   "this / that / it / the same passage … in / on / from the Message"
+      //   "switch / change / go (back) / turn … to the Message"
+      //   "can we / could you / let's … have / see / read / put / show / give us the Message"
+      // each optionally followed by "on screen", "up", "please", "now"…
       const base = phrase.replace(/^the\s+/, '').split(' ').map(escapeRe).join('\\s+');
+      const the = '(?:the\\s+)?';
+      const tail = '(?:\\s+(?:on(?:to)?\\s+(?:the\\s+)?screen|up|please|now|for\\s+us|instead|again|too|as\\s+well))*\\s*$';
+      const object = '(?:it|this|that|these|those|same|passage|passages|verse|verses|scripture|scriptures|text|one|reading|[0-9]+)';   // a number: the end of a spoken reference
+      const modal = '(?:(?:can|could|would|will|may|shall)\\s+(?:we|you|i|u|someone)\\s+(?:please\\s+)?|lets\\s+|let\\s+us\\s+|^(?:please\\s+)?)';
+      const request = '(?:(?:have|get|see|read|use|put|show|display|project|bring|give)(?:\\s+(?:us|me))?)';
       return {
         code: item.code,
         re: new RegExp(
           '\\b' + base + '\\s+(?:bible|translation|version|edition)\\b' +
-          '|\\b(?:in|from|using|with|switch(?:ing)?\\s+to|read(?:ing)?\\s+from|turn(?:ing)?\\s+to|use)\\s+(?:the\\s+)?' + base + '\\s*$'
+          '|\\b(?:in|from|using|with|use|read(?:ing)?\\s+from)\\s+' + the + base + tail +
+          '|\\b' + object + '\\s+(?:up\\s+)?(?:in|on|from|into|with|using)\\s+' + the + base + tail +
+          '|\\b(?:switch(?:ing)?|change|changing|swap|move|go|going|come|coming|turn|turning|back|over)\\s+(?:it\\s+|this\\s+|that\\s+)?(?:back\\s+|over\\s+)?(?:to|into)\\s+' + the + base + tail +
+          '|(?:\\b|^)' + modal + request + '\\s+(?:up\\s+)?' + the + base + tail
         )
       };
     });
@@ -364,7 +384,7 @@ function exists(book, chapter, verse) {
 // Book names that are also everyday words or first names. Alone with one
 // number ("mark 2 things", "John 3 times") they need a cue to count as a
 // reference: "chapter", or "turn to / open / read / in / book of…" before them.
-const COMMON_WORD_BOOKS = new Set(['mark', 'john', 'james', 'acts', 'act', 'job', 'numbers', 'ruth', 'amos', 'jude', 'joel', 'titus', 'daniel', 'luke', 'jonah', 'micah', 'song', 'ezra', 'esther', 'hosea', 'nahum', 'mar', 'jon', 'pro', 'lam', 'num', 'gen', 'col', 'gal', 'dan', 'mal', 'hag', 'tit', 'jam', 'heb', 'rev', 'phil', 'mat', 'matt', 'eph']);
+const COMMON_WORD_BOOKS = new Set(['mark', 'john', 'james', 'acts', 'act', 'job', 'numbers', 'ruth', 'amos', 'jude', 'joel', 'titus', 'daniel', 'luke', 'jonah', 'micah', 'song', 'ezra', 'esther', 'hosea', 'nahum', 'mar', 'jon', 'pro', 'lam', 'num', 'gen', 'col', 'gal', 'dan', 'mal', 'hag', 'tit', 'jam', 'heb', 'rev', 'phil', 'mat', 'matt', 'eph', 'efficient', 'efficiency', 'ephesian', 'ephisians', 'purvas', 'poovams', 'poovans', 'provabs']);
 const CUE_BEFORE = new Set(['in', 'of', 'from', 'open', 'read', 'reading', 'chapter', 'book', 'gospel', 'says', 'said', 'see', 'unto']);
 const TO_AFTER = new Set(['turn', 'open', 'go', 'back', 'over', 'bibles', 'bible', 'flip', 'me', 'us', 'move', 'come']); // "turn to", "go with me to"
 
@@ -396,7 +416,11 @@ function bookAt(tokens, i) {
     if (n > 1 && isNum(words[n - 1])) continue;
     if (isNum(words[0]) && !(n > 1 && /^[1-3]$/.test(words[0]))) continue; // a number only as "1 John"
     const book = resolveBook(words.join(' '));
-    if (book) return { book: { ...book, spoken: words.join(' ').replace(/^(the|book of|the book of)\s+/, '') }, next: i + n };
+    if (book) {
+      const said = words.join(' ');
+      // "the book of Job" announces a book: as good as a cue
+      return { book: { ...book, spoken: said.replace(/^(the book of|book of|the)\s+/, ''), announced: /^(the\s+)?book\s+of\s/.test(said) }, next: i + n };
+    }
   }
   return null;
 }
@@ -504,7 +528,7 @@ function parseAll(text, fallbackTranslation = 'KJV') {
   for (let i = 0; i < tokens.length; i++) {
     const hit = bookAt(tokens, i);
     if (!hit) continue;
-    const cued = i > 0 && cuedAt(tokens, i);
+    const cued = (i > 0 && cuedAt(tokens, i)) || hit.book.announced;
     const r = readNumbers(tokens, hit.next, hit.book, cued);
     if (!r) continue;
     const key = `${hit.book.name} ${r.chapter}:${r.verse}`;
@@ -532,19 +556,41 @@ function looksLikeReference(text) {
   return false;
 }
 
+// A book named without its numbers yet ("turn to Romans", "the book of
+// Hebrews chapter…"): the last one in the text, or null. Everyday-word books
+// only with a cue.
+function danglingBook(text) {
+  const tokens = tokenize(cleanText(text || ''));
+  let found = null;
+  for (let i = 0; i < tokens.length; i++) {
+    const hit = bookAt(tokens, i);
+    if (!hit) continue;
+    const cued = (i > 0 && cuedAt(tokens, i)) || hit.book.announced;
+    const r = readNumbers(tokens, hit.next, hit.book, cued);
+    if (r) { found = null; i = r.next - 1; continue; }
+    const after = tokens[hit.next];
+    const open = after === undefined || CHAPTER_WORD.has(after) || VERSE_WORD.has(after);
+    if ((cued || open) && (cued || !COMMON_WORD_BOOKS.has(hit.book.spoken))) found = hit.book.name;
+    i = hit.next - 1;
+  }
+  return found;
+}
+
 function parse(text, fallbackTranslation = 'KJV') {
   if (!text || text.trim().length < 3) return null;
   const all = parseAll(text, fallbackTranslation);
   if (all.length) return all.length > 1 ? { ...all[0], more: all.slice(1) } : all[0];
 
   // Translation-only — preacher switching translation without stating a reference
-  // Also catches "King James Version" explicitly since KJV === fallback but still a signal
+  // Reported even when it is the edition already selected: the screen may be
+  // showing another one (a verse put up by hand in KJV while YLT is selected),
+  // and the Operator page does nothing when the screen already shows it.
   const clean = cleanText(text);
   const rawTranslation = detectTranslation(clean);
-  if (rawTranslation && (rawTranslation !== fallbackTranslation || text.toLowerCase().includes('king james'))) {
+  if (rawTranslation) {
     return { translationOnly: true, translation: rawTranslation, confidence: 0.95 };
   }
   return null;
 }
 
-module.exports = { parse, parseAll, looksLikeReference, detectTranslation, buildTranslationPatterns, resolveBook, normaliseNumbers, CHAPTERS };
+module.exports = { parse, parseAll, danglingBook, looksLikeReference, detectTranslation, buildTranslationPatterns, resolveBook, normaliseNumbers, CHAPTERS };

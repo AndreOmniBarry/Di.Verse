@@ -80,7 +80,8 @@ function modeOf(payload) {
 // Called for every screen change. notify(message) tells the operator;
 // screen() returns the current screen state (for the Camera size setting).
 function onScreen(payload, notify, screen) {
-  const showing = payload.action === 'SHOW_VERSE' || payload.action === 'SHOW_LYRICS';
+  // a reference note is a lower third: the camera goes back to full size for it
+  const showing = payload.action === 'SHOW_VERSE' || payload.action === 'SHOW_LYRICS' || payload.action === 'SHOW_REFERENCE';
   if (!configured()) {
     if (showing && modeOf(payload) === 'squeeze' && !warnedUnset) {
       warnedUnset = true;
