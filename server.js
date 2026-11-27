@@ -165,6 +165,7 @@ app.get('/api/version', (req, res) => res.json({ version: VERSION }));
 app.use('/api', require('./routes/bible'));
 app.use('/api', require('./routes/library'));
 app.use('/api', require('./routes/diag'));
+app.use('/api', require('./routes/database'));
 app.use('/api', require('./routes/songs'));
 app.use('/api', require('./routes/transcribe'));
 app.use('/api', require('./routes/detect'));
