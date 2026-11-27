@@ -203,6 +203,8 @@ app.use('/api', require('./routes/bible'));
 app.use('/api', require('./routes/library'));
 app.use('/api', require('./routes/diag'));
 app.use('/api', require('./routes/database'));
+app.use('/api', require('./routes/sermon'));
+app.use('/api', require('./routes/presentation'));
 app.use('/api', require('./routes/songs'));
 app.use('/api', require('./routes/transcribe'));
 app.use('/api', require('./routes/detect'));
@@ -261,10 +263,14 @@ try {
 function rememberScreen(payload) {
   switch (payload.action) {
     case 'SHOW_VERSE': case 'SHOW_LYRICS': case 'SHOW_REFERENCE': screenState.screen = payload; break;
-    case 'CLEAR': delete screenState.screen; break;
+    case 'CLEAR': delete screenState.screen; delete screenState.note; break;
     case 'APPLY_THEME': screenState.theme = payload; break;
     case 'APPLY_BACKGROUND': screenState.background = payload; break;
     case 'FONT_SIZE': screenState.font = payload; break;
+    // sermon notes are their own layer: showing or hiding one never touches the scripture or lyrics
+    case 'SHOW_NOTE': screenState.note = { ...payload, shownAt: Date.now() }; break;
+    case 'HIDE_NOTE': delete screenState.note; break;
+    case 'APPLY_PROFILE': screenState.profile = payload; break;
     default: return;
   }
   screenState.savedAt = Date.now();
@@ -275,8 +281,14 @@ function rememberScreen(payload) {
 }
 
 function replayScreen(ws) {
-  for (const key of ['background', 'theme', 'font', 'screen']) {
+  for (const key of ['profile', 'background', 'theme', 'font', 'screen']) {
     if (screenState[key]) ws.send(JSON.stringify(screenState[key]));
+  }
+  // a note still within its display time comes back for the time it has left
+  const n = screenState.note;
+  if (n) {
+    const left = n.durationMs > 0 ? n.durationMs - (Date.now() - n.shownAt) : 0;
+    if (!(n.durationMs > 0) || left > 500) ws.send(JSON.stringify({ action: 'SHOW_NOTE', note: n.note, durationMs: n.durationMs > 0 ? left : 0 }));
   }
 }
 
@@ -459,8 +471,26 @@ function connectedScreens() {
 
 const vmix = require('./services/vmix');
 
+// Presentation history (Operator -> History): what went on screen, kept in
+// presentation.db; the same verse re-sent for a mode change counts once
+let lastHistory = { label: null, at: 0 };
+function recordPresentation(p) {
+  const label = p.action === 'SHOW_VERSE' && p.verse ? `${p.verse.reference} ${p.verse.translation || ''}`.trim()
+    : p.action === 'SHOW_LYRICS' && p.lyrics ? `${p.lyrics.songTitle}${p.lyrics.section ? ' · ' + p.lyrics.section : ''}`
+    : p.action === 'SHOW_REFERENCE' ? String(p.reference || '')
+    : p.action === 'SHOW_NOTE' && p.note ? `${p.note.kind === 'point' ? (p.note.number ? 'Point ' + p.note.number : 'Point') : p.note.kind === 'title' ? 'Title' : 'Highlight'}: ${p.note.text}`
+    : null;
+  if (!label || (label === lastHistory.label && Date.now() - lastHistory.at < 5000)) return;
+  lastHistory = { label, at: Date.now() };
+  const kind = { SHOW_VERSE: 'scripture', SHOW_LYRICS: 'lyrics', SHOW_REFERENCE: 'reference', SHOW_NOTE: 'note' }[p.action];
+  const detail = p.action === 'SHOW_VERSE' ? { book: p.verse.book, chapter: p.verse.chapter, verse: p.verse.verse, verseEnd: p.verse.verseEnd, translation: p.verse.translation, displayMode: p.verse.displayMode }
+    : p.action === 'SHOW_LYRICS' ? { section: p.lyrics.section, displayMode: p.lyrics.displayMode } : p.action === 'SHOW_NOTE' ? { noteId: p.note.id } : p.action === 'SHOW_REFERENCE' ? { reference: p.reference } : {};
+  try { require('./services/presentationDb').recordHistory(kind, label, detail); } catch (e) { console.error('[History]', e.message); }
+}
+
 function broadcast(payload) {
   rememberScreen(payload);
+  recordPresentation(payload);
   vmix.onScreen(payload, message => alertOperator({ action: 'NOTICE', message }), () => screenState);
   const message = JSON.stringify(payload);
   clients.forEach(client => {

@@ -19,6 +19,7 @@ const WINDOW_TOP = 0.05;
 
 let squeezed = false;
 let squeezedInput = null;   // input number we shrank (automatic) or left (scene)
+let squeezedMode = null;    // squeeze, split-left or split-right
 let chain = Promise.resolve();
 let warnedUnset = false;
 
@@ -53,14 +54,29 @@ function transition(input) {
 // Zoom and pan that put the full camera picture exactly into the window
 function windowPosition(cameraPercent) {
   const z = Math.min(0.5, Math.max(0.15, (parseFloat(cameraPercent) || 20) / 100));
-  const shiftRight = WINDOW_LEFT + z / 2 - 0.5; // as a share of the frame width
-  const shiftDown = WINDOW_TOP + z / 2 - 0.5;   // as a share of the frame height
-  const r = n => Math.round(n * 10000) / 10000;
+  return placement(WINDOW_LEFT, WINDOW_TOP, z);
+}
+function placement(left, top, z) {
+  const shiftRight = left + z / 2 - 0.5; // as a share of the frame width
+  const shiftDown = top + z / 2 - 0.5;   // as a share of the frame height
+  const r = n => Math.round(n * 10000) / 10000 || 0; // never -0
   return { zoom: r(z), panX: r(shiftRight * 2), panY: r(-shiftDown * 2) };
 }
 
-async function shrink(input, cameraPercent) {
-  const p = windowPosition(cameraPercent);
+// Split screen (virtual set): a large camera window, vertically centred, on the
+// side opposite the scripture. Must match public/projection/index.html
+// (html[data-split] .sq-window): margin 2.5%, size = split ratio - 4%, min 30%.
+const SPLIT_MARGIN = 0.025;
+function splitSize(splitRatio) { return Math.max(0.3, (Number(splitRatio) || 50) / 100 - 0.04); }
+function splitGeometry(mode, splitRatio) {
+  const z = splitSize(splitRatio);
+  const left = mode === 'split-left' ? 1 - SPLIT_MARGIN - z : SPLIT_MARGIN; // split-left: scripture left, camera right
+  return placement(left, (1 - z) / 2, z);
+}
+
+const WINDOWED = ['squeeze', 'split-left', 'split-right'];
+
+async function shrink(input, cameraPercent, p = windowPosition(cameraPercent)) {
   await call('SetZoom', input, p.zoom);
   await call('SetPanX', input, p.panX);
   await call('SetPanY', input, p.panY);
@@ -83,27 +99,47 @@ function onScreen(payload, notify, screen) {
   // a reference note is a lower third: the camera goes back to full size for it
   const showing = payload.action === 'SHOW_VERSE' || payload.action === 'SHOW_LYRICS' || payload.action === 'SHOW_REFERENCE';
   if (!configured()) {
-    if (showing && modeOf(payload) === 'squeeze' && !warnedUnset) {
+    if (showing && WINDOWED.includes(modeOf(payload)) && !warnedUnset) {
       warnedUnset = true;
       notify('Squeeze is drawn, but vMix won\'t shrink the camera until VMIX_URL is set in .env (see SETUP.md, "Automatic squeeze")');
     }
     return;
   }
   const cameraPercent = () => ((screen && screen().background) || {}).camera || 20;
-  const wantSqueeze = showing && modeOf(payload) === 'squeeze';
-  const resize = payload.action === 'APPLY_BACKGROUND' && squeezed && !sceneMode();
-  if (!showing && payload.action !== 'CLEAR' && !resize) return;
+  const mode = modeOf(payload);
+  const wantSqueeze = showing && WINDOWED.includes(mode);
+  // the camera window for this mode: squeeze follows the Camera size setting,
+  // split modes follow the live virtual-set profile's split ratio
+  const geometry = m => {
+    if (m === 'split-left' || m === 'split-right') {
+      const live = (screen && screen().profile) || {};
+      return splitGeometry(m, ((live.profile || {}).settings || {}).splitRatio);
+    }
+    return windowPosition(cameraPercent());
+  };
+  const resize = payload.action === 'APPLY_BACKGROUND' && squeezed && squeezedMode === 'squeeze' && !sceneMode();
+  const reshape = payload.action === 'APPLY_PROFILE' && squeezed && squeezedMode !== 'squeeze' && !sceneMode();
+  if (!showing && payload.action !== 'CLEAR' && !resize && !reshape) return;
 
   chain = chain.then(async () => {
     try {
       if (resize) {
         await shrink(squeezedInput, payload.camera || cameraPercent()); // Camera size changed while squeezed
+      } else if (reshape) {
+        // split ratio changed while split: screen() already holds the new profile
+        const s = ((payload.profile || {}).settings || {}).splitRatio;
+        await shrink(squeezedInput, null, splitGeometry(squeezedMode, s));
       } else if (wantSqueeze && !squeezed) {
         const { active } = await state();
         squeezedInput = active;
         if (sceneMode()) await transition(process.env.VMIX_SQUEEZE_INPUT);
-        else await shrink(active, cameraPercent());
+        else await shrink(active, null, geometry(mode));
         squeezed = true;
+        squeezedMode = mode;
+      } else if (wantSqueeze && squeezed && mode !== squeezedMode) {
+        // squeeze <-> split: move the window without restoring first
+        if (!sceneMode()) await shrink(squeezedInput, null, geometry(mode));
+        squeezedMode = mode;
       } else if (!wantSqueeze && squeezed) {
         if (sceneMode()) await transition(squeezedInput || process.env.VMIX_CAMERA_INPUT || '1');
         else await restore(squeezedInput);
@@ -135,4 +171,4 @@ async function reloadBrowsers(marks) {
   return done;
 }
 
-module.exports = { onScreen, state, reloadBrowsers, configured, sceneMode, windowPosition, _reset: () => { warnedUnset = false; squeezed = false; squeezedInput = null; chain = Promise.resolve(); } };
+module.exports = { onScreen, state, reloadBrowsers, configured, sceneMode, windowPosition, splitGeometry, _reset: () => { warnedUnset = false; squeezed = false; squeezedInput = null; squeezedMode = null; chain = Promise.resolve(); } };

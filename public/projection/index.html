@@ -130,6 +130,85 @@
     #refNote .rn-title { font-size: 2.1vh; color: rgba(255,255,255,0.75); margin-top: 0.4vh; }
     #refNote .rn-title:empty { display: none; }
     #reconnect { position: fixed; bottom: 10px; right: 14px; font-size: 0.62rem; color: rgba(255,255,255,0.2); display: none; z-index: 20; }
+
+    /* ── Virtual set (v1.12): presentation profiles ──
+       Applied only once a profile is taken live (html[data-vs]); without one
+       the page looks exactly as before. Every size is in vw / vh, so 1080p
+       and 4K render identically. */
+    html[data-vs] #lowerThird, html[data-vs] #fullScreen, html[data-vs] #squeeze, html[data-vs] #refNote, #noteLayer {
+      transition-duration: var(--vs-ms, 0.45s);
+    }
+    html[data-vs-trans="none"] #lowerThird, html[data-vs-trans="none"] #fullScreen, html[data-vs-trans="none"] #squeeze, html[data-vs-trans="none"] #noteLayer { transition: none; }
+    html[data-vs-trans="slide"] #lowerThird:not(.show) { transform: translateY(4vh); }
+    html[data-vs-trans="slide"] #noteLayer:not(.show) { transform: translateY(-3vh); }
+    html[data-vs-type="serif"] .lt-text, html[data-vs-type="serif"] .fs-text, html[data-vs-type="serif"] .sq-text, html[data-vs-type="serif"] #noteLayer .nl-text {
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; font-weight: 600; letter-spacing: 0.005em;
+    }
+    html[data-vs-type="serif"] .lt-ref, html[data-vs-type="serif"] .fs-ref, html[data-vs-type="serif"] .sq-ref { letter-spacing: 0.12em; text-transform: uppercase; }
+    /* palette (not for the "theme" background, which keeps the operator's Look settings) */
+    html[data-vs-bg]:not([data-vs-bg="theme"]) #ltRef, html[data-vs-bg]:not([data-vs-bg="theme"]) #fsRef, html[data-vs-bg]:not([data-vs-bg="theme"]) #sqRef { color: var(--vs-accent) !important; }
+    html[data-vs-bg]:not([data-vs-bg="theme"]) .lt-text, html[data-vs-bg]:not([data-vs-bg="theme"]) .fs-text, html[data-vs-bg]:not([data-vs-bg="theme"]) .sq-text { color: var(--vs-text) !important; }
+    html[data-vs-bg]:not([data-vs-bg="theme"]) .badge { background: transparent; color: var(--vs-accent); border: 1px solid var(--vs-accent); }
+    html[data-vs-bg]:not([data-vs-bg="theme"]) #lowerThird { border-top: 0.25vh solid var(--vs-accent); }
+    html[data-vs-bg="navy-gradient"] #lowerThird, html[data-vs-bg="navy-gradient"] #fullScreen, html[data-vs-bg="navy-gradient"] .sq-bg {
+      background: radial-gradient(120% 140% at 20% 0%, var(--vs-panel), var(--vs-base) 70%) !important; }
+    html[data-vs-bg="graphite"] #lowerThird, html[data-vs-bg="graphite"] #fullScreen, html[data-vs-bg="graphite"] .sq-bg {
+      background: linear-gradient(160deg, #23262D, #121418 75%) !important; }
+    html[data-vs-bg="cinematic-dark"] #lowerThird, html[data-vs-bg="cinematic-dark"] #fullScreen, html[data-vs-bg="cinematic-dark"] .sq-bg {
+      background: radial-gradient(90% 70% at 50% 45%, #141B2A, #05070C 80%) !important; }
+    html[data-vs-bg="parchment"] #lowerThird, html[data-vs-bg="parchment"] #fullScreen, html[data-vs-bg="parchment"] .sq-bg {
+      background: radial-gradient(120% 120% at 50% 30%, #F7F1E3, #E7DCC4 80%) !important; }
+    html[data-vs-bg="parchment"] .lt-text, html[data-vs-bg="parchment"] .fs-text, html[data-vs-bg="parchment"] .sq-text { color: #1C2230 !important; text-shadow: none; }
+    html[data-vs-bg="parchment"] #ltRef, html[data-vs-bg="parchment"] #fsRef, html[data-vs-bg="parchment"] #sqRef { color: #8A6A2B !important; }
+    /* transparent: livestream graphics over the camera (any page, not only ?overlay=1) */
+    html[data-vs-bg="transparent"], html[data-vs-bg="transparent"] body { background: transparent; }
+    html[data-vs-bg="transparent"] #idle { display: none; }
+    html[data-vs-bg="transparent"] #lowerThird { background: linear-gradient(90deg, rgba(11,20,36,0.92), rgba(11,20,36,0.78)) !important; border-radius: 1.2vh; }
+    html[data-vs-bg="transparent"] #fullScreen { background: rgba(5,8,14,0.72) !important; }
+    /* positioning of the lower third (and the note card) inside the safe area */
+    html[data-vs-pos] #lowerThird { width: calc(var(--vs-width) * 1%); left: calc((100% - var(--vs-width) * 1%) / 2 + var(--vs-x) * 1%); bottom: calc(var(--vs-safe) * 1vh - var(--vs-y) * 1vh); right: auto; }
+    html[data-vs] #lowerThird .lt-text, html[data-vs] .fs-text, html[data-vs] .sq-text { font-size-adjust: none; }
+    /* Cinematic teaching layout: letterboxed, centred serif scripture, gold reference above */
+    html[data-layout="cinematic"] #fullScreen { padding: 14vh 10vw; }
+    html[data-layout="cinematic"] #fullScreen::before, html[data-layout="cinematic"] #fullScreen::after {
+      content: ''; position: absolute; left: 0; right: 0; height: 9vh; background: #000; z-index: 3; }
+    html[data-layout="cinematic"] #fullScreen::before { top: 0; }
+    html[data-layout="cinematic"] #fullScreen::after { bottom: 0; }
+    html[data-layout="cinematic"] .fs-ref { order: -1; margin-bottom: 3.2vh; padding-bottom: 1.6vh; width: auto; border-bottom: 0.2vh solid var(--vs-accent, #C9A961); color: var(--vs-accent, #C9A961); }
+    html[data-layout="cinematic"] .fs-text { width: 78%; line-height: 1.42; }
+    /* Split screen: camera window on one side (a vMix layer underneath shows through), scripture on the other */
+    html[data-split] .sq-window { top: calc((100vh - var(--sw, 0.46) * 100vh) / 2); width: calc(var(--sw, 0.46) * 100vw); height: calc(var(--sw, 0.46) * 100vh); }
+    html[data-split="camera-left"] .sq-window { left: 2.5vw; }
+    html[data-split="camera-right"] .sq-window { left: calc(100vw - 2.5vw - var(--sw, 0.46) * 100vw); }
+    html[data-split] .sq-panel { top: 9vh; bottom: 9vh; }
+    html[data-split="camera-left"] .sq-panel { left: calc(2.5vw + var(--sw, 0.46) * 100vw + 2.5vw); right: 2.5vw; }
+    html[data-split="camera-right"] .sq-panel { left: 2.5vw; right: calc(2.5vw + var(--sw, 0.46) * 100vw + 2.5vw); }
+    html[data-split] .sq-ref { top: calc((100vh + var(--sw, 0.46) * 100vh) / 2 + 2vh); bottom: auto; height: auto; width: calc(var(--sw, 0.46) * 100vw); justify-content: center; }
+    html[data-split="camera-left"] .sq-ref { left: 2.5vw; right: auto; }
+    html[data-split="camera-right"] .sq-ref { left: calc(100vw - 2.5vw - var(--sw, 0.46) * 100vw); right: auto; }
+    /* profile palette also recolours the theme's accent bars; the idle mark stays hidden behind split / cinematic */
+    html[data-vs-bg]:not([data-vs-bg="theme"]) #lowerThird::before, html[data-vs-bg]:not([data-vs-bg="theme"]) .sq-panel::before {
+      background: linear-gradient(90deg, var(--vs-accent), rgba(244,239,228,0.7)); box-shadow: 0 0 1.2vh var(--vs-accent); }
+    html[data-vs-bg]:not([data-vs-bg="theme"]) #refNote .rn-label { color: var(--vs-accent); }
+    html[data-split] #idle .logo, html[data-layout] #idle .logo { visibility: hidden; }
+    /* Sermon notes: their own layer near the top, never over the scripture, never clearing it */
+    #noteLayer { position: fixed; left: 50%; top: calc(var(--vs-safe, 5) * 1vh); z-index: 14; width: 70vw; margin-left: -35vw; text-align: center;
+      opacity: 0; transform: translateY(0); transition: opacity 0.45s ease, transform 0.45s ease; pointer-events: none; }
+    #noteLayer.show { opacity: 1; transform: translateY(0); }
+    #noteLayer .nl-card { display: inline-block; max-width: 100%; padding: 2.2vh 3.2vw 2.4vh; border-radius: 1.4vh;
+      background: linear-gradient(180deg, rgba(18,27,44,0.94), rgba(11,20,36,0.94)); border: 1px solid rgba(201,169,97,0.45);
+      box-shadow: 0 2vh 5vh rgba(0,0,0,0.45); }
+    #noteLayer .nl-kind { font-size: 1.7vh; font-weight: 700; letter-spacing: 0.32em; text-transform: uppercase; color: var(--vs-accent, #C9A961); margin-bottom: 1vh; }
+    #noteLayer .nl-text { font-size: calc(4.4vh * var(--vs-scale, 1)); font-weight: 600; line-height: 1.25; color: var(--vs-text, #F4EFE4); }
+    #noteLayer.title .nl-text { font-size: calc(5.6vh * var(--vs-scale, 1)); }
+    #noteLayer .nl-refs { margin-top: 1.1vh; font-size: 2vh; letter-spacing: 0.12em; color: var(--vs-muted, #A3ABB9); }
+    #noteLayer .nl-refs:empty { display: none; }
+    /* ministry brand mark */
+    #vsBrand { position: fixed; right: calc(var(--vs-safe, 5) * 1vw); top: calc(var(--vs-safe, 5) * 1vh); z-index: 13; text-align: right; display: none; pointer-events: none; }
+    html[data-vs-brand] #vsBrand { display: block; }
+    #vsBrand .vb-name { font-size: 2vh; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; color: var(--vs-accent, #C9A961); }
+    #vsBrand .vb-tag { font-size: 1.5vh; letter-spacing: 0.08em; color: var(--vs-muted, #A3ABB9); margin-top: 0.4vh; }
+    #vsBrand .vb-tag:empty { display: none; }
   </style>
 </head>
 <body>
@@ -154,6 +233,8 @@
     <div class="sq-ref"><span id="sqRef"></span><span class="badge" id="sqBadge">KJV</span></div>
   </div>
   <div id="refNote"><div class="rn-label" id="rnLabel">Scriptural Reference</div><div class="rn-ref" id="rnRef"></div><div class="rn-title" id="rnTitle"></div></div>
+  <div id="noteLayer"><div class="nl-card"><div class="nl-kind" id="nlKind"></div><div class="nl-text" id="nlText"></div><div class="nl-refs" id="nlRefs"></div></div></div>
+  <div id="vsBrand"><div class="vb-name" id="vbName"></div><div class="vb-tag" id="vbTag"></div></div>
   <div id="reconnect">Reconnecting...</div>
 <script src="/projection/backgrounds.js"></script>
 <script src="/scripture-text.js"></script>
@@ -381,14 +462,26 @@
   window.addEventListener('resize', function() { if (!OVERLAY) updateSqueezeClip(); applyFontSize(); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function() { applyFontSize(); }); // refit once the font has loaded
 
+  // Display modes. split-left / split-right (scripture on that side, camera
+  // window on the other) reuse the squeeze box; cinematic reuses full screen.
+  // Split geometry must match services/vmix.js (splitGeometry).
   function boxFor(mode) {
-    return mode === 'full-screen' ? 'fullScreen' : mode === 'squeeze' ? 'squeeze' : 'lowerThird';
+    return mode === 'full-screen' || mode === 'cinematic' ? 'fullScreen'
+      : mode === 'squeeze' || mode === 'split-left' || mode === 'split-right' ? 'squeeze' : 'lowerThird';
+  }
+  function setLayout(mode) {
+    var root = document.documentElement;
+    if (mode === 'cinematic') root.setAttribute('data-layout', 'cinematic'); else root.removeAttribute('data-layout');
+    if (mode === 'split-right') root.setAttribute('data-split', 'camera-left');
+    else if (mode === 'split-left') root.setAttribute('data-split', 'camera-right');
+    else root.removeAttribute('data-split');
   }
 
   function showVerse(verse, theme, fontSize) {
     hide();
     try { applyTheme(theme); } catch (err) { report('theme: ' + err.message); }
     if (fontSize !== undefined) fontDelta = fontSize;
+    setLayout(verse.displayMode);
     var box = boxFor(verse.displayMode);
     show(box, verse.reference, verse.translation, verse.text, true);
   }
@@ -415,6 +508,7 @@
     hide();
     try { applyTheme(theme); } catch (err) { report('theme: ' + err.message); }
     if (fontSize !== undefined) fontDelta = fontSize;
+    setLayout(lyrics.displayMode);
     var box = boxFor(lyrics.displayMode);
     show(box, lyrics.songTitle + (lyrics.section ? '  ·  ' + lyrics.section : ''), '', lyrics.content); // no "1/6" slide counter
   }
@@ -436,6 +530,61 @@
     document.getElementById('rnRef').textContent = msg.reference || '';
     document.getElementById('rnTitle').textContent = msg.title || '';
     document.getElementById('refNote').classList.add('show');
+  }
+
+
+  // ── Virtual set profile (v1.12) ──
+  var PREVIEW = /[?&]preview(=|&|$)/.test(location.search);
+  function applyProfile(profile) {
+    var root = document.documentElement, st = profile && profile.settings;
+    if (!st) return;
+    var p = st.palette || {}, pos = st.position || {}, m = st.ministry || {}, tr = st.transition || {};
+    var vars = { '--vs-base': p.base, '--vs-panel': p.panel, '--vs-accent': p.accent, '--vs-text': p.text, '--vs-muted': p.muted,
+      '--vs-scale': st.textScale, '--vs-x': pos.x, '--vs-y': pos.y, '--vs-width': pos.width, '--vs-safe': st.safeArea,
+      '--vs-ms': (tr.type === 'none' ? 0 : tr.ms) / 1000 + 's', '--sw': Math.max(0.3, (st.splitRatio || 50) / 100 - 0.04) };
+    for (var k in vars) if (vars[k] !== undefined && vars[k] !== null) root.style.setProperty(k, String(vars[k]));
+    root.setAttribute('data-vs', profile.name || 'profile');
+    root.setAttribute('data-vs-bg', st.background || 'theme');
+    root.setAttribute('data-vs-type', st.typeface || 'sans');
+    root.setAttribute('data-vs-trans', tr.type || 'fade');
+    if (pos.width < 100 || pos.x || pos.y) root.setAttribute('data-vs-pos', '1'); else root.removeAttribute('data-vs-pos');
+    document.getElementById('vbName').textContent = m.name || '';
+    document.getElementById('vbTag').textContent = m.tagline || '';
+    if (m.showBrand && m.name) root.setAttribute('data-vs-brand', '1'); else root.removeAttribute('data-vs-brand');
+    try { applyFontSize(); } catch (e) {}
+  }
+
+  // ── Sermon notes: a layer of their own (never clears scripture or lyrics) ──
+  var noteTimer = null;
+  var KIND_LABEL = { title: 'Sermon Title', highlight: 'Key Thought' };
+  function showNote(msg) {
+    var n = msg.note || {}, el = document.getElementById('noteLayer');
+    document.getElementById('nlKind').textContent = n.kind === 'point' ? (n.number ? 'Point ' + n.number : 'Point') : (KIND_LABEL[n.kind] || '');
+    document.getElementById('nlText').textContent = DiVerseScriptureText.display(n.text || '');
+    document.getElementById('nlRefs').textContent = (n.refs || []).join('  ·  ');
+    el.className = n.kind === 'title' ? 'title show' : 'show';
+    clearTimeout(noteTimer);
+    if (msg.durationMs > 0) noteTimer = setTimeout(hideNote, msg.durationMs);
+  }
+  function hideNote() {
+    clearTimeout(noteTimer);
+    var el = document.getElementById('noteLayer');
+    el.className = el.className.replace(/\bshow\b/, '').replace(/\s+$/, '');
+  }
+
+  // Preview (Operator -> Virtual Set): shows the live screen with a draft profile
+  // sent by the Operator page, and sample content when nothing is up
+  if (PREVIEW) {
+    window.addEventListener('message', function(e) {
+      if (e.origin !== location.origin || !e.data) return;
+      if (e.data.type === 'diverse:preview-profile') applyProfile(e.data.profile);
+      if (e.data.type === 'diverse:preview-sample') {
+        var mode = e.data.mode || 'lower-third';
+        showVerse({ reference: 'John 3:16', translation: 'KJV', text: 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.', displayMode: mode });
+        if (e.data.note) showNote({ note: { kind: 'point', number: 1, text: 'God has a plan for your life', refs: ['Jeremiah 29:11'] }, durationMs: 0 });
+        else hideNote();
+      }
+    });
   }
 
   // A screen left open (vMix, the projector) loads the new page by itself
@@ -461,7 +610,7 @@
   }
 
   function connect() {
-    var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '?type=projection' + (OVERLAY ? '&overlay=1' : ''));
+    var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '?type=' + (PREVIEW ? 'preview' : 'projection') + (OVERLAY ? '&overlay=1' : ''));
     sock = ws;
     ws.onopen = function() {
       clearTimeout(reconnectTimer);
@@ -477,9 +626,12 @@
         else if (msg.action === 'SHOW_REFERENCE') showReference(msg);
         else if (msg.action === 'SHOW_LYRICS') showLyrics(msg.lyrics, msg.theme, msg.fontSize);
         else if (msg.action === 'APPLY_BACKGROUND') applyBackground(msg.background, msg.frame, msg.size, msg.camera);
-        else if (msg.action === 'CLEAR')   hide();
+        else if (msg.action === 'CLEAR')   { hide(); hideNote(); }
         else if (msg.action === 'APPLY_THEME') applyTheme(msg.theme);
         else if (msg.action === 'FONT_SIZE')   applyFontSize(msg.delta);
+        else if (msg.action === 'SHOW_NOTE')   showNote(msg);
+        else if (msg.action === 'HIDE_NOTE')   hideNote();
+        else if (msg.action === 'APPLY_PROFILE' && !PREVIEW) applyProfile(msg.profile);
       } catch (err) { report((msg && msg.action || 'message') + ': ' + err.message); }
     };
     ws.onclose = function() {
